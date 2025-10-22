@@ -1,0 +1,81 @@
+# vLLM Service Configuration
+# Configuration file for the Local LLM service wrapper
+
+# Server configuration
+server:
+  host: "0.0.0.0"
+  port: 8001
+  log_level: "info"
+
+# vLLM server configuration
+vllm:
+  # Base URL for vLLM OpenAI-compatible API
+  base_url: "http://localhost:8000"
+
+  # Request timeout in seconds
+  timeout: 60
+
+# Model configuration
+model:
+  # Model name/identifier
+  name: "meta-llama/Meta-Llama-3-8B-Instruct"
+
+  # Path to model files (for offline/air-gapped deployment)
+  # In air-gapped environment, download model to this path beforehand
+  path: "/models/Meta-Llama-3-8B-Instruct"
+
+  # Maximum model context length
+  max_model_len: 8192
+
+  # GPU memory utilization (0.0 to 1.0)
+  gpu_memory_utilization: 0.9
+
+  # Tensor parallelism (number of GPUs to use)
+  tensor_parallel_size: 1
+
+  # Data type for model weights
+  dtype: "auto"  # Options: auto, half, float16, bfloat16, float
+
+# Generation defaults
+generation:
+  # Default maximum tokens to generate
+  max_tokens: 4096
+
+  # Default temperature
+  temperature: 0.7
+
+  # Default top-p sampling
+  top_p: 0.9
+
+  # Default top-k sampling
+  top_k: 50
+
+  # Default repetition penalty
+  repetition_penalty: 1.1
+
+# Response limits (for Korean language support)
+limits:
+  # Maximum character count for responses (as specified in requirements)
+  max_chars: 4000
+
+  # Warning threshold (percentage of max_chars)
+  warning_threshold: 0.9
+
+# Logging configuration
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Korean language optimization
+korean:
+  # Enable Korean-specific tokenization handling
+  enabled: true
+
+  # Korean text encoding
+  encoding: "utf-8"
+
+  # System prompt for Korean language
+  system_prompt: |
+    당신은 지방자치단체 공무원을 위한 AI 업무 지원 시스템입니다.
+    업무와 관련된 질문에 정확하고 명확하게 한국어로 답변해주세요.
+    필요한 경우 관련 법규나 절차를 안내해주세요.

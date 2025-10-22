@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p frontend/src/app frontend/src/components/chat frontend/src/components/admin frontend/src/components/ui frontend/src/components/layout frontend/src/components/auth frontend/src/components/documents frontend/src/lib frontend/src/types frontend/public frontend/tests/unit frontend/tests/integration)",
+      "Bash(python -c \"import secrets; print(secrets.token_urlsafe(48))\")",
+      "Bash(powershell:*)",
+      "Bash(test:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose:*)",
+      "Bash(curl:*)",
+      "Bash(docker run:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

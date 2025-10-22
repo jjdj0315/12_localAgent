@@ -1,50 +1,75 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Local LLM Web Application Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Air-Gap Compatibility (NON-NEGOTIABLE)
+**MUST**: Every component, library, and service operates without internet connectivity
+- No external API calls, CDNs, or cloud services
+- All dependencies bundled in deployment artifacts
+- Documentation includes offline deployment procedures
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+**Rationale**: Government closed-network environment requirement (FR-001)
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### II. Korean Language Support (MANDATORY)
+**MUST**: All user-facing elements support Korean language
+- UI labels and messages in Korean
+- Error messages in Korean
+- LLM must process Korean queries and generate Korean responses
+- Documentation provided in Korean for end users
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+**Rationale**: Primary user base is Korean-speaking government employees (FR-014, Assumption #4)
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### III. Security & Privacy First
+**MUST**: User data isolation and session security
+- Users can only access their own conversations and documents (FR-011)
+- Session timeout enforced (30 minutes, FR-012)
+- Password hashing required (bcrypt/argon2)
+- Admin actions require elevated privileges
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+**Rationale**: Government data sensitivity and multi-user environment
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### IV. Simplicity Over Optimization
+**SHOULD**: Prioritize maintainability over performance optimization
+- Monolithic deployment preferred over microservices
+- Established libraries over custom implementations (vLLM, LangChain, React Query)
+- Clear separation of concerns (frontend/backend/LLM service)
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+**Rationale**: Small IT team, limited maintenance resources (Assumption #8)
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### V. Testability & Observability
+**SHOULD**: Enable debugging in air-gapped environment
+- Structured logging for troubleshooting
+- Clear error messages for users
+- Health check endpoints for monitoring
+- Independent testing per user story
+
+**Rationale**: Limited external support; self-service debugging required
+
+## Quality Gates
+
+### Pre-Implementation Gates
+- [ ] Constitution compliance verified
+- [ ] All edge cases converted to functional requirements with error handling
+- [ ] Storage limits and retention policy defined
+
+### Pre-Deployment Gates (Per User Story)
+- [ ] Independent test scenarios from spec.md passed
+- [ ] Korean language functionality verified
+- [ ] User isolation verified (multi-user stories)
+- [ ] Air-gap deployment tested (no internet required)
+
+### Production Readiness Gates
+- [ ] 99% uptime monitoring configured (SC-006)
+- [ ] Database backup/restore procedures tested
+- [ ] Korean user manual and admin manual complete
+- [ ] Load testing with 10 concurrent users passed (SC-002)
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+**Authority**: This constitution supersedes implementation preferences. Violations require explicit justification in `plan.md` Complexity Tracking table.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Amendments**: Changes require updating this file AND regenerating affected artifacts (`/speckit.plan`, `/speckit.tasks`).
+
+**Enforcement**: Use `/speckit.analyze` to verify compliance before implementation phases.
+
+**Version**: 1.0.0 | **Ratified**: 2025-10-22 | **Last Amended**: 2025-10-22

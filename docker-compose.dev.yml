@@ -1,0 +1,79 @@
+# Development Docker Compose (without LLM service for quick testing)
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: llm-webapp-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-llm_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-llm_webapp}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-llm_app}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: llm-webapp-backend
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-llm_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-llm_webapp}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-llm_app}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-llm_webapp}
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      SESSION_TIMEOUT_MINUTES: ${SESSION_TIMEOUT_MINUTES:-30}
+      LLM_SERVICE_URL: http://llm-service:8001
+      CORS_ORIGINS: http://localhost:3000,http://localhost:80
+    volumes:
+      - ./backend:/app
+      - uploads_data:/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  llm-service:
+    build:
+      context: .
+      dockerfile: docker/llm-mock.Dockerfile
+    container_name: llm-webapp-llm-mock
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: llm-webapp-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  uploads_data:
+
+networks:
+  default:
+    name: llm-webapp-network

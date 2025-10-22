@@ -1,0 +1,940 @@
+openapi: 3.1.0
+info:
+  title: Local LLM Web Application API
+  description: |
+    REST API for air-gapped Local LLM web application for local government employees.
+
+    **Key Features**:
+    - User authentication and session management
+    - Conversational AI with streaming responses
+    - Document upload and analysis
+    - Conversation history management
+    - Administrator dashboard and user management
+
+    **Base URL**: `http://<server-ip>:8000/api/v1`
+  version: 1.0.0
+  contact:
+    name: Development Team
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+  - url: http://{server-ip}:8000/api/v1
+    description: Production server (air-gapped)
+    variables:
+      server-ip:
+        default: '192.168.1.100'
+        description: Internal network IP address
+
+tags:
+  - name: Authentication
+    description: User login, logout, session management
+  - name: Chat
+    description: LLM conversation endpoints
+  - name: Conversations
+    description: Conversation history management
+  - name: Documents
+    description: Document upload and management
+  - name: Admin
+    description: Administrator functions (user management, system monitoring)
+
+paths:
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: User login
+      description: Authenticate user and create session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                  example: "employee001"
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: "SecurePass123"
+      responses:
+        '200':
+          description: Login successful
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: session_token=abc123...; HttpOnly; Secure; SameSite=Strict
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: string
+                    format: uuid
+                  username:
+                    type: string
+                  is_admin:
+                    type: boolean
+                  message:
+                    type: string
+                    example: "Login successful"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: User logout
+      description: Invalidate current session
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Logout successful"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get current user info
+      description: Retrieve authenticated user's profile
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /chat/send:
+    post:
+      tags: [Chat]
+      summary: Send message and get LLM response
+      description: Submit user query and receive complete LLM response (non-streaming)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [conversation_id, content]
+              properties:
+                conversation_id:
+                  type: string
+                  format: uuid
+                  description: Existing conversation ID or null for new conversation
+                  nullable: true
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+                  example: "행정 업무에서 공문서를 작성할 때 주의사항이 무엇인가요?"
+                document_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: Optional document IDs for context
+                  nullable: true
+      responses:
+        '200':
+          description: LLM response generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversation_id:
+                    type: string
+                    format: uuid
+                  message:
+                    $ref: '#/components/schemas/Message'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /chat/stream:
+    post:
+      tags: [Chat]
+      summary: Send message with streaming response
+      description: Submit user query and receive LLM response as Server-Sent Events (SSE)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [conversation_id, content]
+              properties:
+                conversation_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+                document_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  nullable: true
+      responses:
+        '200':
+          description: Streaming response (Server-Sent Events)
+          content:
+            text/event-stream:
+              schema:
+                type: object
+                properties:
+                  event:
+                    type: string
+                    enum: [token, done, error]
+                  data:
+                    oneOf:
+                      - type: object
+                        description: Token event
+                        properties:
+                          token:
+                            type: string
+                      - type: object
+                        description: Done event
+                        properties:
+                          conversation_id:
+                            type: string
+                            format: uuid
+                          message_id:
+                            type: string
+                            format: uuid
+                      - type: object
+                        description: Error event
+                        properties:
+                          error:
+                            type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /conversations:
+    get:
+      tags: [Conversations]
+      summary: List user's conversations
+      description: Retrieve paginated list of user's conversations
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search conversations by title or content
+        - name: tag
+          in: query
+          schema:
+            type: string
+          description: Filter by tag
+      responses:
+        '200':
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Conversation'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Conversations]
+      summary: Create new conversation
+      description: Create a new empty conversation
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  maxLength: 255
+                  default: "New Conversation"
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 10
+      responses:
+        '201':
+          description: Conversation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /conversations/{conversation_id}:
+    get:
+      tags: [Conversations]
+      summary: Get conversation with messages
+      description: Retrieve full conversation including all messages
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Conversation details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Conversation'
+                  - type: object
+                    properties:
+                      messages:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Message'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Conversations]
+      summary: Update conversation metadata
+      description: Update conversation title or tags
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  maxLength: 255
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 10
+      responses:
+        '200':
+          description: Conversation updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Conversations]
+      summary: Delete conversation
+      description: Permanently delete conversation and all its messages
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Conversation deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /documents:
+    get:
+      tags: [Documents]
+      summary: List user's documents
+      description: Retrieve user's uploaded documents
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Document'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Documents]
+      summary: Upload document
+      description: Upload PDF, TXT, or DOCX file for analysis
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Document file (max 50MB)
+      responses:
+        '201':
+          description: Document uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: File too large (max 50MB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /documents/{document_id}:
+    get:
+      tags: [Documents]
+      summary: Get document metadata
+      description: Retrieve document information (not file content)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Document metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Documents]
+      summary: Delete document
+      description: Permanently delete document and its file
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Document deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List all users (admin only)
+      description: Retrieve list of all user accounts
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Admin]
+      summary: Create user account (admin only)
+      description: Create new user account with initial password
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                password:
+                  type: string
+                  minLength: 8
+                is_admin:
+                  type: boolean
+                  default: false
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/User'
+                  - type: object
+                    properties:
+                      initial_password:
+                        type: string
+                        description: Generated password (only returned on creation)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Username already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/users/{user_id}:
+    delete:
+      tags: [Admin]
+      summary: Delete user account (admin only)
+      description: Permanently delete user and all their data
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: User deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users/{user_id}/reset-password:
+    post:
+      tags: [Admin]
+      summary: Reset user password (admin only)
+      description: Generate new temporary password for user
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  temporary_password:
+                    type: string
+                  message:
+                    type: string
+                    example: "Password reset successfully"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/stats:
+    get:
+      tags: [Admin]
+      summary: Get system statistics (admin only)
+      description: Retrieve usage and system health metrics
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+      responses:
+        '200':
+          description: System statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  active_users:
+                    type: integer
+                    description: Number of users active in the specified period
+                  total_queries:
+                    type: integer
+                    description: Total queries processed in the period
+                  avg_response_time:
+                    type: number
+                    format: float
+                    description: Average response time in seconds
+                  storage_used:
+                    type: integer
+                    description: Total storage used in bytes
+                  system_health:
+                    type: object
+                    properties:
+                      uptime:
+                        type: integer
+                        description: System uptime in seconds
+                      cpu_usage:
+                        type: number
+                        format: float
+                        description: CPU usage percentage
+                      memory_usage:
+                        type: number
+                        format: float
+                        description: Memory usage percentage
+                      gpu_usage:
+                        type: number
+                        format: float
+                        description: GPU usage percentage
+                      llm_status:
+                        type: string
+                        enum: [healthy, degraded, offline]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session_token
+      description: Session token stored in HTTP-only cookie
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        is_admin:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        char_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        file_type:
+          type: string
+          enum: [pdf, txt, docx]
+        file_size:
+          type: integer
+          description: File size in bytes
+        uploaded_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type or code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error details
+          nullable: true
+
+  responses:
+    Unauthorized:
+      description: Unauthorized - Invalid or missing session token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "unauthorized"
+            message: "Please log in to access this resource"
+
+    Forbidden:
+      description: Forbidden - User lacks permission to access resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "forbidden"
+            message: "You do not have permission to access this resource"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "not_found"
+            message: "The requested resource was not found"
+
+    BadRequest:
+      description: Bad request - Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "bad_request"
+            message: "Invalid input data"
+
+    ValidationError:
+      description: Validation error - Input does not meet requirements
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Error'
+              - type: object
+                properties:
+                  details:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+          example:
+            error: "validation_error"
+            message: "Input validation failed"
+            details:
+              - field: "password"
+                message: "Password must be at least 8 characters"
+
+    RateLimitExceeded:
+      description: Too many requests - Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "rate_limit_exceeded"
+            message: "Too many requests. Please try again later."

@@ -1,0 +1,236 @@
+'use client'
+
+import { useState, useRef, useEffect } from 'react'
+import { useAuth } from '@/lib/auth'
+import { useRouter } from 'next/navigation'
+import { chatAPI } from '@/lib/api'
+
+interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: Date
+}
+
+export default function ChatPage() {
+  const { user, loading: authLoading, logout } = useAuth()
+  const router = useRouter()
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login')
+    }
+  }, [user, authLoading, router])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input,
+      timestamp: new Date(),
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    const currentInput = input
+    setInput('')
+    setIsLoading(true)
+
+    // Create a placeholder message for streaming
+    const assistantMessageId = Date.now().toString()
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+    }
+
+    setMessages((prev) => [...prev, assistantMessage])
+
+    try {
+      await chatAPI.streamMessage(
+        {
+          content: currentInput,
+          conversation_id: undefined,
+        },
+        // onToken: append to assistant message
+        (token: string) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId ? { ...msg, content: msg.content + token } : msg
+            )
+          )
+        },
+        // onDone: update message with final info
+        (messageData: any) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? {
+                    ...msg,
+                    id: messageData.id,
+                    content: messageData.content,
+                    timestamp: new Date(messageData.created_at),
+                  }
+                : msg
+            )
+          )
+          setIsLoading(false)
+        },
+        // onError: show error message
+        (error: Error) => {
+          console.error('Chat error:', error)
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? {
+                    ...msg,
+                    content: '죄송합니다. 오류가 발생했습니다: ' + error.message,
+                  }
+                : msg
+            )
+          )
+          setIsLoading(false)
+        }
+      )
+    } catch (error: any) {
+      console.error('Chat error:', error)
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? {
+                ...msg,
+                content: '죄송합니다. 오류가 발생했습니다: ' + error.message,
+              }
+            : msg
+        )
+      )
+      setIsLoading(false)
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-lg">로딩 중...</div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return null
+  }
+
+  return (
+    <div className="flex h-screen flex-col bg-gray-50">
+      {/* Header */}
+      <header className="border-b bg-white px-6 py-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Local LLM</h1>
+            <p className="text-sm text-gray-500">AI 업무 지원 시스템</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-600">{user.username}</span>
+            <button
+              onClick={logout}
+              className="rounded-md bg-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-300"
+            >
+              로그아웃
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="mx-auto max-w-3xl space-y-4">
+          {messages.length === 0 && (
+            <div className="text-center text-gray-500">
+              <p className="text-lg font-medium">안녕하세요! 무엇을 도와드릴까요?</p>
+              <p className="mt-2 text-sm">궁금한 내용을 입력해주세요.</p>
+            </div>
+          )}
+
+          {messages.map((message) => (
+            <div
+              key={message.id}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className={`max-w-[80%] rounded-lg px-4 py-3 ${
+                  message.role === 'user'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-900 shadow-sm'
+                }`}
+              >
+                <p className="whitespace-pre-wrap">{message.content}</p>
+                <p
+                  className={`mt-1 text-xs ${
+                    message.role === 'user' ? 'text-blue-100' : 'text-gray-400'
+                  }`}
+                >
+                  {message.timestamp.toLocaleTimeString('ko-KR')}
+                </p>
+              </div>
+            </div>
+          ))}
+
+          {isLoading && (
+            <div className="flex justify-start">
+              <div className="rounded-lg bg-white px-4 py-3 shadow-sm">
+                <div className="flex items-center space-x-2">
+                  <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400"></div>
+                  <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400 animation-delay-200"></div>
+                  <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400 animation-delay-400"></div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
+
+      {/* Input */}
+      <div className="border-t bg-white p-6 shadow-lg">
+        <div className="mx-auto max-w-3xl">
+          <div className="flex gap-2">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="메시지를 입력하세요... (Enter: 전송, Shift+Enter: 줄바꿈)"
+              className="flex-1 resize-none rounded-lg border border-gray-300 p-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={3}
+              disabled={isLoading}
+            />
+            <button
+              onClick={handleSend}
+              disabled={isLoading || !input.trim()}
+              className="rounded-lg bg-blue-600 px-6 py-3 text-white hover:bg-blue-700 disabled:bg-gray-400"
+            >
+              전송
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
