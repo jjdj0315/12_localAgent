@@ -225,9 +225,12 @@ export const documentsAPI = {
  * Admin API
  */
 export const adminAPI = {
-  listUsers: async (params?: { limit?: number; offset?: number }) => {
-    const query = new URLSearchParams(params as any).toString()
-    return fetchAPI(`/admin/users?${query}`)
+  listUsers: async (params?: { page?: number; page_size?: number }) => {
+    const queryParams: Record<string, string> = {}
+    if (params?.page) queryParams.page = params.page.toString()
+    if (params?.page_size) queryParams.page_size = params.page_size.toString()
+    const query = new URLSearchParams(queryParams).toString()
+    return fetchAPI(`/admin/users${query ? `?${query}` : ''}`)
   },
 
   createUser: async (data: { username: string; password: string; is_admin?: boolean }) => {
@@ -245,7 +248,7 @@ export const adminAPI = {
     return fetchAPI(`/admin/users/${userId}/reset-password`, { method: 'POST' })
   },
 
-  getStats: async (period: 'day' | 'week' | 'month' = 'day') => {
-    return fetchAPI(`/admin/stats?period=${period}`)
+  getStats: async () => {
+    return fetchAPI('/admin/stats')
   },
 }

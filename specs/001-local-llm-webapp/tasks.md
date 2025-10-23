@@ -267,24 +267,24 @@
 
 ### Backend Implementation
 
-- [ ] T111 [US5] Implement GET /admin/users endpoint in backend/app/api/v1/admin.py (list all users with pagination)
-- [ ] T112 [US5] Implement POST /admin/users endpoint in backend/app/api/v1/admin.py (create user, generate initial password)
-- [ ] T113 [US5] Implement DELETE /admin/users/{id} endpoint in backend/app/api/v1/admin.py (delete user and their data)
-- [ ] T114 [US5] Implement POST /admin/users/{id}/reset-password endpoint in backend/app/api/v1/admin.py (generate temporary password)
-- [ ] T115 [US5] Implement GET /admin/stats endpoint in backend/app/api/v1/admin.py (usage statistics with period filter)
-- [ ] T116 [US5] Implement statistics collection service in backend/app/services/admin_service.py (calculate active users, query counts, avg response time)
+- [X] T111 [US5] Implement GET /admin/users endpoint in backend/app/api/v1/admin.py (list all users with pagination)
+- [X] T112 [US5] Implement POST /admin/users endpoint in backend/app/api/v1/admin.py (create user, generate initial password)
+- [X] T113 [US5] Implement DELETE /admin/users/{id} endpoint in backend/app/api/v1/admin.py (delete user and their data)
+- [X] T114 [US5] Implement POST /admin/users/{id}/reset-password endpoint in backend/app/api/v1/admin.py (generate temporary password)
+- [X] T115 [US5] Implement GET /admin/stats endpoint in backend/app/api/v1/admin.py (usage statistics with period filter)
+- [X] T116 [US5] Implement statistics collection service in backend/app/services/admin_service.py (calculate active users, query counts, avg response time)
 - [ ] T117 [US5] Implement system health monitoring service in backend/app/services/admin_service.py (CPU, memory, GPU via nvidia-smi, storage, uptime)
 - [ ] T118 [US5] Implement storage usage calculation per user in backend/app/services/admin_service.py (sum document file sizes)
 - [ ] T119 [US5] Add response time tracking to message creation in backend/app/models/message.py (store processing_time_ms field)
 
 ### Frontend Implementation
 
-- [ ] T120 [P] [US5] Create admin dashboard layout in frontend/src/app/(admin)/layout.tsx
-- [ ] T121 [P] [US5] Create admin home page with overview cards in frontend/src/app/(admin)/page.tsx
-- [ ] T122 [P] [US5] Create user management page in frontend/src/app/(admin)/users/page.tsx
-- [ ] T123 [P] [US5] Create user creation form in frontend/src/components/admin/UserCreateForm.tsx
-- [ ] T124 [P] [US5] Create user list table in frontend/src/components/admin/UserTable.tsx
-- [ ] T125 [P] [US5] Create password reset modal in frontend/src/components/admin/PasswordResetModal.tsx
+- [X] T120 [P] [US5] Create admin dashboard layout (integrated in admin/page.tsx)
+- [X] T121 [P] [US5] Create admin home page with overview cards in frontend/src/app/admin/page.tsx
+- [X] T122 [P] [US5] Create user management page in frontend/src/app/admin/users/page.tsx
+- [X] T123 [P] [US5] Create user creation form (integrated in users/page.tsx)
+- [X] T124 [P] [US5] Create user list table (integrated in users/page.tsx)
+- [X] T125 [P] [US5] Create password reset modal (integrated in users/page.tsx)
 - [ ] T126 [P] [US5] Create usage statistics dashboard in frontend/src/app/(admin)/stats/page.tsx
 - [ ] T127 [P] [US5] Create system health monitoring panel in frontend/src/app/(admin)/health/page.tsx
 - [ ] T128 [P] [US5] Create chart components for statistics visualization in frontend/src/components/admin/StatsCharts.tsx (active users over time, query volume, response times)
