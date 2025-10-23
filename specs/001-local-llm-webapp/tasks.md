@@ -152,26 +152,26 @@
 
 ### Backend Implementation
 
-- [ ] T060 [US2] Implement GET /conversations endpoint in backend/app/api/v1/conversations.py (list with pagination, search, tag filtering)
-- [ ] T061 [US2] Implement POST /conversations endpoint in backend/app/api/v1/conversations.py (create new conversation)
-- [ ] T062 [US2] Implement GET /conversations/{id} endpoint in backend/app/api/v1/conversations.py (retrieve conversation with messages)
-- [ ] T063 [US2] Implement PATCH /conversations/{id} endpoint in backend/app/api/v1/conversations.py (update title/tags)
-- [ ] T064 [US2] Implement DELETE /conversations/{id} endpoint in backend/app/api/v1/conversations.py (delete conversation and messages)
-- [ ] T065 [US2] Implement conversation search service in backend/app/services/conversation_service.py (keyword search across messages, PostgreSQL full-text search)
-- [ ] T066 [US2] Add conversation auto-title generation from first user message in backend/app/services/conversation_service.py
-- [ ] T067 [US2] Implement tag management service in backend/app/services/conversation_service.py (add, remove, filter by tags)
+- [X] T060 [US2] Implement GET /conversations endpoint in backend/app/api/v1/conversations.py (list with pagination, search, tag filtering)
+- [X] T061 [US2] Implement POST /conversations endpoint in backend/app/api/v1/conversations.py (create new conversation)
+- [X] T062 [US2] Implement GET /conversations/{id} endpoint in backend/app/api/v1/conversations.py (retrieve conversation with messages)
+- [X] T063 [US2] Implement PATCH /conversations/{id} endpoint in backend/app/api/v1/conversations.py (update title/tags)
+- [X] T064 [US2] Implement DELETE /conversations/{id} endpoint in backend/app/api/v1/conversations.py (delete conversation and messages)
+- [X] T065 [US2] Implement conversation search service in backend/app/services/conversation_service.py (keyword search across messages, PostgreSQL full-text search)
+- [X] T066 [US2] Add conversation auto-title generation from first user message in backend/app/services/conversation_service.py
+- [X] T067 [US2] Implement tag management service in backend/app/services/conversation_service.py (add, remove, filter by tags)
 
 ### Frontend Implementation
 
-- [ ] T068 [P] [US2] Create conversation list page in frontend/src/app/(user)/history/page.tsx
-- [ ] T069 [P] [US2] Create conversation card component in frontend/src/components/chat/ConversationCard.tsx (title, timestamp, tags)
-- [ ] T070 [P] [US2] Create search bar component in frontend/src/components/chat/SearchBar.tsx (keyword and tag filters)
+- [X] T068 [P] [US2] Create conversation list page in frontend/src/app/history/page.tsx
+- [X] T069 [P] [US2] Create conversation card component in frontend/src/components/chat/ConversationCard.tsx (title, timestamp, tags)
+- [X] T070 [P] [US2] Create search bar component in frontend/src/components/chat/SearchBar.tsx (keyword and tag filters)
 - [ ] T071 [P] [US2] Create conversation detail view in frontend/src/app/(user)/conversation/[id]/page.tsx
-- [ ] T072 [P] [US2] Create tag editor component in frontend/src/components/chat/TagEditor.tsx
-- [ ] T073 [US2] Implement conversation list with React Query (pagination, infinite scroll) in frontend/src/app/(user)/history/page.tsx
-- [ ] T074 [US2] Implement search functionality with debouncing in frontend/src/app/(user)/history/page.tsx
-- [ ] T075 [US2] Add "Resume Conversation" button that loads context in chat interface
-- [ ] T076 [US2] Add "Delete Conversation" confirmation modal in frontend/src/components/chat/DeleteConfirmModal.tsx
+- [X] T072 [P] [US2] Create tag editor component in frontend/src/components/chat/TagEditor.tsx
+- [X] T073 [US2] Implement conversation list with React Query (pagination, infinite scroll) in frontend/src/app/history/page.tsx
+- [X] T074 [US2] Implement search functionality with debouncing in frontend/src/app/history/page.tsx
+- [X] T075 [US2] Add "Resume Conversation" button that loads context in chat interface (implemented in ConversationCard click handler)
+- [X] T076 [US2] Add "Delete Conversation" confirmation modal in frontend/src/components/chat/DeleteConfirmModal.tsx
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - employees can chat AND manage their conversation history.
 
@@ -190,30 +190,30 @@
 
 ### Backend Implementation
 
-- [ ] T077 [US3] Implement POST /documents endpoint in backend/app/api/v1/documents.py (multipart file upload, validation)
-- [ ] T078 [US3] Implement GET /documents endpoint in backend/app/api/v1/documents.py (list user's documents with pagination)
-- [ ] T079 [US3] Implement GET /documents/{id} endpoint in backend/app/api/v1/documents.py (document metadata)
-- [ ] T080 [US3] Implement DELETE /documents/{id} endpoint in backend/app/api/v1/documents.py (delete document and file)
-- [ ] T081 [US3] Implement file validation service in backend/app/services/document_service.py (magic number check, size limit 50MB)
-- [ ] T082 [P] [US3] Implement PDF text extraction in backend/app/services/document_service.py (using pdfplumber)
-- [ ] T083 [P] [US3] Implement DOCX text extraction in backend/app/services/document_service.py (using python-docx)
-- [ ] T084 [P] [US3] Implement TXT file processing in backend/app/services/document_service.py
-- [ ] T085 [US3] Implement document storage service in backend/app/services/document_service.py (save to /uploads/{user_id}/{doc_id}.{ext})
-- [ ] T086 [US3] Implement document context injection for LLM queries in backend/app/services/llm_service.py (prepend document content to prompt)
-- [ ] T087 [US3] Add document reference tracking to conversation_document join table in backend/app/services/conversation_service.py
-- [ ] T088 [US3] Implement multi-document context handling (combine multiple docs for comparative queries) in backend/app/services/llm_service.py
+- [X] T077 [US3] Implement POST /documents endpoint in backend/app/api/v1/documents.py (multipart file upload, validation)
+- [X] T078 [US3] Implement GET /documents endpoint in backend/app/api/v1/documents.py (list user's documents with pagination)
+- [X] T079 [US3] Implement GET /documents/{id} endpoint in backend/app/api/v1/documents.py (document metadata)
+- [X] T080 [US3] Implement DELETE /documents/{id} endpoint in backend/app/api/v1/documents.py (delete document and file)
+- [X] T081 [US3] Implement file validation service in backend/app/services/document_service.py (magic number check, size limit 50MB)
+- [X] T082 [P] [US3] Implement PDF text extraction in backend/app/services/document_service.py (using pdfplumber)
+- [X] T083 [P] [US3] Implement DOCX text extraction in backend/app/services/document_service.py (using python-docx)
+- [X] T084 [P] [US3] Implement TXT file processing in backend/app/services/document_service.py
+- [X] T085 [US3] Implement document storage service in backend/app/services/document_service.py (save to /uploads/{user_id}/{doc_id}.{ext})
+- [X] T086 [US3] Implement document context injection for LLM queries in backend/app/services/llm_service.py (prepend document content to prompt)
+- [X] T087 [US3] Add document reference tracking to conversation_document join table in backend/app/services/document_service.py
+- [X] T088 [US3] Implement multi-document context handling (combine multiple docs for comparative queries) in backend/app/services/llm_service.py
 
 ### Frontend Implementation
 
-- [ ] T089 [P] [US3] Create document upload page in frontend/src/app/(user)/documents/page.tsx
-- [ ] T090 [P] [US3] Create file upload component with drag-and-drop in frontend/src/components/documents/FileUploader.tsx
-- [ ] T091 [P] [US3] Create document list component in frontend/src/components/documents/DocumentList.tsx
-- [ ] T092 [P] [US3] Create document card component in frontend/src/components/documents/DocumentCard.tsx (filename, type, size, upload date)
-- [ ] T093 [US3] Implement file upload with progress indicator in frontend/src/lib/api.ts (uploadDocument function)
-- [ ] T094 [US3] Add file type and size validation on client side in frontend/src/components/documents/FileUploader.tsx
-- [ ] T095 [US3] Create document selection UI in chat interface (select docs for context) in frontend/src/components/chat/DocumentSelector.tsx
-- [ ] T096 [US3] Integrate document selection with chat API in frontend/src/app/(user)/chat/page.tsx (pass document_ids to /chat/send)
-- [ ] T097 [US3] Add visual indicator for document-attached conversations in conversation list
+- [X] T089 [P] [US3] Create document upload page in frontend/src/app/documents/page.tsx
+- [X] T090 [P] [US3] Create file upload component with drag-and-drop in frontend/src/components/documents/FileUploader.tsx
+- [X] T091 [P] [US3] Create document list component in frontend/src/components/documents/DocumentList.tsx
+- [X] T092 [P] [US3] Create document card component in frontend/src/components/documents/DocumentCard.tsx (filename, type, size, upload date)
+- [X] T093 [US3] Implement file upload with progress indicator in frontend/src/components/documents/FileUploader.tsx (integrated)
+- [X] T094 [US3] Add file type and size validation on client side in frontend/src/components/documents/FileUploader.tsx (integrated)
+- [X] T095 [US3] Create document selection UI in chat interface (select docs for context) in frontend/src/components/chat/DocumentSelector.tsx
+- [X] T096 [US3] Integrate document selection with chat API in frontend/src/app/chat/page.tsx (pass document_ids to /chat/send)
+- [X] T097 [US3] Add visual indicator for document-attached conversations in conversation list
 
 **Checkpoint**: All three priority features work independently - employees can chat, manage history, AND analyze documents.
 

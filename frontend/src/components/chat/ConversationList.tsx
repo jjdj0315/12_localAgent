@@ -123,6 +123,16 @@ export default function ConversationList({
                       <h3 className="truncate text-sm font-medium text-gray-900">
                         {conv.title}
                       </h3>
+                      {conv.document_count > 0 && (
+                        <svg
+                          className="h-4 w-4 flex-shrink-0 text-blue-600"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                          title={`${conv.document_count}개 문서 첨부`}
+                        >
+                          <path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" />
+                        </svg>
+                      )}
                       <span className="text-xs text-gray-400">
                         {conv.message_count}
                       </span>

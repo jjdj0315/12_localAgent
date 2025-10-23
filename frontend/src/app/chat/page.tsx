@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { chatAPI, conversationsAPI } from '@/lib/api'
 import ConversationList from '@/components/chat/ConversationList'
+import DocumentSelector from '@/components/chat/DocumentSelector'
 import type { Message as APIMessage } from '@/types/conversation'
 
 interface Message {
@@ -23,6 +24,7 @@ export default function ChatPage() {
   const [selectedConversationId, setSelectedConversationId] = useState<string>()
   const [conversationTitle, setConversationTitle] = useState<string>('새 대화')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -101,6 +103,7 @@ export default function ChatPage() {
         {
           content: currentInput,
           conversation_id: selectedConversationId,
+          document_ids: selectedDocuments.length > 0 ? selectedDocuments : undefined,
         },
         // onToken: append to assistant message
         (token: string) => {
@@ -291,7 +294,13 @@ export default function ChatPage() {
 
         {/* Input */}
         <div className="border-t bg-white p-6 shadow-lg">
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto max-w-3xl space-y-4">
+            {/* Document Selector */}
+            <DocumentSelector
+              selectedDocuments={selectedDocuments}
+              onSelectionChange={setSelectedDocuments}
+            />
+
             <div className="flex gap-2">
               <textarea
                 value={input}

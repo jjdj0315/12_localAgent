@@ -12,6 +12,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.models.message import Message
+from app.models.conversation_document import ConversationDocument
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationListResponse,
@@ -51,13 +52,18 @@ async def list_conversations(
         tag=tag,
     )
 
-    # Get message count for each conversation
+    # Get message count and document count for each conversation
     conversation_responses = []
     for conv in conversations:
         # Count messages for this conversation
         count_query = select(func.count()).where(Message.conversation_id == conv.id)
         result = await db.execute(count_query)
         message_count = result.scalar() or 0
+
+        # Count documents for this conversation
+        doc_count_query = select(func.count()).where(ConversationDocument.conversation_id == conv.id)
+        doc_result = await db.execute(doc_count_query)
+        document_count = doc_result.scalar() or 0
 
         conv_dict = {
             "id": conv.id,
@@ -67,6 +73,7 @@ async def list_conversations(
             "created_at": conv.created_at,
             "updated_at": conv.updated_at,
             "message_count": message_count,
+            "document_count": document_count,
         }
         conversation_responses.append(ConversationResponse(**conv_dict))
 
@@ -108,6 +115,7 @@ async def create_conversation(
         created_at=new_conversation.created_at,
         updated_at=new_conversation.updated_at,
         message_count=0,
+        document_count=0,
     )
 
 
@@ -192,6 +200,11 @@ async def update_conversation(
     result = await db.execute(count_query)
     message_count = result.scalar() or 0
 
+    # Get document count
+    doc_count_query = select(func.count()).where(ConversationDocument.conversation_id == updated_conversation.id)
+    doc_result = await db.execute(doc_count_query)
+    document_count = doc_result.scalar() or 0
+
     return ConversationResponse(
         id=updated_conversation.id,
         user_id=updated_conversation.user_id,
@@ -200,6 +213,7 @@ async def update_conversation(
         created_at=updated_conversation.created_at,
         updated_at=updated_conversation.updated_at,
         message_count=message_count,
+        document_count=document_count,
     )
 
 

@@ -28,6 +28,7 @@ class ConversationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     message_count: int = 0
+    document_count: int = 0
 
     class Config:
         from_attributes = True
