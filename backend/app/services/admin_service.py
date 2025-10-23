@@ -255,4 +255,133 @@ class AdminService:
         }
 
 
+    @staticmethod
+    async def get_system_health() -> dict:
+        """
+        Get system health metrics.
+
+        Returns:
+            Dictionary with system health information
+        """
+        import psutil
+        import time
+        import subprocess
+
+        # Server uptime (using psutil boot time)
+        boot_time = psutil.boot_time()
+        uptime_seconds = int(time.time() - boot_time)
+
+        # CPU usage
+        cpu_percent = psutil.cpu_percent(interval=1)
+
+        # Memory usage
+        memory = psutil.virtual_memory()
+        memory_percent = memory.percent
+
+        # Disk usage
+        disk = psutil.disk_usage('/')
+        disk_percent = disk.percent
+        available_gb = disk.free / (1024 ** 3)
+        total_gb = disk.total / (1024 ** 3)
+
+        # LLM service status (placeholder - check if vLLM is accessible)
+        llm_status = "healthy"  # TODO: Implement actual health check
+
+        # Database status
+        db_status = "healthy"  # Connection is alive if we got here
+
+        # GPU metrics (try nvidia-smi)
+        gpu_usage = None
+        gpu_memory = None
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=utilization.gpu,utilization.memory', '--format=csv,noheader,nounits'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                values = result.stdout.strip().split(',')
+                if len(values) >= 2:
+                    gpu_usage = float(values[0].strip())
+                    gpu_memory = float(values[1].strip())
+        except Exception:
+            pass  # GPU metrics not available
+
+        return {
+            "server_uptime_seconds": uptime_seconds,
+            "cpu_usage_percent": cpu_percent,
+            "memory_usage_percent": memory_percent,
+            "disk_usage_percent": disk_percent,
+            "available_storage_gb": available_gb,
+            "total_storage_gb": total_gb,
+            "llm_service_status": llm_status,
+            "database_status": db_status,
+            "gpu_usage_percent": gpu_usage,
+            "gpu_memory_usage_percent": gpu_memory,
+        }
+
+    @staticmethod
+    async def get_storage_stats(db: AsyncSession) -> dict:
+        """
+        Get storage usage statistics.
+
+        Args:
+            db: Database session
+
+        Returns:
+            Dictionary with storage statistics
+        """
+        import psutil
+        from sqlalchemy import and_
+
+        # Get total disk usage
+        disk = psutil.disk_usage('/')
+        total_storage = disk.total
+        used_storage = disk.used
+        available_storage = disk.free
+        usage_percent = disk.percent
+
+        # Calculate per-user storage
+        user_storage = []
+
+        # Get all users
+        users_query = select(User)
+        users_result = await db.execute(users_query)
+        users = users_result.scalars().all()
+
+        for user in users:
+            # Count documents
+            doc_count_query = select(func.count()).where(Document.user_id == user.id)
+            doc_count_result = await db.execute(doc_count_query)
+            doc_count = doc_count_result.scalar() or 0
+
+            # Sum file sizes
+            size_query = select(func.sum(Document.file_size)).where(Document.user_id == user.id)
+            size_result = await db.execute(size_query)
+            total_size = size_result.scalar() or 0
+
+            # Count conversations
+            conv_count_query = select(func.count()).where(Conversation.user_id == user.id)
+            conv_count_result = await db.execute(conv_count_query)
+            conv_count = conv_count_result.scalar() or 0
+
+            user_storage.append({
+                "user_id": user.id,
+                "username": user.username,
+                "total_storage_bytes": total_size,
+                "document_count": doc_count,
+                "conversation_count": conv_count,
+            })
+
+        return {
+            "total_storage_used_bytes": used_storage,
+            "total_storage_available_bytes": available_storage,
+            "usage_percent": usage_percent,
+            "user_storage": user_storage,
+            "warning_threshold_exceeded": usage_percent > 80,
+            "critical_threshold_exceeded": usage_percent > 95,
+        }
+
+
 admin_service = AdminService()

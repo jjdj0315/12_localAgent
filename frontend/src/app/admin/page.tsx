@@ -130,6 +130,60 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </button>
+
+              <button
+                onClick={() => router.push('/admin/health')}
+                className="rounded-lg border-2 border-gray-200 bg-white p-6 text-left transition-all hover:border-purple-500 hover:shadow-md"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="rounded-full bg-purple-100 p-3">
+                    <svg
+                      className="h-6 w-6 text-purple-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">시스템 상태</h3>
+                    <p className="text-sm text-gray-500">CPU, 메모리, 디스크, GPU 사용량</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => router.push('/admin/storage')}
+                className="rounded-lg border-2 border-gray-200 bg-white p-6 text-left transition-all hover:border-orange-500 hover:shadow-md"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="rounded-full bg-orange-100 p-3">
+                    <svg
+                      className="h-6 w-6 text-orange-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">스토리지 관리</h3>
+                    <p className="text-sm text-gray-500">사용자별 용량 및 전체 스토리지</p>
+                  </div>
+                </div>
+              </button>
             </div>
           </section>
 

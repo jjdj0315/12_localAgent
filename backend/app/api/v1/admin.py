@@ -200,12 +200,8 @@ async def get_system_health(
     - Database status
     - GPU metrics (if available)
     """
-    # TODO: Implement system health monitoring
-    # This will be implemented in Phase 7 (User Story 5)
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="System health monitoring not yet implemented",
-    )
+    health = await admin_service.get_system_health()
+    return SystemHealthResponse(**health)
 
 
 @router.get("/storage", response_model=StorageStatsResponse)
@@ -223,9 +219,5 @@ async def get_storage_stats(
     - Per-user storage breakdown
     - Warning/critical threshold status
     """
-    # TODO: Implement storage statistics
-    # This will be implemented in Phase 7 (User Story 5)
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Storage statistics not yet implemented",
-    )
+    storage = await admin_service.get_storage_stats(db=db)
+    return StorageStatsResponse(**storage)

@@ -251,4 +251,12 @@ export const adminAPI = {
   getStats: async () => {
     return fetchAPI('/admin/stats')
   },
+
+  getHealth: async () => {
+    return fetchAPI('/admin/health')
+  },
+
+  getStorage: async () => {
+    return fetchAPI('/admin/storage')
+  },
 }

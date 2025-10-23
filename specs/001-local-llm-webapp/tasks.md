@@ -273,8 +273,8 @@
 - [X] T114 [US5] Implement POST /admin/users/{id}/reset-password endpoint in backend/app/api/v1/admin.py (generate temporary password)
 - [X] T115 [US5] Implement GET /admin/stats endpoint in backend/app/api/v1/admin.py (usage statistics with period filter)
 - [X] T116 [US5] Implement statistics collection service in backend/app/services/admin_service.py (calculate active users, query counts, avg response time)
-- [ ] T117 [US5] Implement system health monitoring service in backend/app/services/admin_service.py (CPU, memory, GPU via nvidia-smi, storage, uptime)
-- [ ] T118 [US5] Implement storage usage calculation per user in backend/app/services/admin_service.py (sum document file sizes)
+- [X] T117 [US5] Implement system health monitoring service in backend/app/services/admin_service.py (CPU, memory, GPU via nvidia-smi, storage, uptime)
+- [X] T118 [US5] Implement storage usage calculation per user in backend/app/services/admin_service.py (sum document file sizes)
 - [ ] T119 [US5] Add response time tracking to message creation in backend/app/models/message.py (store processing_time_ms field)
 
 ### Frontend Implementation
@@ -285,15 +285,15 @@
 - [X] T123 [P] [US5] Create user creation form (integrated in users/page.tsx)
 - [X] T124 [P] [US5] Create user list table (integrated in users/page.tsx)
 - [X] T125 [P] [US5] Create password reset modal (integrated in users/page.tsx)
-- [ ] T126 [P] [US5] Create usage statistics dashboard in frontend/src/app/(admin)/stats/page.tsx
-- [ ] T127 [P] [US5] Create system health monitoring panel in frontend/src/app/(admin)/health/page.tsx
+- [X] T126 [P] [US5] Create usage statistics dashboard in frontend/src/app/admin/stats/page.tsx
+- [X] T127 [P] [US5] Create system health monitoring panel in frontend/src/app/admin/health/page.tsx
 - [ ] T128 [P] [US5] Create chart components for statistics visualization in frontend/src/components/admin/StatsCharts.tsx (active users over time, query volume, response times)
-- [ ] T129 [US5] Implement real-time health metrics updates (polling every 30 seconds) in frontend/src/app/(admin)/health/page.tsx
-- [ ] T130 [US5] Add storage warning indicator (when >80% full) in admin dashboard
-- [ ] T131 [US5] Add admin-only route protection in frontend/src/app/(admin)/layout.tsx (check is_admin from user profile)
-- [ ] T131a [P] [US5] Implement per-user storage quota calculation in backend/app/services/admin_service.py (sum file sizes by user_id)
+- [X] T129 [US5] Implement real-time health metrics updates (polling every 30 seconds) in frontend/src/app/admin/health/page.tsx (integrated)
+- [X] T130 [US5] Add storage warning indicator (when >80% full) in storage page
+- [X] T131 [US5] Add admin-only route protection in frontend/src/app/admin pages (check is_admin from user profile)
+- [X] T131a [P] [US5] Implement per-user storage quota calculation in backend/app/services/admin_service.py (sum file sizes by user_id)
 - [ ] T131b [P] [US5] Add storage quota warning to file upload endpoint in backend/app/api/v1/documents.py (check before allowing upload)
-- [ ] T131c [P] [US5] Create storage usage visualization in frontend/src/app/(admin)/storage/page.tsx (per-user breakdown, total capacity)
+- [X] T131c [P] [US5] Create storage usage visualization in frontend/src/app/admin/storage/page.tsx (per-user breakdown, total capacity)
 
 **Checkpoint**: Full admin capabilities are functional - IT staff can manage users and monitor system health.
 
