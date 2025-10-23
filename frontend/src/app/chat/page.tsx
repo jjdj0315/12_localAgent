@@ -33,20 +33,25 @@ export default function ChatPage() {
   const handleSend = async () => {
     if (!input.trim() || isLoading) return
 
+    const userMessageId = `user-${Date.now()}-${Math.random()}`
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: userMessageId,
       role: 'user',
       content: input,
       timestamp: new Date(),
     }
 
+    console.log('Creating user message:', userMessageId, input)
     setMessages((prev) => [...prev, userMessage])
     const currentInput = input
     setInput('')
     setIsLoading(true)
 
+    // Small delay to ensure different timestamp
+    await new Promise(resolve => setTimeout(resolve, 10))
+
     // Create a placeholder message for streaming
-    const assistantMessageId = Date.now().toString()
+    const assistantMessageId = `assistant-${Date.now()}-${Math.random()}`
     const assistantMessage: Message = {
       id: assistantMessageId,
       role: 'assistant',
@@ -54,6 +59,7 @@ export default function ChatPage() {
       timestamp: new Date(),
     }
 
+    console.log('Creating assistant message placeholder:', assistantMessageId)
     setMessages((prev) => [...prev, assistantMessage])
 
     try {
@@ -64,26 +70,20 @@ export default function ChatPage() {
         },
         // onToken: append to assistant message
         (token: string) => {
+          console.log('Token received for', assistantMessageId, ':', token)
           setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId ? { ...msg, content: msg.content + token } : msg
-            )
+            prev.map((msg) => {
+              if (msg.id === assistantMessageId) {
+                console.log('Updating assistant message, current content:', msg.content.length, 'chars')
+                return { ...msg, content: msg.content + token }
+              }
+              return msg
+            })
           )
         },
         // onDone: update message with final info
         (messageData: any) => {
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? {
-                    ...msg,
-                    id: messageData.id,
-                    content: messageData.content,
-                    timestamp: new Date(messageData.created_at),
-                  }
-                : msg
-            )
-          )
+          console.log('Stream completed, setting isLoading to false:', messageData)
           setIsLoading(false)
         },
         // onError: show error message

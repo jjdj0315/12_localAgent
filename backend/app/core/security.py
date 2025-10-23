@@ -78,9 +78,10 @@ class SecurityUtil:
         Returns:
             Datetime when session expires
         """
+        from datetime import timezone
         if timeout_minutes is None:
             timeout_minutes = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
-        return datetime.utcnow() + timedelta(minutes=timeout_minutes)
+        return datetime.now(timezone.utc) + timedelta(minutes=timeout_minutes)
 
 
 # Convenience functions

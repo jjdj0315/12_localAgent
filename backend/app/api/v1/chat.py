@@ -129,6 +129,7 @@ async def stream_chat_message(
     # Stream generator
     async def generate():
         """Generate SSE stream"""
+        import json
         full_response = []
         message_id = uuid4()
 
@@ -136,7 +137,8 @@ async def stream_chat_message(
             # Stream tokens
             async for token in llm_service.generate_stream(request.content, history):
                 full_response.append(token)
-                yield f"event: token\ndata: {{'token': '{token}'}}\n\n"
+                data = json.dumps({"token": token})
+                yield f"event: token\ndata: {data}\n\n"
 
             # Save complete response
             response_text = "".join(full_response)
@@ -151,10 +153,12 @@ async def stream_chat_message(
             await db.commit()
 
             # Send done event
-            yield f"event: done\ndata: {{'conversation_id': '{conversation_id}', 'message_id': '{message_id}'}}\n\n"
+            data = json.dumps({"conversation_id": str(conversation_id), "message_id": str(message_id)})
+            yield f"event: done\ndata: {data}\n\n"
 
         except Exception as e:
             # Send error event
-            yield f"event: error\ndata: {{'error': '{str(e)}'}}\n\n"
+            data = json.dumps({"error": str(e)})
+            yield f"event: error\ndata: {data}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")

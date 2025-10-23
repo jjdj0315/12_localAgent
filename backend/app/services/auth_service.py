@@ -96,7 +96,7 @@ class AuthService:
             return None
 
         # Check if session expired
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if session.expires_at < now:
             await db.delete(session)
             await db.commit()
@@ -117,7 +117,7 @@ class AuthService:
         user = result.scalar_one_or_none()
 
         if user:
-            user.last_login_at = datetime.utcnow()
+            user.last_login_at = datetime.now(timezone.utc)
             await db.commit()
 
     @staticmethod
