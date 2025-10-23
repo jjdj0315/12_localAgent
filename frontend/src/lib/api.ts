@@ -157,9 +157,13 @@ export const chatAPI = {
  * Conversations API
  */
 export const conversationsAPI = {
-  list: async (params?: { limit?: number; offset?: number; search?: string; tag?: string }) => {
-    const query = new URLSearchParams(params as any).toString()
-    return fetchAPI(`/conversations?${query}`)
+  list: async (params?: { page?: number; page_size?: number; search?: string; tag?: string }) => {
+    const query = new URLSearchParams(
+      Object.entries(params || {})
+        .filter(([_, v]) => v !== undefined)
+        .reduce((acc, [k, v]) => ({ ...acc, [k]: String(v) }), {})
+    ).toString()
+    return fetchAPI(`/conversations${query ? '?' + query : ''}`)
   },
 
   create: async (data: { title?: string; tags?: string[] }) => {
