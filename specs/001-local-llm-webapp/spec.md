@@ -187,10 +187,27 @@ IT staff need to manage user accounts, monitor system usage, and track system he
 - **SC-001**: Users can submit a query and receive a relevant response within 10 seconds for queries under 500 characters (target: 5 seconds; maximum acceptable: 10 seconds)
 - **SC-002**: System supports at least 10 concurrent users without response time degradation exceeding 20%
 - **SC-003**: Users can upload and process a 20-page PDF document within 60 seconds
-- **SC-004**: 90% of user queries in Korean receive grammatically correct and contextually appropriate responses
+- **SC-004**: 한국어 쿼리의 90%가 문법적으로 정확하고 맥락적으로 적절한 응답을 받음
+  - **측정 방법**: 50개 다양한 업무 시나리오 쿼리로 구성된 테스트 세트 사용
+  - **평가 기준**: 각 응답을 3가지 차원으로 수동 채점 (각 0-10점)
+    1. 문법 정확성: 맞춤법, 조사 사용, 문장 구조
+    2. 질문 관련성: 질문에 대한 답변 적절성
+    3. 한국어 자연스러움: 어색한 번역체 없이 자연스러운 표현
+  - **합격 기준**: 90% 이상의 쿼리가 총 30점 만점에 24점 이상 (80% 점수)
+  - **테스트 도구**: `scripts/test-korean-quality.py` (T059)
 - **SC-005**: Conversation history retrieval completes within 2 seconds regardless of the number of saved conversations
 - **SC-006**: System maintains 99% uptime during business hours (weekdays 9 AM - 6 PM)
-- **SC-007**: Users can successfully resume a conversation with full context after 24 hours with 95% accuracy
+- **SC-007**: 사용자가 24시간 후 대화를 재개할 때 전체 컨텍스트를 95% 정확도로 유지
+  - **측정 방법**:
+    1. 10개 다중 메시지 대화 생성 (각 5-10 메시지)
+    2. 24시간 대기 (또는 시스템 시간 조작)
+    3. 각 대화를 재개하여 컨텍스트 의존적 질문 제출
+  - **정확도 정의**:
+    - 메시지 개수 보존: 원본과 동일한 메시지 수
+    - 메시지 내용 보존: 각 메시지 내용이 완전히 일치
+    - 컨텍스트 활용: 후속 질문이 이전 메시지 참조하여 적절한 응답 생성
+  - **합격 기준**: 10개 대화 중 9개 이상이 모든 메시지 보존되고 컨텍스트 활용 응답 생성
+  - **테스트 도구**: `scripts/test-context-preservation.py` (Phase 8 추가 예정)
 - **SC-008**: Zero unauthorized access incidents to other users' conversations or documents during testing period
 - **SC-009**: 85% of employees can complete their first query and receive a response without requiring assistance or training
 - **SC-010**: System operates continuously for 30 days in air-gapped environment without requiring external updates or connectivity

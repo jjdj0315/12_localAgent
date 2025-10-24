@@ -41,9 +41,10 @@
 - Structured logging for troubleshooting
 - Clear error messages for users
 - Health check endpoints for monitoring
-- Independent testing per user story
+- Independent manual testing per user story acceptance scenarios
+- Automated tests not required for MVP; focus on functional validation
 
-**Rationale**: Limited external support; self-service debugging required
+**Rationale**: Limited external support; self-service debugging required. Manual testing via acceptance scenarios provides sufficient validation for small-scale deployment.
 
 ## Quality Gates
 

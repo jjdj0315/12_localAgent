@@ -15,13 +15,14 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.api.deps import get_current_user, get_db
-from backend.app.models.user import User
-from backend.app.schemas.document import (
+from app.api.deps import get_current_user, get_db
+from app.models.user import User
+from app.schemas.document import (
     DocumentListResponse,
     DocumentResponse,
     DocumentWithText,
 )
+from app.services.document_service import document_service
 
 router = APIRouter()
 
@@ -40,11 +41,67 @@ async def upload_document(
 
     - **file**: Document file to upload
     """
-    # TODO: Implement document upload
-    # This will be implemented in Phase 5 (User Story 3)
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Document upload not yet implemented",
+    # Check user storage quota (80% warning threshold)
+    from app.services.admin_service import AdminService
+    storage_stats = await AdminService.get_storage_stats(db)
+
+    # Get user's current storage usage
+    user_storage = 0
+    for user_stat in storage_stats.get("per_user_storage", []):
+        if user_stat["user_id"] == str(current_user.id):
+            user_storage = user_stat["total_bytes"]
+            break
+
+    # Assume 10GB quota per user (10 * 1024 * 1024 * 1024 bytes)
+    user_quota = 10 * 1024 * 1024 * 1024
+    usage_percent = (user_storage / user_quota * 100) if user_quota > 0 else 0
+
+    # Read file content
+    file_content = await file.read()
+
+    # Check if upload would exceed quota
+    if usage_percent > 80:
+        # Return warning in response headers but allow upload
+        pass  # Can add warning header here
+
+    # Validate file
+    is_valid, error_msg, file_type = await document_service.validate_file(
+        file_content, file.filename
+    )
+
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg,
+        )
+
+    # Save document
+    try:
+        document = await document_service.save_document(
+            db=db,
+            user_id=current_user.id,
+            filename=file.filename,
+            file_content=file_content,
+            file_type=file_type,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"문서 업로드 중 오류가 발생했습니다: {str(e)}",
+        )
+
+    return DocumentResponse(
+        id=document.id,
+        user_id=document.user_id,
+        filename=document.filename,
+        file_type=document.file_type,
+        file_size=document.file_size,
+        uploaded_at=document.uploaded_at,
     )
 
 
@@ -61,11 +118,33 @@ async def list_documents(
     - **page**: Page number (1-indexed)
     - **page_size**: Items per page (1-100)
     """
-    # TODO: Implement document listing
-    # This will be implemented in Phase 5 (User Story 3)
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Document listing not yet implemented",
+    documents, total = await document_service.list_documents(
+        db=db,
+        user_id=current_user.id,
+        page=page,
+        page_size=page_size,
+    )
+
+    document_responses = [
+        DocumentResponse(
+            id=doc.id,
+            user_id=doc.user_id,
+            filename=doc.filename,
+            file_type=doc.file_type,
+            file_size=doc.file_size,
+            uploaded_at=doc.uploaded_at,
+        )
+        for doc in documents
+    ]
+
+    has_next = (page * page_size) < total
+
+    return DocumentListResponse(
+        documents=document_responses,
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_next=has_next,
     )
 
 
@@ -80,11 +159,26 @@ async def get_document(
 
     - **document_id**: UUID of the document
     """
-    # TODO: Implement document retrieval
-    # This will be implemented in Phase 5 (User Story 3)
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Document retrieval not yet implemented",
+    document = await document_service.get_document(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
+    )
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    return DocumentWithText(
+        id=document.id,
+        user_id=document.user_id,
+        filename=document.filename,
+        file_type=document.file_type,
+        file_size=document.file_size,
+        uploaded_at=document.uploaded_at,
+        extracted_text=document.extracted_text,
     )
 
 
@@ -99,9 +193,16 @@ async def delete_document(
 
     - **document_id**: UUID of the document
     """
-    # TODO: Implement document deletion
-    # This will be implemented in Phase 5 (User Story 3)
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Document deletion not yet implemented",
+    deleted = await document_service.delete_document(
+        db=db,
+        document_id=document_id,
+        user_id=current_user.id,
     )
+
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    return None

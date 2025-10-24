@@ -1,6 +1,7 @@
 """LLM service for interacting with vLLM server"""
 
-from typing import AsyncGenerator, List, Optional
+import time
+from typing import AsyncGenerator, List, Optional, Tuple
 
 import httpx
 
@@ -18,21 +19,25 @@ class LLMService:
         self,
         prompt: str,
         conversation_history: Optional[List[dict]] = None,
+        document_context: Optional[str] = None,
         max_tokens: int = 4096,
-    ) -> str:
+    ) -> Tuple[str, int]:
         """
         Generate LLM response (non-streaming).
 
         Args:
             prompt: User query
             conversation_history: Previous messages for context
+            document_context: Extracted text from documents
             max_tokens: Maximum tokens to generate
 
         Returns:
-            Generated response text
+            Tuple of (Generated response text, processing time in ms)
         """
+        start_time = time.time()
+
         # Build full prompt with context
-        full_prompt = self._build_prompt(prompt, conversation_history)
+        full_prompt = self._build_prompt(prompt, conversation_history, document_context)
 
         # Call vLLM service
         async with httpx.AsyncClient() as client:
@@ -49,12 +54,16 @@ class LLMService:
         if len(text) > self.max_length:
             text = text[: self.max_length]
 
-        return text
+        end_time = time.time()
+        processing_time_ms = int((end_time - start_time) * 1000)
+
+        return text, processing_time_ms
 
     async def generate_stream(
         self,
         prompt: str,
         conversation_history: Optional[List[dict]] = None,
+        document_context: Optional[str] = None,
         max_tokens: int = 4096,
     ) -> AsyncGenerator[str, None]:
         """
@@ -63,12 +72,13 @@ class LLMService:
         Args:
             prompt: User query
             conversation_history: Previous messages for context
+            document_context: Extracted text from documents
             max_tokens: Maximum tokens to generate
 
         Yields:
             Generated tokens
         """
-        full_prompt = self._build_prompt(prompt, conversation_history)
+        full_prompt = self._build_prompt(prompt, conversation_history, document_context)
 
         async with httpx.AsyncClient() as client:
             async with client.stream(
@@ -95,34 +105,53 @@ class LLMService:
                         char_count += len(token)
 
     def _build_prompt(
-        self, current_message: str, history: Optional[List[dict]] = None
+        self,
+        current_message: str,
+        history: Optional[List[dict]] = None,
+        document_context: Optional[str] = None,
     ) -> str:
         """
-        Build full prompt with conversation history.
+        Build full prompt with conversation history and document context.
 
         Args:
             current_message: Current user message
             history: List of previous messages [{"role": "user|assistant", "content": "..."}]
+            document_context: Extracted text from documents
 
         Returns:
             Full prompt string
         """
-        if not history:
-            return current_message
-
-        # Build conversation context
         prompt_parts = []
-        for msg in history[-10:]:  # Last 10 messages for context
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role == "user":
-                prompt_parts.append(f"User: {content}")
-            else:
-                prompt_parts.append(f"Assistant: {content}")
+
+        # Add document context if provided
+        if document_context:
+            # Limit document context to prevent exceeding token limits
+            max_doc_chars = 8000  # Approximately 2000 tokens
+            if len(document_context) > max_doc_chars:
+                document_context = document_context[:max_doc_chars] + "\n...(문서 내용이 잘렸습니다)"
+
+            prompt_parts.append("=== 참고 문서 ===")
+            prompt_parts.append(document_context)
+            prompt_parts.append("=== 참고 문서 끝 ===\n")
+
+        # Add conversation history
+        if history:
+            for msg in history[-10:]:  # Last 10 messages for context
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role == "user":
+                    prompt_parts.append(f"User: {content}")
+                else:
+                    prompt_parts.append(f"Assistant: {content}")
 
         # Add current message
         prompt_parts.append(f"User: {current_message}")
-        prompt_parts.append("Assistant:")
+
+        # Add instruction for document-based queries
+        if document_context:
+            prompt_parts.append("Assistant: (위 참고 문서의 내용을 바탕으로 답변드리겠습니다)")
+        else:
+            prompt_parts.append("Assistant:")
 
         return "\n".join(prompt_parts)
 

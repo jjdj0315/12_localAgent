@@ -236,11 +236,25 @@ class AdminService:
         total_queries_week = await count_queries(week_start)
         total_queries_month = await count_queries(month_start)
 
-        # Average response time (placeholder - requires processing_time_ms field)
-        # For now, return 0 as we haven't implemented response time tracking yet
-        avg_response_time_today = 0.0
-        avg_response_time_week = 0.0
-        avg_response_time_month = 0.0
+        # Average response time from processing_time_ms field
+        async def calc_avg_response_time(since: datetime) -> float:
+            query = (
+                select(func.avg(Message.processing_time_ms))
+                .where(
+                    and_(
+                        Message.created_at >= since,
+                        Message.role == 'assistant',
+                        Message.processing_time_ms.isnot(None)
+                    )
+                )
+            )
+            result = await db.execute(query)
+            avg_ms = result.scalar()
+            return float(avg_ms) if avg_ms else 0.0
+
+        avg_response_time_today = await calc_avg_response_time(today_start)
+        avg_response_time_week = await calc_avg_response_time(week_start)
+        avg_response_time_month = await calc_avg_response_time(month_start)
 
         return {
             "active_users_today": active_users_today,

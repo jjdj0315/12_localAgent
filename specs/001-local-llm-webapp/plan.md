@@ -15,12 +15,12 @@ Build an air-gapped Local LLM web application for small local government employe
 - React 18+ with TypeScript
 - Next.js 14+ (App Router for SSR/SSG capabilities)
 - TailwindCSS for styling
+- shadcn/ui or Headless UI for component library (especially admin panel)
 - React Query for state management and data fetching
 - Streaming UI for real-time LLM responses
 
 **Backend Stack**:
 - FastAPI (primary API server - async, high performance)
-- Django (optional - if admin panel needs Django's built-in admin UI)
 - Python 3.11+
 - PostgreSQL 15+ for data persistence
 - SQLAlchemy ORM with Alembic migrations
@@ -32,10 +32,11 @@ Build an air-gapped Local LLM web application for small local government employe
 - Context Management: In-memory conversation context with 4,000 character response limit
 
 **Document Processing**:
-- PyPDF2 or pdfplumber for PDF extraction
+- **pdfplumber** for PDF extraction (선택 이유: PyPDF2 대비 한글 텍스트 추출 품질 우수, 표/레이아웃 구조 보존, 활발한 유지보수)
 - python-docx for DOCX processing
 - LangChain or custom chunking for document Q&A
 - Vector storage: In-memory or lightweight (ChromaDB/FAISS) for document embeddings
+  - Note: All dependencies (ChromaDB/FAISS pip packages) included in requirements.txt for offline installation in air-gapped environment
 
 **Deployment & Infrastructure**:
 - Architecture: Monolithic (single deployable unit for simplicity)
@@ -106,8 +107,8 @@ Build an air-gapped Local LLM web application for small local government employe
 ✅ **No External Dependencies**: All services run locally, no internet required
 
 **Potential Violations to Monitor**:
-- ⚠️ Using both FastAPI and Django may add complexity - **Decision**: Start with FastAPI only, evaluate Django admin panel later
 - ⚠️ Document Q&A with embeddings adds complexity - **Decision**: Phase 3 feature, can start with simple text extraction
+- ⚠️ Custom admin UI vs Django Admin - **Decision**: FastAPI-only backend with React admin UI. Django would add second framework; small admin UI (10-15 components) is manageable with shadcn/ui or Headless UI component libraries
 
 ## Project Structure
 
@@ -233,4 +234,5 @@ Chose **Web application structure** with separate frontend/backend/llm-service d
 |-----------|------------|-------------------------------------|
 | Three separate services (frontend, backend, LLM) | LLM inference requires separate process/GPU; Frontend needs SSR for initial load performance; Backend needs async API handling | Single monolith would mix concerns (UI rendering, API logic, ML inference) and make testing/scaling individual components impossible |
 | Vector database for document Q&A | Document context exceeds 4,000 char limit; Need semantic search across documents | Simple text search insufficient for "summarize this policy" or "compare these 3 documents" use cases from spec |
+| Custom React admin UI (not Django Admin) | Maintain single-framework simplicity; Full control over Korean language UI; Consistent development stack | Django Admin would require second web framework, dual ORM systems, and Korean localization. Admin UI is small (10-15 components) and manageable with component libraries (shadcn/ui) |
 

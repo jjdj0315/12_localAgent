@@ -37,6 +37,7 @@ class Message(Base):
     role = Column(Enum(MessageRole, name='messagetype', create_constraint=True, native_enum=True, values_callable=lambda obj: [e.value for e in obj]), nullable=False)
     content = Column(Text, nullable=False)
     char_count = Column(Integer, nullable=False)
+    processing_time_ms = Column(Integer, nullable=True, comment="LLM response generation time in milliseconds")
     created_at = Column(DateTime(timezone=True), default=get_current_utc, nullable=False)
 
     # Relationships

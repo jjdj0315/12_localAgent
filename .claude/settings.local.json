@@ -1,20 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir -p frontend/src/app frontend/src/components/chat frontend/src/components/admin frontend/src/components/ui frontend/src/components/layout frontend/src/components/auth frontend/src/components/documents frontend/src/lib frontend/src/types frontend/public frontend/tests/unit frontend/tests/integration)",
-      "Bash(python -c \"import secrets; print(secrets.token_urlsafe(48))\")",
+      "Bash(timeout 5 python:*)",
+      "Bash(timeout 10 python:*)",
+      "Bash(timeout 15 python:*)",
+      "Bash(npm --version)",
+      "Bash(node --version)",
       "Bash(powershell:*)",
-      "Bash(test:*)",
-      "Bash(docker-compose up:*)",
-      "Bash(docker-compose:*)",
-      "Bash(curl:*)",
-      "Bash(docker run:*)",
-      "Bash(netstat:*)",
-      "Bash(findstr:*)",
-      "Bash(docker exec:*)",
-      "Bash(docker logs:*)",
-      "Bash(powershell: Start-Sleep -Seconds 5)",
-      "Bash(git add:*)"
+      "Bash(set SPECIFY_FEATURE_SLUG=001-local-llm-webapp)",
+      "Bash(git -C \"C:\\02_practice\\12_localAgent\" branch --show-current)",
+      "Bash(set SPECIFY_FEATURE=001-local-llm-webapp:*)",
+      "Bash(git -C:*)",
+      "Bash(test:*)"
     ],
     "deny": [],
     "ask": []

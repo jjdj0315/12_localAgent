@@ -132,8 +132,8 @@
 
 - [X] T056 [US1] Create initial admin user creation script in backend/scripts/create_admin.py
 - [X] T057 [US1] Update docker-compose.yml with health checks for all services
-- [ ] T058 [US1] Write deployment validation script (test login, chat query) per quickstart.md
-- [ ] T059 [US1] Test Korean language query and response quality with Llama-3-8B
+- [ ] T058 [US1] **[헌법 검증 필수]** Write deployment validation script in scripts/validate-deployment.sh that verifies: (1) All services start without internet, (2) Can create user and login, (3) Can submit query and receive response, (4) All API endpoints return Korean error messages. Script must exit with error code if any check fails. Validates constitution principles I (Air-Gap) and III (Security).
+- [ ] T059 [US1] **[헌법 검증 필수]** Test Korean language quality in scripts/test-korean-quality.py with 50+ diverse queries covering: administrative tasks, document drafting, policy questions, follow-up context. Manually review responses using rubric: grammar (0-10), relevance (0-10), Korean naturalness (0-10). Target: 90% queries score ≥24/30 total (80% threshold). Log all scores to results.json. Validates constitution principle II (Korean Language Support).
 
 **Checkpoint**: ✅ User Story 1 implementation complete - employees can log in, ask questions, and receive streaming LLM responses with context. Testing pending.
 
@@ -166,7 +166,7 @@
 - [X] T068 [P] [US2] Create conversation list page in frontend/src/app/history/page.tsx
 - [X] T069 [P] [US2] Create conversation card component in frontend/src/components/chat/ConversationCard.tsx (title, timestamp, tags)
 - [X] T070 [P] [US2] Create search bar component in frontend/src/components/chat/SearchBar.tsx (keyword and tag filters)
-- [ ] T071 [P] [US2] Create conversation detail view in frontend/src/app/(user)/conversation/[id]/page.tsx
+- [X] T071 [P] [US2] Create conversation detail view in frontend/src/app/(user)/conversation/[id]/page.tsx
 - [X] T072 [P] [US2] Create tag editor component in frontend/src/components/chat/TagEditor.tsx
 - [X] T073 [US2] Implement conversation list with React Query (pagination, infinite scroll) in frontend/src/app/history/page.tsx
 - [X] T074 [US2] Implement search functionality with debouncing in frontend/src/app/history/page.tsx
@@ -232,12 +232,12 @@
 
 ### Backend Implementation
 
-- [ ] T098 [US4] Implement user isolation enforcement in conversation queries (WHERE user_id = current_user.id) in backend/app/api/v1/conversations.py
-- [ ] T099 [US4] Implement user isolation enforcement in document queries in backend/app/api/v1/documents.py
-- [ ] T100 [US4] Add permission check for conversation access (403 if user doesn't own conversation) in backend/app/api/deps.py
-- [ ] T101 [US4] Add permission check for document access (403 if user doesn't own document) in backend/app/api/deps.py
-- [ ] T102 [US4] Implement session timeout mechanism (30 minutes) in backend/app/services/auth_service.py (update expires_at on each request)
-- [ ] T103 [US4] Implement session cleanup background task in backend/app/services/auth_service.py (delete expired sessions)
+- [X] T098 [US4] Implement user isolation enforcement in conversation queries (WHERE user_id = current_user.id) in backend/app/api/v1/conversations.py
+- [X] T099 [US4] Implement user isolation enforcement in document queries in backend/app/api/v1/documents.py
+- [X] T100 [US4] Add permission check for conversation access (403 if user doesn't own conversation) in backend/app/api/deps.py
+- [X] T101 [US4] Add permission check for document access (403 if user doesn't own document) in backend/app/api/deps.py
+- [X] T102 [US4] Implement session timeout mechanism (30 minutes) in backend/app/services/auth_service.py (update expires_at on each request)
+- [X] T103 [US4] Implement session cleanup background task in backend/app/services/auth_service.py (delete expired sessions)
 - [ ] T104 [US4] Add concurrent user request handling optimization (async/await throughout) in backend/app/api/v1/chat.py
 - [ ] T105 [US4] Implement request queuing for LLM service (if concurrent requests exceed max_num_seqs) in backend/app/services/llm_service.py
 
@@ -275,7 +275,7 @@
 - [X] T116 [US5] Implement statistics collection service in backend/app/services/admin_service.py (calculate active users, query counts, avg response time)
 - [X] T117 [US5] Implement system health monitoring service in backend/app/services/admin_service.py (CPU, memory, GPU via nvidia-smi, storage, uptime)
 - [X] T118 [US5] Implement storage usage calculation per user in backend/app/services/admin_service.py (sum document file sizes)
-- [ ] T119 [US5] Add response time tracking to message creation in backend/app/models/message.py (store processing_time_ms field)
+- [X] T119 [US5] Add response time tracking to message creation: (1) Create Alembic migration in backend/alembic/versions/002_add_response_time_tracking.py to add processing_time_ms INTEGER column to messages table with index, (2) Update Message model in backend/app/models/message.py to add processing_time_ms field, (3) Update llm_service.py to measure and return processing time, (4) Update chat.py endpoint to store processing_time_ms when creating assistant messages, (5) Update admin_service.py calculate_stats to compute avg_response_time_ms from message.processing_time_ms values
 
 ### Frontend Implementation
 
@@ -292,8 +292,19 @@
 - [X] T130 [US5] Add storage warning indicator (when >80% full) in storage page
 - [X] T131 [US5] Add admin-only route protection in frontend/src/app/admin pages (check is_admin from user profile)
 - [X] T131a [P] [US5] Implement per-user storage quota calculation in backend/app/services/admin_service.py (sum file sizes by user_id)
-- [ ] T131b [P] [US5] Add storage quota warning to file upload endpoint in backend/app/api/v1/documents.py (check before allowing upload)
+- [X] T131b [P] [US5] Add storage quota warning to file upload endpoint in backend/app/api/v1/documents.py (check before allowing upload)
 - [X] T131c [P] [US5] Create storage usage visualization in frontend/src/app/admin/storage/page.tsx (per-user breakdown, total capacity)
+
+### Storage Management (FR-019, FR-020, FR-023)
+
+- [ ] T159 [P] [US5] Implement per-user storage quota warning in backend/app/api/v1/documents.py (check before upload, return warning if user >80% quota)
+- [ ] T160 [P] [US5] Implement system-wide storage capacity check in backend/app/api/v1/documents.py (reject upload with 423 Locked if system >95% capacity)
+- [ ] T161 [P] [US5] Create storage warning notification service in backend/app/services/notification_service.py (email or in-app notification when quota exceeded)
+- [ ] T162 [P] [US5] Implement document retention policy management in backend/app/services/admin_service.py (configurable retention days, automatic cleanup job)
+- [ ] T163 [US5] Create retention policy configuration endpoint POST /admin/retention-policy in backend/app/api/v1/admin.py (set retention days per document type)
+- [ ] T164 [P] [US5] Add user notification for admin-initiated document deletion in backend/app/services/notification_service.py (notify affected users)
+- [ ] T165 [P] [US5] Create storage quota warning banner in frontend/src/components/documents/StorageWarning.tsx (show when user >80% quota)
+- [ ] T166 [P] [US5] Add upload prevention UI in frontend/src/components/documents/FileUploader.tsx (disable upload button, show error message when system >95%)
 
 **Checkpoint**: Full admin capabilities are functional - IT staff can manage users and monitor system health.
 
@@ -305,7 +316,7 @@
 
 ### Documentation
 
-- [ ] T132 [P] Create README.md in project root with overview, features, tech stack
+- [X] T132 [P] Create README.md in project root with overview, features, tech stack
 - [ ] T133 [P] Create air-gapped deployment guide in docs/deployment.md (following quickstart.md procedures)
 - [ ] T134 [P] Create user manual in Korean in docs/user-guide-ko.md (login, chat, document upload, conversation management)
 - [ ] T135 [P] Create admin manual in docs/admin-guide.md (user management, system monitoring, troubleshooting)
@@ -345,6 +356,9 @@
 - [ ] T156 Verify Korean language response quality across 50+ test queries in scripts/test-korean-quality.py
 - [ ] T157 Test document processing with various Korean PDF/DOCX files (government documents)
 - [ ] T158 Create emergency recovery procedures document in docs/disaster-recovery.md
+- [ ] T167 Test storage quota warning triggers correctly at 80% user capacity
+- [ ] T168 Test upload prevention at 95% system capacity
+- [ ] T169 Test retention policy automatic cleanup (schedule cron job, verify old documents deleted)
 
 ---
 

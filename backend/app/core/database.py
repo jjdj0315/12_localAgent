@@ -9,40 +9,62 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
 
 # Get database URL from environment
-POSTGRES_USER = os.getenv("POSTGRES_USER", "llm_app")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "changeme")
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "llm_webapp")
+USE_SQLITE = os.getenv("USE_SQLITE", "true").lower() in ("true", "1", "yes")
 
-# Sync database URL (for Alembic migrations)
-SQLALCHEMY_DATABASE_URL = (
-    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@"
-    f"{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-)
+if USE_SQLITE:
+    # SQLite for local development
+    DB_FILE = os.getenv("SQLITE_DB_FILE", "llm_webapp.db")
+    SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_FILE}"
+    ASYNC_SQLALCHEMY_DATABASE_URL = f"sqlite+aiosqlite:///{DB_FILE}"
+else:
+    # PostgreSQL for production
+    POSTGRES_USER = os.getenv("POSTGRES_USER", "llm_app")
+    POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "changeme")
+    POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+    POSTGRES_DB = os.getenv("POSTGRES_DB", "llm_webapp")
 
-# Async database URL (for FastAPI)
-ASYNC_SQLALCHEMY_DATABASE_URL = (
-    f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@"
-    f"{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-)
+    # Sync database URL (for Alembic migrations)
+    SQLALCHEMY_DATABASE_URL = (
+        f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@"
+        f"{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    )
+
+    # Async database URL (for FastAPI)
+    ASYNC_SQLALCHEMY_DATABASE_URL = (
+        f"postgresql+asyncpg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@"
+        f"{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    )
 
 # Create sync engine (for migrations)
-sync_engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=20,
-    max_overflow=40,
-)
+if USE_SQLITE:
+    sync_engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+    )
+else:
+    sync_engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=20,
+        max_overflow=40,
+    )
 
 # Create async engine (for application)
-async_engine = create_async_engine(
-    ASYNC_SQLALCHEMY_DATABASE_URL,
-    echo=False,
-    pool_pre_ping=True,
-    pool_size=20,
-    max_overflow=40,
-)
+if USE_SQLITE:
+    async_engine = create_async_engine(
+        ASYNC_SQLALCHEMY_DATABASE_URL,
+        echo=False,
+        connect_args={"check_same_thread": False},
+    )
+else:
+    async_engine = create_async_engine(
+        ASYNC_SQLALCHEMY_DATABASE_URL,
+        echo=False,
+        pool_pre_ping=True,
+        pool_size=20,
+        max_overflow=40,
+    )
 
 # Create session factories
 SyncSessionLocal = sessionmaker(

@@ -40,14 +40,11 @@ async def root():
 
 
 # Import API routers
-from app.api.v1 import auth, chat, conversations
+from app.api.v1 import admin, auth, chat, conversations, documents
 
 # Register routers
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
 app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["Conversations"])
-
-# Additional routers will be added in later phases:
-# from app.api.v1 import documents, admin
-# app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
-# app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
+app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])

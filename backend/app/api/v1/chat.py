@@ -15,6 +15,7 @@ from app.models.message import Message, MessageRole
 from app.models.user import User
 from app.schemas.message import ChatRequest, ChatResponse, MessageResponse
 from app.services.llm_service import llm_service
+from app.services.document_service import document_service
 
 router = APIRouter()
 
@@ -61,6 +62,24 @@ async def send_chat_message(
         # Get existing conversation history
         history = await get_conversation_history(db, conversation_id)
 
+    # Get document context if document_ids provided
+    document_context = None
+    if request.document_ids:
+        documents = []
+        for doc_id in request.document_ids:
+            doc = await document_service.get_document(db, doc_id, current_user.id)
+            if doc:
+                documents.append(doc)
+                # Attach document to conversation
+                await document_service.attach_document_to_conversation(
+                    db, conversation_id, doc_id
+                )
+
+        if documents:
+            document_context = "\n\n---\n\n".join(
+                [f"[{doc.filename}]\n{doc.extracted_text}" for doc in documents]
+            )
+
     # Save user message
     user_message = Message(
         conversation_id=conversation_id,
@@ -71,15 +90,18 @@ async def send_chat_message(
     db.add(user_message)
     await db.commit()
 
-    # Get LLM response
-    response_text = await llm_service.generate(request.content, history)
+    # Get LLM response with document context
+    response_text, processing_time_ms = await llm_service.generate(
+        request.content, history, document_context
+    )
 
-    # Save assistant message
+    # Save assistant message with processing time
     assistant_message = Message(
         conversation_id=conversation_id,
         role=MessageRole.ASSISTANT,
         content=response_text,
         char_count=len(response_text),
+        processing_time_ms=processing_time_ms,
     )
     db.add(assistant_message)
     await db.commit()
@@ -116,6 +138,24 @@ async def stream_chat_message(
     else:
         history = await get_conversation_history(db, conversation_id)
 
+    # Get document context if document_ids provided
+    document_context = None
+    if request.document_ids:
+        documents = []
+        for doc_id in request.document_ids:
+            doc = await document_service.get_document(db, doc_id, current_user.id)
+            if doc:
+                documents.append(doc)
+                # Attach document to conversation
+                await document_service.attach_document_to_conversation(
+                    db, conversation_id, doc_id
+                )
+
+        if documents:
+            document_context = "\n\n---\n\n".join(
+                [f"[{doc.filename}]\n{doc.extracted_text}" for doc in documents]
+            )
+
     # Save user message
     user_message = Message(
         conversation_id=conversation_id,
@@ -134,8 +174,10 @@ async def stream_chat_message(
         message_id = uuid4()
 
         try:
-            # Stream tokens
-            async for token in llm_service.generate_stream(request.content, history):
+            # Stream tokens with document context
+            async for token in llm_service.generate_stream(
+                request.content, history, document_context
+            ):
                 full_response.append(token)
                 data = json.dumps({"token": token})
                 yield f"event: token\ndata: {data}\n\n"

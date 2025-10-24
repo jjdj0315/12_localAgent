@@ -102,6 +102,10 @@ class AuthService:
             await db.commit()
             return None
 
+        # Update session expiry (refresh session on each request - 30 minute sliding window)
+        session.expires_at = get_session_expiry()
+        await db.commit()
+
         return session
 
     @staticmethod
@@ -158,6 +162,28 @@ class AuthService:
         """
         result = await db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def cleanup_expired_sessions(db: AsyncSession) -> int:
+        """
+        Delete all expired sessions (background cleanup task).
+
+        Args:
+            db: Database session
+
+        Returns:
+            Number of sessions deleted
+        """
+        from sqlalchemy import delete
+
+        now = datetime.now(timezone.utc)
+
+        # Delete expired sessions
+        stmt = delete(Session).where(Session.expires_at < now)
+        result = await db.execute(stmt)
+        await db.commit()
+
+        return result.rowcount
 
 
 # Singleton instance
