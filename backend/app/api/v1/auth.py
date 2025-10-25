@@ -39,14 +39,16 @@ async def login(
     # Update last login
     await auth_service.update_last_login(db, user.id)
 
-    # Set session cookie
-    # For localhost development, use lax and no secure
+    # Set session cookie with secure settings
+    # httponly=True prevents XSS attacks
+    # secure=True requires HTTPS (set to False only for local development)
+    # samesite="strict" prevents CSRF attacks
     response.set_cookie(
         key="session_token",
         value=session.session_token,
-        httponly=False,  # Allow JS access for debugging
-        secure=False,  # HTTP localhost
-        samesite="lax",
+        httponly=True,  # Prevent JavaScript access (XSS protection)
+        secure=True,  # Require HTTPS in production
+        samesite="strict",  # Strict CSRF protection
         max_age=30 * 60,  # 30 minutes
         path="/",
         domain=None,  # Let browser set domain
