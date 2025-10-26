@@ -185,7 +185,7 @@ IT staff need to manage user accounts, monitor system usage, and track system he
 ### Measurable Outcomes
 
 - **SC-001**: Users can submit a query and receive a relevant response within 10 seconds for queries under 500 characters (target: 5 seconds; maximum acceptable: 10 seconds)
-- **SC-002**: System supports at least 10 concurrent users without response time degradation exceeding 20%
+- **SC-002**: System supports at least 10 concurrent users without response time degradation exceeding 20% (baseline: single-user average 5 seconds per SC-001, target: ≤6 seconds with 10 concurrent users)
 - **SC-003**: Users can upload and process a 20-page PDF document within 60 seconds
 - **SC-004**: 한국어 쿼리의 90%가 문법적으로 정확하고 맥락적으로 적절한 응답을 받음
   - **측정 방법**: 50개 다양한 업무 시나리오 쿼리로 구성된 테스트 세트 사용

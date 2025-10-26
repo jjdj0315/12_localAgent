@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { chatAPI, conversationsAPI } from '@/lib/api'
-import ConversationList from '@/components/chat/ConversationList'
+import ConversationList, { ConversationListHandle } from '@/components/chat/ConversationList'
 import DocumentSelector from '@/components/chat/DocumentSelector'
 import type { Message as APIMessage } from '@/types/conversation'
 
@@ -26,6 +26,7 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const conversationListRef = useRef<ConversationListHandle>(null)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -130,6 +131,8 @@ export default function ChatPage() {
             conversationsAPI.get(messageData.conversation_id).then((conv) => {
               setConversationTitle(conv.title)
             })
+            // Refresh conversation list to show the new conversation
+            conversationListRef.current?.refresh()
           }
         },
         // onError: show error message
@@ -193,6 +196,7 @@ export default function ChatPage() {
       >
         {sidebarOpen && (
           <ConversationList
+            ref={conversationListRef}
             selectedId={selectedConversationId}
             onSelect={loadConversation}
             onNew={handleNewConversation}

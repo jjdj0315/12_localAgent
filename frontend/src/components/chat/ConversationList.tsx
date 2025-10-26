@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, forwardRef, useImperativeHandle } from 'react'
 import { conversationsAPI } from '@/lib/api'
 import type { Conversation } from '@/types/conversation'
 
@@ -10,37 +10,43 @@ interface ConversationListProps {
   onNew: () => void
 }
 
-export default function ConversationList({
-  selectedId,
-  onSelect,
-  onNew,
-}: ConversationListProps) {
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [total, setTotal] = useState(0)
+export interface ConversationListHandle {
+  refresh: () => void
+}
 
-  // Load conversations
-  const loadConversations = async () => {
-    try {
-      setLoading(true)
-      const response = await conversationsAPI.list({
-        page: 1,
-        page_size: 50,
-        search: search || undefined,
-      })
-      setConversations(response.conversations)
-      setTotal(response.total)
-    } catch (error) {
-      console.error('Failed to load conversations:', error)
-    } finally {
-      setLoading(false)
+const ConversationList = forwardRef<ConversationListHandle, ConversationListProps>(
+  ({ selectedId, onSelect, onNew }, ref) => {
+    const [conversations, setConversations] = useState<Conversation[]>([])
+    const [loading, setLoading] = useState(true)
+    const [search, setSearch] = useState('')
+    const [total, setTotal] = useState(0)
+
+    // Load conversations
+    const loadConversations = async () => {
+      try {
+        setLoading(true)
+        const response = await conversationsAPI.list({
+          page: 1,
+          page_size: 50,
+          search: search || undefined,
+        })
+        setConversations(response.conversations)
+        setTotal(response.total)
+      } catch (error) {
+        console.error('Failed to load conversations:', error)
+      } finally {
+        setLoading(false)
+      }
     }
-  }
 
-  useEffect(() => {
-    loadConversations()
-  }, [search])
+    useEffect(() => {
+      loadConversations()
+    }, [search])
+
+    // Expose refresh method to parent
+    useImperativeHandle(ref, () => ({
+      refresh: loadConversations,
+    }))
 
   // Delete conversation
   const handleDelete = async (id: string, e: React.MouseEvent) => {
@@ -128,8 +134,9 @@ export default function ConversationList({
                           className="h-4 w-4 flex-shrink-0 text-blue-600"
                           fill="currentColor"
                           viewBox="0 0 20 20"
-                          title={`${conv.document_count}개 문서 첨부`}
+                          aria-label={`${conv.document_count}개 문서 첨부`}
                         >
+                          <title>{`${conv.document_count}개 문서 첨부`}</title>
                           <path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" />
                         </svg>
                       )}
@@ -197,4 +204,8 @@ export default function ConversationList({
       )}
     </div>
   )
-}
+})
+
+ConversationList.displayName = 'ConversationList'
+
+export default ConversationList

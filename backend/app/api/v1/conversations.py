@@ -12,7 +12,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.models.message import Message
-from app.models.conversation_document import ConversationDocument
+from app.models.conversation_document import conversation_document
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationListResponse,
@@ -61,7 +61,7 @@ async def list_conversations(
         message_count = result.scalar() or 0
 
         # Count documents for this conversation
-        doc_count_query = select(func.count()).where(ConversationDocument.conversation_id == conv.id)
+        doc_count_query = select(func.count()).where(conversation_document.c.conversation_id == conv.id)
         doc_result = await db.execute(doc_count_query)
         document_count = doc_result.scalar() or 0
 
@@ -201,7 +201,7 @@ async def update_conversation(
     message_count = result.scalar() or 0
 
     # Get document count
-    doc_count_query = select(func.count()).where(ConversationDocument.conversation_id == updated_conversation.id)
+    doc_count_query = select(func.count()).where(conversation_document.c.conversation_id == updated_conversation.id)
     doc_result = await db.execute(doc_count_query)
     document_count = doc_result.scalar() or 0
 

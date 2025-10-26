@@ -23,7 +23,7 @@ export default function DocumentSelector({
   // Fetch documents
   const { data, isLoading } = useQuery({
     queryKey: ['documents'],
-    queryFn: () => documentsAPI.list({ page: 1, page_size: 100 }),
+    queryFn: () => documentsAPI.list({ limit: 100, offset: 0 }),
   })
 
   const toggleDocument = (documentId: string) => {
@@ -44,7 +44,7 @@ export default function DocumentSelector({
 
   // Get selected document details
   const getSelectedDocumentName = (id: string) => {
-    const doc = data?.documents.find((d) => d.id === id)
+    const doc = data?.documents.find((d: any) => d.id === id)
     return doc?.filename || '알 수 없는 문서'
   }
 
@@ -152,7 +152,7 @@ export default function DocumentSelector({
               <div className="text-xs text-gray-500 px-3 py-2 font-medium">
                 문서를 선택하여 채팅에 첨부하세요
               </div>
-              {data?.documents.map((document) => (
+              {data?.documents.map((document: any) => (
                 <label
                   key={document.id}
                   className="flex items-center space-x-3 px-3 py-2 hover:bg-gray-50 rounded cursor-pointer"

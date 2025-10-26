@@ -15,6 +15,7 @@ from app.models.user import User
 from app.models.message import Message
 from app.models.conversation import Conversation
 from app.models.document import Document
+from app.core.security import hash_password, generate_temp_password
 
 
 def get_current_utc():
@@ -95,8 +96,6 @@ class AdminService:
         Returns:
             Created user
         """
-        from app.services.auth_service import auth_service
-
         # Check if username already exists
         existing_query = select(User).where(User.username == username)
         existing_result = await db.execute(existing_query)
@@ -106,7 +105,7 @@ class AdminService:
             raise ValueError(f"Username '{username}' already exists")
 
         # Hash password
-        password_hash = auth_service.hash_password(password)
+        password_hash = hash_password(password)
 
         # Create user
         new_user = User(
@@ -166,8 +165,6 @@ class AdminService:
         Returns:
             Tuple of (User, temporary_password) or (None, "") if not found
         """
-        from app.services.auth_service import auth_service
-
         # Get user
         query = select(User).where(User.id == user_id)
         result = await db.execute(query)
@@ -178,7 +175,7 @@ class AdminService:
 
         # Generate temporary password
         temp_password = AdminService.generate_password(12)
-        password_hash = auth_service.hash_password(temp_password)
+        password_hash = hash_password(temp_password)
 
         # Update user password
         user.password_hash = password_hash

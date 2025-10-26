@@ -11,6 +11,8 @@ import { documentsAPI } from '@/lib/api'
 import FileUploader from '@/components/documents/FileUploader'
 import DocumentList from '@/components/documents/DocumentList'
 
+export const dynamic = 'force-dynamic'
+
 export default function DocumentsPage() {
   const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
@@ -18,7 +20,7 @@ export default function DocumentsPage() {
   // Fetch documents
   const { data, isLoading, error } = useQuery({
     queryKey: ['documents', page],
-    queryFn: () => documentsAPI.list({ page, page_size: 20 }),
+    queryFn: () => documentsAPI.list({ limit: 20, offset: (page - 1) * 20 }),
   })
 
   const handleUploadSuccess = () => {

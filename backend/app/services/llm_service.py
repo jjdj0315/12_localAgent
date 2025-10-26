@@ -1,5 +1,6 @@
-"""LLM service for interacting with vLLM server"""
+"""LLM service for interacting with Ollama server"""
 
+import os
 import time
 from typing import AsyncGenerator, List, Optional, Tuple
 
@@ -14,6 +15,7 @@ class LLMService:
     def __init__(self):
         self.base_url = settings.LLM_SERVICE_URL
         self.max_length = settings.MAX_RESPONSE_LENGTH
+        self.model = os.getenv("OLLAMA_MODEL", "tinyllama")
 
     async def generate(
         self,
@@ -23,7 +25,7 @@ class LLMService:
         max_tokens: int = 4096,
     ) -> Tuple[str, int]:
         """
-        Generate LLM response (non-streaming).
+        Generate LLM response (non-streaming) using Ollama.
 
         Args:
             prompt: User query
@@ -39,18 +41,25 @@ class LLMService:
         # Build full prompt with context
         full_prompt = self._build_prompt(prompt, conversation_history, document_context)
 
-        # Call vLLM service
-        async with httpx.AsyncClient() as client:
+        # Call Ollama API
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
-                f"{self.base_url}/generate",
-                json={"prompt": full_prompt, "max_tokens": max_tokens},
-                timeout=30.0,
+                f"{self.base_url}/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": full_prompt,
+                    "stream": False,
+                    "options": {
+                        "num_predict": max_tokens,
+                        "temperature": 0.7,
+                    }
+                },
             )
             response.raise_for_status()
             result = response.json()
 
-        # Limit response length
-        text = result.get("text", "")
+        # Extract response text from Ollama format
+        text = result.get("response", "")
         if len(text) > self.max_length:
             text = text[: self.max_length]
 
@@ -67,7 +76,7 @@ class LLMService:
         max_tokens: int = 4096,
     ) -> AsyncGenerator[str, None]:
         """
-        Generate LLM response with streaming (SSE).
+        Generate LLM response with streaming using Ollama.
 
         Args:
             prompt: User query
@@ -78,31 +87,49 @@ class LLMService:
         Yields:
             Generated tokens
         """
+        import json
+
         full_prompt = self._build_prompt(prompt, conversation_history, document_context)
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream(
                 "POST",
-                f"{self.base_url}/generate_stream",
-                json={"prompt": full_prompt, "max_tokens": max_tokens},
-                timeout=60.0,
+                f"{self.base_url}/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": full_prompt,
+                    "stream": True,
+                    "options": {
+                        "num_predict": max_tokens,
+                        "temperature": 0.7,
+                    }
+                },
             ) as response:
                 response.raise_for_status()
                 char_count = 0
 
                 async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        token = line[6:]  # Remove "data: " prefix
+                    if line.strip():
+                        try:
+                            data = json.loads(line)
+                            token = data.get("response", "")
 
-                        # Check character limit
-                        if char_count + len(token) > self.max_length:
-                            remaining = self.max_length - char_count
-                            if remaining > 0:
-                                yield token[:remaining]
-                            break
+                            if token:
+                                # Check character limit
+                                if char_count + len(token) > self.max_length:
+                                    remaining = self.max_length - char_count
+                                    if remaining > 0:
+                                        yield token[:remaining]
+                                    break
 
-                        yield token
-                        char_count += len(token)
+                                yield token
+                                char_count += len(token)
+
+                            # Check if generation is done
+                            if data.get("done", False):
+                                break
+                        except json.JSONDecodeError:
+                            continue
 
     def _build_prompt(
         self,

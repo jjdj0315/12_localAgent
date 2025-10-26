@@ -6,11 +6,8 @@
   "rules": {
     "prefer-const": "warn",
     "no-unused-vars": "off",
-    "no-console": [
-      "warn",
-      {
-        "allow": ["warn", "error"]
-      }
-    ]
+    "no-console": "warn",
+    "react/no-unescaped-entities": "warn",
+    "react-hooks/exhaustive-deps": "warn"
   }
 }

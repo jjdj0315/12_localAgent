@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document
-from app.models.conversation_document import ConversationDocument
+from app.models.conversation_document import conversation_document
 
 
 class DocumentService:
@@ -334,19 +334,25 @@ class DocumentService:
             document_id: Document ID
         """
         # Check if already attached
-        query = select(ConversationDocument).where(
-            ConversationDocument.conversation_id == conversation_id,
-            ConversationDocument.document_id == document_id,
+        from sqlalchemy import and_
+
+        query = select(conversation_document).where(
+            and_(
+                conversation_document.c.conversation_id == conversation_id,
+                conversation_document.c.document_id == document_id,
+            )
         )
         result = await db.execute(query)
-        existing = result.scalar_one_or_none()
+        existing = result.first()
 
         if not existing:
-            link = ConversationDocument(
+            from sqlalchemy import insert
+
+            stmt = insert(conversation_document).values(
                 conversation_id=conversation_id,
                 document_id=document_id,
             )
-            db.add(link)
+            await db.execute(stmt)
             await db.commit()
 
     @staticmethod
@@ -365,8 +371,8 @@ class DocumentService:
         """
         query = (
             select(Document)
-            .join(ConversationDocument)
-            .where(ConversationDocument.conversation_id == conversation_id)
+            .join(conversation_document, Document.id == conversation_document.c.document_id)
+            .where(conversation_document.c.conversation_id == conversation_id)
         )
 
         result = await db.execute(query)

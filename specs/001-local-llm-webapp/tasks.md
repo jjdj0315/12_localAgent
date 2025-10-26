@@ -74,7 +74,7 @@
 - [X] T027 Create FastAPI application instance with CORS, middleware, error handlers in backend/app/main.py
 - [X] T028 Setup API router structure in backend/app/api/v1/ (auth.py, chat.py, conversations.py, documents.py, admin.py)
 - [X] T029 [P] Implement global error handler and logging configuration in backend/app/main.py
-- [X] T030 [P] Configure environment variables and settings management in backend/app/config.py
+- [X] T030 [P] Configure environment variables and settings management in backend/app/config.py (include PER_USER_QUOTA_GB=10, TOTAL_STORAGE_CAPACITY_GB=500, SESSION_TIMEOUT_MINUTES=30)
 
 ### LLM Service Setup
 
@@ -127,12 +127,13 @@
 - [X] T053 [US1] Implement streaming response handling with EventSource in frontend/src/lib/api.ts (streamChat function)
 - [X] T054 [US1] Integrate chat components with API client in frontend/src/app/(user)/chat/page.tsx
 - [X] T055 [US1] Add error handling and user-friendly error messages in chat interface
+- [ ] T055a [P] [US1] Add truncated response indicator in frontend/src/components/chat/MessageList.tsx (detect truncation marker from EC-001, display warning banner "응답이 길이 제한으로 잘렸습니다" with suggestion)
 
 ### Deployment & Validation
 
 - [X] T056 [US1] Create initial admin user creation script in backend/scripts/create_admin.py
 - [X] T057 [US1] Update docker-compose.yml with health checks for all services
-- [ ] T058 [US1] **[헌법 검증 필수]** Write deployment validation script in scripts/validate-deployment.sh that verifies: (1) All services start without internet, (2) Can create user and login, (3) Can submit query and receive response, (4) All API endpoints return Korean error messages. Script must exit with error code if any check fails. Validates constitution principles I (Air-Gap) and III (Security).
+- [ ] T058 [US1] **[헌법 검증 필수]** Write deployment validation script in scripts/validate-deployment.sh that verifies: (1) Block all external network with iptables/firewall rules (OUTPUT policy DROP except loopback), (2) Start all services via docker-compose up and verify no connection errors, (3) Create admin user and login via API, (4) Submit Korean query and receive response, (5) Verify all API error responses use Korean messages, (6) Restore network access. Script must exit with non-zero code if any check fails. Validates constitution principles I (Air-Gap) and III (Security).
 - [ ] T059 [US1] **[헌법 검증 필수]** Test Korean language quality in scripts/test-korean-quality.py with 50+ diverse queries covering: administrative tasks, document drafting, policy questions, follow-up context. Manually review responses using rubric: grammar (0-10), relevance (0-10), Korean naturalness (0-10). Target: 90% queries score ≥24/30 total (80% threshold). Log all scores to results.json. Validates constitution principle II (Korean Language Support).
 
 **Checkpoint**: ✅ User Story 1 implementation complete - employees can log in, ask questions, and receive streaming LLM responses with context. Testing pending.
@@ -239,7 +240,9 @@
 - [X] T102 [US4] Implement session timeout mechanism (30 minutes) in backend/app/services/auth_service.py (update expires_at on each request)
 - [X] T103 [US4] Implement session cleanup background task in backend/app/services/auth_service.py (delete expired sessions)
 - [ ] T104 [US4] Add concurrent user request handling optimization (async/await throughout) in backend/app/api/v1/chat.py
-- [ ] T105 [US4] Implement request queuing for LLM service (if concurrent requests exceed max_num_seqs) in backend/app/services/llm_service.py
+- [ ] T105 [US4] Implement request queuing for LLM service (if concurrent requests exceed max_num_seqs=16) in backend/app/services/llm_service.py (queue with priority, return queue position and estimated wait time)
+- [ ] T105a [P] [US4] Create queue position indicator component in frontend/src/components/chat/QueueIndicator.tsx (display queue position, estimated wait time in Korean "대기 순번: N번, 예상 대기 시간: M초")
+- [ ] T105b [US4] Integrate queue position display in chat interface in frontend/src/app/(user)/chat/page.tsx (show QueueIndicator when response includes queue_position metadata)
 
 ### Frontend Implementation
 
@@ -292,7 +295,7 @@
 - [X] T130 [US5] Add storage warning indicator (when >80% full) in storage page
 - [X] T131 [US5] Add admin-only route protection in frontend/src/app/admin pages (check is_admin from user profile)
 - [X] T131a [P] [US5] Implement per-user storage quota calculation in backend/app/services/admin_service.py (sum file sizes by user_id)
-- [X] T131b [P] [US5] Add storage quota warning to file upload endpoint in backend/app/api/v1/documents.py (check before allowing upload)
+- [X] T131b [P] [US5] Add storage quota warning to file upload endpoint in backend/app/api/v1/documents.py (check before allowing upload, use PER_USER_QUOTA_GB from config.py, default 10GB per Assumption #6)
 - [X] T131c [P] [US5] Create storage usage visualization in frontend/src/app/admin/storage/page.tsx (per-user breakdown, total capacity)
 
 ### Storage Management (FR-019, FR-020, FR-023)
@@ -300,9 +303,13 @@
 - [ ] T159 [P] [US5] Implement per-user storage quota warning in backend/app/api/v1/documents.py (check before upload, return warning if user >80% quota)
 - [ ] T160 [P] [US5] Implement system-wide storage capacity check in backend/app/api/v1/documents.py (reject upload with 423 Locked if system >95% capacity)
 - [ ] T161 [P] [US5] Create storage warning notification service in backend/app/services/notification_service.py (email or in-app notification when quota exceeded)
-- [ ] T162 [P] [US5] Implement document retention policy management in backend/app/services/admin_service.py (configurable retention days, automatic cleanup job)
-- [ ] T163 [US5] Create retention policy configuration endpoint POST /admin/retention-policy in backend/app/api/v1/admin.py (set retention days per document type)
-- [ ] T164 [P] [US5] Add user notification for admin-initiated document deletion in backend/app/services/notification_service.py (notify affected users)
+- [ ] T162 [P] [US5] Implement document retention policy data model in backend/app/models/retention_policy.py (policy table with document_type, retention_days, enabled)
+- [ ] T162a [US5] Create retention policy configuration endpoint POST /admin/retention-policy in backend/app/api/v1/admin.py (set retention days per document type)
+- [ ] T162b [P] [US5] Implement retention policy configuration UI in frontend/src/app/admin/settings/page.tsx (form to set retention days per document type, enable/disable cleanup)
+- [ ] T162c [US5] Create automatic cleanup cron job in backend/app/services/scheduler.py (check daily at 2 AM, delete documents older than retention period, log deletions)
+- [ ] T162d [P] [US5] Implement retention policy service in backend/app/services/retention_service.py (calculate expired documents, execute deletion with transaction safety)
+- [ ] T163 [US5] Add retention policy status display in admin dashboard (show active policies, next cleanup time, last cleanup results)
+- [ ] T164 [P] [US5] Add user notification for admin-initiated document deletion in backend/app/services/notification_service.py (notify affected users via in-app message or email)
 - [ ] T165 [P] [US5] Create storage quota warning banner in frontend/src/components/documents/StorageWarning.tsx (show when user >80% quota)
 - [ ] T166 [P] [US5] Add upload prevention UI in frontend/src/components/documents/FileUploader.tsx (disable upload button, show error message when system >95%)
 
@@ -354,6 +361,7 @@
 - [ ] T154 Test full air-gapped deployment procedure per quickstart.md (image export, transfer, import, deploy)
 - [ ] T155 Perform load testing with 10 concurrent users in scripts/load-test.py (verify SC-002: <20% degradation)
 - [ ] T156 Verify Korean language response quality across 50+ test queries in scripts/test-korean-quality.py
+- [ ] T156a Create context preservation test script in scripts/test-context-preservation.py per SC-007 (create 10 multi-message conversations, wait 24 hours or manipulate system time, verify message preservation and context-aware follow-up responses)
 - [ ] T157 Test document processing with various Korean PDF/DOCX files (government documents)
 - [ ] T158 Create emergency recovery procedures document in docs/disaster-recovery.md
 - [ ] T167 Test storage quota warning triggers correctly at 80% user capacity
@@ -514,17 +522,17 @@ Each deployment adds value without breaking previous features!
 
 ## Task Summary
 
-**Total Tasks**: 162
+**Total Tasks**: 177 (updated after /speckit.analyze remediation)
 
 **Tasks per Phase**:
 - Phase 1 (Setup): 8 tasks
 - Phase 2 (Foundational): 30 tasks
-- Phase 3 (User Story 1 - Basic Chat): 21 tasks
+- Phase 3 (User Story 1 - Basic Chat): 22 tasks (added T055a for truncated response UI)
 - Phase 4 (User Story 2 - History): 17 tasks
 - Phase 5 (User Story 3 - Documents): 21 tasks
-- Phase 6 (User Story 4 - Multi-User): 13 tasks
-- Phase 7 (User Story 5 - Administrator): 24 tasks (added T131a, T131b, T131c for storage management)
-- Phase 8 (Polish): 28 tasks (added T139a for network interruption handling)
+- Phase 6 (User Story 4 - Multi-User): 15 tasks (added T105a, T105b for queue UX)
+- Phase 7 (User Story 5 - Administrator): 28 tasks (expanded T162 into T162a-d for retention policy, updated T163)
+- Phase 8 (Polish): 36 tasks (added T139a for network interruption, T156a for context preservation test)
 
 **Parallel Opportunities**:
 - 79 tasks marked [P] can run in parallel (50% of total)
@@ -537,7 +545,7 @@ Each deployment adds value without breaking previous features!
 
 **MVP Scope**:
 - Phases 1-3 only (Setup + Foundational + User Story 1)
-- 59 tasks total for MVP (unchanged - new tasks are in Phase 7 and 8)
+- 60 tasks total for MVP (added T055a for truncated response indicator)
 - Delivers core value: air-gapped LLM chat for government employees
 
 ---

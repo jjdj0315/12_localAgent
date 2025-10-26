@@ -13,6 +13,8 @@ import { Conversation } from '@/types/conversation'
 import ConversationCard from '@/components/chat/ConversationCard'
 import SearchBar from '@/components/chat/SearchBar'
 
+export const dynamic = 'force-dynamic'
+
 export default function HistoryPage() {
   const router = useRouter()
   const queryClient = useQueryClient()

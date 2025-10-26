@@ -3,7 +3,7 @@ ConversationDocument association model for linking conversations to documents.
 """
 from sqlalchemy import Column, ForeignKey, Table
 from sqlalchemy.dialects.postgresql import UUID
-from backend.app.core.database import Base
+from app.core.database import Base
 
 # Association table for many-to-many relationship between conversations and documents
 conversation_document = Table(
@@ -21,4 +21,5 @@ conversation_document = Table(
         ForeignKey("documents.id", ondelete="CASCADE"),
         primary_key=True,
     ),
+    extend_existing=True,
 )
