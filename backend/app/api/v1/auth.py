@@ -41,14 +41,14 @@ async def login(
 
     # Set session cookie with secure settings
     # httponly=True prevents XSS attacks
-    # secure=True requires HTTPS (set to False only for local development)
-    # samesite="strict" prevents CSRF attacks
+    # secure=False for local development (set to True for production)
+    # samesite="lax" for local development
     response.set_cookie(
         key="session_token",
         value=session.session_token,
         httponly=True,  # Prevent JavaScript access (XSS protection)
-        secure=True,  # Require HTTPS in production
-        samesite="strict",  # Strict CSRF protection
+        secure=False,  # Set to True in production with HTTPS
+        samesite="lax",  # Relaxed for local development
         max_age=30 * 60,  # 30 minutes
         path="/",
         domain=None,  # Let browser set domain

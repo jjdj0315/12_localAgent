@@ -37,7 +37,6 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
 
     # LLM Service
-    LLM_SERVICE_URL: str = os.getenv("LLM_SERVICE_URL", "http://localhost:8001")
     MAX_RESPONSE_LENGTH: int = 4000  # characters
 
     # File Upload
