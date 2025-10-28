@@ -27,7 +27,10 @@
       "Bash(Select-String -Pattern \"✓|Failed|Error:\" -CaseSensitive)",
       "Bash(timeout 20 powershell:*)",
       "Bash(timeout:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(Select-String \"12_localagent-backend\")",
+      "Bash(if not exist \"C:\\02_practice\\12_localAgent\\specs\\001-local-llm-webapp\\checklists\" mkdir \"C:\\02_practice\\12_localAgent\\specs\\001-local-llm-webapp\\checklists\")",
+      "SlashCommand(/speckit.plan)"
     ],
     "deny": [],
     "ask": []

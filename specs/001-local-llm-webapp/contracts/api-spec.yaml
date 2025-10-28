@@ -35,6 +35,8 @@ tags:
     description: Conversation history management
   - name: Documents
     description: Document upload and management
+  - name: Tags
+    description: Tag management and auto-tagging (FR-043)
   - name: Admin
     description: Administrator functions (user management, system monitoring)
 
@@ -428,14 +430,22 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /documents:
+  /conversations/{conversation_id}/documents:
     get:
       tags: [Documents]
-      summary: List user's documents
-      description: Retrieve user's uploaded documents
+      summary: List documents in conversation
+      description: |
+        Retrieve documents uploaded to a specific conversation.
+        **Scope Change (Clarification 2025-10-28)**: Documents are conversation-scoped.
       security:
         - cookieAuth: []
       parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
         - name: limit
           in: query
           schema:
@@ -451,7 +461,7 @@ paths:
             default: 0
       responses:
         '200':
-          description: List of documents
+          description: List of documents in conversation
           content:
             application/json:
               schema:
@@ -465,11 +475,18 @@ paths:
                     type: integer
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Conversation not found
 
     post:
       tags: [Documents]
-      summary: Upload document
-      description: Upload PDF, TXT, or DOCX file for analysis
+      summary: Upload document to conversation
+      description: |
+        Upload PDF, TXT, or DOCX file for analysis within a specific conversation.
+        **Scope Change (Clarification 2025-10-28)**: Documents are conversation-scoped,
+        accessible only within the conversation they are uploaded to.
       security:
         - cookieAuth: []
       requestBody:
@@ -478,8 +495,12 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [file]
+              required: [file, conversation_id]
               properties:
+                conversation_id:
+                  type: string
+                  format: uuid
+                  description: Conversation to attach document to
                 file:
                   type: string
                   format: binary
@@ -759,6 +780,301 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /tags:
+    get:
+      tags: [Tags]
+      summary: List all tags
+      description: Retrieve organization-wide tags for filtering conversations
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: active_only
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: Filter by active tags only
+      responses:
+        '200':
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tags:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tag'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Tags]
+      summary: Create tag (admin only)
+      description: Create new organization-wide tag with keywords for auto-matching (FR-043)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, color]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                  example: "인사"
+                keywords:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 10
+                  example: ["HR", "직원", "채용", "급여"]
+                  description: Optional keywords for semantic matching
+                color:
+                  type: string
+                  pattern: '^#[0-9A-Fa-f]{6}$'
+                  example: "#FF5733"
+                icon:
+                  type: string
+                  maxLength: 50
+                  example: "user-group"
+                  description: Optional icon name
+      responses:
+        '201':
+          description: Tag created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Tag name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tags/{tag_id}:
+    put:
+      tags: [Tags]
+      summary: Update tag (admin only)
+      description: Update tag name, keywords, color, or icon
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: tag_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+                keywords:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 10
+                color:
+                  type: string
+                  pattern: '^#[0-9A-Fa-f]{6}$'
+                icon:
+                  type: string
+                  maxLength: 50
+      responses:
+        '200':
+          description: Tag updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Tags]
+      summary: Delete tag (admin only)
+      description: Delete tag if not in use, or soft delete if usage_count > 0
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: tag_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: force
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Force soft delete even if in use (requires confirmation)
+      responses:
+        '204':
+          description: Tag deleted successfully
+        '400':
+          description: Tag in use, requires force=true
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      usage_count:
+                        type: integer
+                        description: Number of conversations using this tag
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /conversations/{conversation_id}/auto-tag:
+    post:
+      tags: [Tags]
+      summary: Trigger automatic tag assignment
+      description: Analyze conversation content and assign matching tags using semantic similarity (FR-043)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tags auto-assigned successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assigned_tags:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Tag'
+                        - type: object
+                          properties:
+                            confidence_score:
+                              type: number
+                              format: float
+                              minimum: 0
+                              maximum: 1
+                              description: Semantic similarity score
+                  message:
+                    type: string
+                    example: "3 tags auto-assigned"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /conversations/{conversation_id}/tags/{tag_id}:
+    put:
+      tags: [Tags]
+      summary: Manually add tag to conversation
+      description: Add tag to conversation (user override of auto-assignment)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: tag_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tag added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Tag added to conversation"
+        '400':
+          description: Tag already assigned or max tags reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Tags]
+      summary: Remove tag from conversation
+      description: Remove tag from conversation (user or system-assigned)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: tag_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Tag removed successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   securitySchemes:
     cookieAuth:
@@ -800,7 +1116,20 @@ components:
         tags:
           type: array
           items:
-            type: string
+            allOf:
+              - $ref: '#/components/schemas/Tag'
+              - type: object
+                properties:
+                  assigned_by:
+                    type: string
+                    enum: [system, user]
+                    description: How tag was assigned
+                  confidence_score:
+                    type: number
+                    format: float
+                    nullable: true
+                    description: Similarity score for system-assigned tags
+          description: Tags associated with conversation (FR-043)
         created_at:
           type: string
           format: date-time
@@ -834,6 +1163,10 @@ components:
         id:
           type: string
           format: uuid
+        conversation_id:
+          type: string
+          format: uuid
+          description: Parent conversation (documents are conversation-scoped, Clarification 2025-10-28)
         user_id:
           type: string
           format: uuid
@@ -848,6 +1181,53 @@ components:
         uploaded_at:
           type: string
           format: date-time
+        last_accessed_at:
+          type: string
+          format: date-time
+          description: Last access timestamp for auto-cleanup (Clarification 2025-10-28)
+
+    Tag:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Tag display name (e.g., "인사", "회계")
+          example: "인사"
+        keywords:
+          type: array
+          items:
+            type: string
+          description: Optional keywords for semantic matching
+          example: ["HR", "직원", "채용"]
+          nullable: true
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          description: Hex color code for UI display
+          example: "#FF5733"
+        icon:
+          type: string
+          description: Icon name for UI
+          example: "user-group"
+          nullable: true
+        usage_count:
+          type: integer
+          description: Number of conversations using this tag
+          example: 15
+        created_by_admin_id:
+          type: string
+          format: uuid
+          description: Admin who created the tag
+        created_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+          description: Active status (false = soft deleted)
+          default: true
 
     Error:
       type: object

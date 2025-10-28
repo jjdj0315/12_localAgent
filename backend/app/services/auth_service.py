@@ -53,6 +53,11 @@ class AuthService:
         """
         Create a new session for user.
 
+        Per FR-030 and Clarification 2025-10-28:
+        - Maximum 3 concurrent sessions per user
+        - If 4th login, automatically terminate oldest session by last_activity
+        - Terminated session will receive 401 on next request with message
+
         Args:
             db: Database session
             user_id: User ID
@@ -60,11 +65,40 @@ class AuthService:
         Returns:
             Created session
         """
+        from sqlalchemy import desc, func
+
+        # Count active sessions for this user
+        session_count_result = await db.execute(
+            select(func.count(Session.id)).where(Session.user_id == user_id)
+        )
+        session_count = session_count_result.scalar() or 0
+
+        # If user has 3+ sessions, delete oldest by last_activity
+        if session_count >= 3:
+            # Get oldest session
+            oldest_session_result = await db.execute(
+                select(Session)
+                .where(Session.user_id == user_id)
+                .order_by(Session.last_activity.asc())
+                .limit(1)
+            )
+            oldest_session = oldest_session_result.scalar_one_or_none()
+
+            if oldest_session:
+                await db.delete(oldest_session)
+                await db.flush()  # Ensure deletion completes before creating new session
+                # Note: The frontend will detect 401 on next API request from that session
+                # and display "다른 위치에서 로그인하여 종료되었습니다."
+
         session_token = generate_session_token()
         expires_at = get_session_expiry()
+        now = datetime.now(timezone.utc)
 
         session = Session(
-            user_id=user_id, session_token=session_token, expires_at=expires_at
+            user_id=user_id,
+            session_token=session_token,
+            expires_at=expires_at,
+            last_activity=now
         )
 
         db.add(session)
@@ -79,6 +113,8 @@ class AuthService:
     ) -> Optional[Session]:
         """
         Get session by token.
+
+        Updates last_activity on every request (for session limit enforcement).
 
         Args:
             db: Database session
@@ -103,7 +139,9 @@ class AuthService:
             return None
 
         # Update session expiry (refresh session on each request - 30 minute sliding window)
+        # Also update last_activity for session limit enforcement (Clarification 2025-10-28)
         session.expires_at = get_session_expiry()
+        session.last_activity = now
         await db.commit()
 
         return session

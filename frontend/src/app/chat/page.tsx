@@ -131,9 +131,10 @@ export default function ChatPage() {
             conversationsAPI.get(messageData.conversation_id).then((conv) => {
               setConversationTitle(conv.title)
             })
-            // Refresh conversation list to show the new conversation
-            conversationListRef.current?.refresh()
           }
+
+          // Always refresh conversation list to update timestamps and message counts
+          conversationListRef.current?.refresh()
         },
         // onError: show error message
         (error: Error) => {

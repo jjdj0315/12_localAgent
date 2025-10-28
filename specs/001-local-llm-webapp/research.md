@@ -468,6 +468,122 @@ async def stream_chat(prompt: str):
 
 ---
 
+---
+
+## 16. Backup Strategy (FR-042)
+
+### Decision: pg_dump + rsync + cron
+
+**Backup Tools**:
+- **PostgreSQL**: `pg_dump` (native, reliable, supports incremental)
+- **Files**: `rsync` (efficient, supports hard links for space savings)
+- **Scheduling**: `cron` (simple, built-in, no extra dependencies)
+
+**Rationale**:
+- **pg_dump**: Standard PostgreSQL backup tool, proven reliability, custom format supports compression
+- **rsync**: Incremental file transfer, `--link-dest` creates space-efficient snapshots
+- **cron**: Simple, reliable, familiar to Linux admins
+- **No Bacula/Amanda**: Too complex for small deployment
+
+**Backup Schedule**:
+```
+Daily incremental:   2 AM every day (pg_dump + rsync)
+Weekly full backup:  2 AM every Sunday (complete snapshot)
+Cleanup old backups: 3 AM daily (delete > 30 days)
+```
+
+**Storage Requirements**:
+- Database size estimate: 500MB (5 years of data)
+- Daily incremental: ~10MB/day (delta only)
+- Weekly full: 500MB + documents (~10GB)
+- **Total backup storage**: ~1TB recommended
+
+**Alternatives Considered**:
+- **Barman**: PostgreSQL-specific backup tool, but adds complexity
+- **Borg Backup**: Excellent deduplication, but learning curve for admins
+- **Manual scripts**: Chosen for transparency and simplicity
+
+**Implementation**:
+```bash
+# /opt/llm-webapp/scripts/backup-daily.sh
+#!/bin/bash
+DATE=$(date +%Y%m%d)
+pg_dump -U postgres -F c -d llm_webapp -f /backup/daily/db_${DATE}.dump
+rsync -a --link-dest=../$(date -d "1 day ago" +%Y%m%d) /uploads /backup/daily/uploads_${DATE}
+```
+
+**Restore Testing**:
+- Monthly restore drill recommended
+- Documented procedure in admin panel
+- Estimated restore time: < 30 minutes for full restore
+
+---
+
+## 17. Semantic Tag Matching (FR-043)
+
+### Decision: sentence-transformers + cosine similarity
+
+**Embedding Model**:
+- **Model**: `paraphrase-multilingual-MiniLM-L12-v2`
+- **Rationale**:
+  - Supports Korean + English (multilingual)
+  - Small size (~420MB) for offline installation
+  - Optimized for semantic similarity tasks
+  - 384-dimensional embeddings (efficient)
+
+**Alternatives Considered**:
+- **OpenAI Embeddings**: Requires internet, violates air-gap
+- **Korean-specific models (KoSBERT)**: Larger, less maintained
+- **LLM-based classification**: Slower, higher resource usage
+- **TF-IDF + cosine**: Simple but poor semantic understanding
+
+**Matching Strategy**:
+1. **Conversation Embedding**:
+   - Concatenate all messages in conversation
+   - Generate single embedding vector (384-dim)
+
+2. **Tag Embedding**:
+   - Combine tag name + keywords: `"인사 HR 직원 채용"`
+   - Generate embedding for each tag
+   - Cache embeddings (recompute only when tag updated)
+
+3. **Similarity Calculation**:
+   - Cosine similarity between conversation and each tag
+   - Threshold: 0.7 (configurable)
+   - Assign top N matching tags (limit: 5 per conversation)
+
+**Performance**:
+- Embedding generation: ~50ms for 1000-token conversation
+- Similarity calculation: <1ms per tag comparison
+- Total time: <200ms for 20 tags (acceptable for async background task)
+
+**Fallback to LLM**:
+- If embedding quality < 80% accuracy (measured in testing):
+- Use Llama-3-8B with classification prompt:
+  ```
+  다음 대화를 분석하여 관련성 높은 태그를 선택하세요.
+  태그 목록: [인사, 회계, 법무, IT]
+  대화 내용: [...]
+  출력 형식: JSON array ["태그1", "태그2"]
+  ```
+- Trade-off: Higher accuracy but 3-5x slower
+
+**Implementation Details**:
+```python
+# Cache embeddings to avoid recomputation
+tag_embeddings = {}
+for tag in tags:
+    if tag.id not in tag_embeddings:
+        tag_embeddings[tag.id] = model.encode(f"{tag.name} {' '.join(tag.keywords)}")
+```
+
+**Quality Metrics**:
+- Measure precision/recall with test conversations
+- Target: 80% precision, 70% recall
+- Allow manual correction by users
+
+---
+
 ## Research Summary
 
 All technical unknowns have been resolved with concrete decisions prioritizing:
@@ -476,10 +592,14 @@ All technical unknowns have been resolved with concrete decisions prioritizing:
 3. **Hardware minimalism**: Llama-3-8B + vLLM optimizations fit 16GB GPU
 4. **Performance**: Streaming responses, async backend, optimized inference
 5. **Security**: Defense-in-depth despite air-gap environment
+6. **Backup reliability**: pg_dump + rsync with 30-day retention (FR-042)
+7. **Tag intelligence**: sentence-transformers for semantic matching with LLM fallback (FR-043)
 
 **Risk Mitigation**:
 - **Korean quality**: Test early with Llama 3; fallback to Korean model if needed
 - **Hardware fit**: Quantize model (4-bit) to ensure 16GB VRAM sufficient
 - **Complexity**: Avoid Django, Kubernetes, Redis initially; add if proven necessary
+- **Backup testing**: Monthly restore drills to verify backup integrity
+- **Tag accuracy**: Measure precision/recall, allow manual override
 
 Ready to proceed to **Phase 1: Data Model & Contracts**.
