@@ -6,13 +6,33 @@ import { useRouter } from 'next/navigation'
 import { chatAPI, conversationsAPI } from '@/lib/api'
 import ConversationList, { ConversationListHandle } from '@/components/chat/ConversationList'
 import DocumentSelector from '@/components/chat/DocumentSelector'
+import FilterWarningModal from '@/components/safety/FilterWarningModal'
+import PIIMaskingNotice from '@/components/safety/PIIMaskingNotice'
+import ReActDisplay from '@/components/react/ReActDisplay'
 import type { Message as APIMessage } from '@/types/conversation'
+
+interface ReActStep {
+  iteration: number
+  thought: string
+  action?: string
+  action_input?: Record<string, any>
+  observation?: string
+  timestamp: string
+}
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  react_steps?: ReActStep[]
+  tools_used?: string[]
+}
+
+interface FilterWarning {
+  message: string
+  categories: string[]
+  canRetry: boolean
 }
 
 export default function ChatPage() {
@@ -27,6 +47,15 @@ export default function ChatPage() {
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const conversationListRef = useRef<ConversationListHandle>(null)
+
+  // Safety Filter states
+  const [filterWarning, setFilterWarning] = useState<FilterWarning | null>(null)
+  const [showFilterModal, setShowFilterModal] = useState(false)
+  const [piiMasked, setPiiMasked] = useState(false)
+  const [bypassFilter, setBypassFilter] = useState(false)
+
+  // ReAct Agent state
+  const [useReActAgent, setUseReActAgent] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -84,6 +113,11 @@ export default function ChatPage() {
     setInput('')
     setIsLoading(true)
 
+    // Reset PII notice and bypass flag
+    setPiiMasked(false)
+    const currentBypassFlag = bypassFilter
+    setBypassFilter(false)
+
     // Small delay to ensure different timestamp
     await new Promise(resolve => setTimeout(resolve, 10))
 
@@ -99,13 +133,85 @@ export default function ChatPage() {
     console.log('Creating assistant message placeholder:', assistantMessageId)
     setMessages((prev) => [...prev, assistantMessage])
 
-    try {
-      await chatAPI.streamMessage(
-        {
+    // Use non-streaming API when ReAct is enabled
+    if (useReActAgent) {
+      try {
+        const response = await chatAPI.sendMessage({
           content: currentInput,
           conversation_id: selectedConversationId,
           document_ids: selectedDocuments.length > 0 ? selectedDocuments : undefined,
-        },
+          bypass_filter: currentBypassFlag,
+          use_react_agent: true,
+        })
+
+        // Update assistant message with response
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? {
+                  ...msg,
+                  content: response.message.content,
+                  react_steps: response.react_steps,
+                  tools_used: response.tools_used,
+                }
+              : msg
+          )
+        )
+
+        setIsLoading(false)
+
+        // Update conversation ID if this was a new conversation
+        if (response.conversation_id && !selectedConversationId) {
+          setSelectedConversationId(response.conversation_id)
+          conversationsAPI.get(response.conversation_id).then((conv) => {
+            setConversationTitle(conv.title)
+          })
+        }
+
+        // Refresh conversation list
+        conversationListRef.current?.refresh()
+      } catch (error: any) {
+        console.error('ReAct error:', error)
+
+        // Check if this is a content filter error
+        if (error.error === 'content_filtered' || error.details?.error === 'content_filtered') {
+          // Remove the placeholder assistant message
+          setMessages((prev) => prev.filter((msg) => msg.id !== assistantMessageId))
+
+          // Show filter warning modal
+          setFilterWarning({
+            message: error.message || error.details?.message || '콘텐츠가 필터링되었습니다.',
+            categories: error.details?.categories || [],
+            canRetry: error.details?.can_retry || false
+          })
+          setShowFilterModal(true)
+          setInput(currentInput) // Restore input for retry
+        } else {
+          // Regular error
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? {
+                    ...msg,
+                    content: '죄송합니다. 오류가 발생했습니다: ' + (error.message || '알 수 없는 오류'),
+                  }
+                : msg
+            )
+          )
+        }
+        setIsLoading(false)
+      }
+    } else {
+      // Use streaming API for standard mode
+      try {
+        await chatAPI.streamMessage(
+          {
+            content: currentInput,
+            conversation_id: selectedConversationId,
+            document_ids: selectedDocuments.length > 0 ? selectedDocuments : undefined,
+            bypass_filter: currentBypassFlag,
+            use_react_agent: false,
+          },
         // onToken: append to assistant message
         (token: string) => {
           console.log('Token received for', assistantMessageId, ':', token)
@@ -136,36 +242,79 @@ export default function ChatPage() {
           // Always refresh conversation list to update timestamps and message counts
           conversationListRef.current?.refresh()
         },
-        // onError: show error message
-        (error: Error) => {
+        // onError: show error message or filter warning
+        (error: any) => {
           console.error('Chat error:', error)
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? {
-                    ...msg,
-                    content: '죄송합니다. 오류가 발생했습니다: ' + error.message,
-                  }
-                : msg
+
+          // Check if this is a content filter error
+          if (error.error === 'content_filtered') {
+            // Remove the placeholder assistant message
+            setMessages((prev) => prev.filter((msg) => msg.id !== assistantMessageId))
+
+            // Show filter warning modal
+            setFilterWarning({
+              message: error.message || '콘텐츠가 필터링되었습니다.',
+              categories: error.categories || [],
+              canRetry: error.can_retry || false
+            })
+            setShowFilterModal(true)
+            setInput(currentInput) // Restore input for retry
+          } else {
+            // Regular error
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId
+                  ? {
+                      ...msg,
+                      content: '죄송합니다. 오류가 발생했습니다: ' + error.message,
+                    }
+                  : msg
+              )
             )
-          )
+          }
           setIsLoading(false)
         }
       )
-    } catch (error: any) {
-      console.error('Chat error:', error)
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMessageId
-            ? {
-                ...msg,
-                content: '죄송합니다. 오류가 발생했습니다: ' + error.message,
-              }
-            : msg
+      } catch (error: any) {
+        console.error('Chat error:', error)
+
+      // Check if this is a content filter error
+      if (error.error === 'content_filtered') {
+        // Remove the placeholder assistant message
+        setMessages((prev) => prev.filter((msg) => msg.id !== assistantMessageId))
+
+        // Show filter warning modal
+        setFilterWarning({
+          message: error.message || '콘텐츠가 필터링되었습니다.',
+          categories: error.categories || [],
+          canRetry: error.can_retry || false
+        })
+        setShowFilterModal(true)
+        setInput(currentInput) // Restore input for retry
+      } else {
+        // Regular error
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? {
+                  ...msg,
+                  content: '죄송합니다. 오류가 발생했습니다: ' + error.message,
+                }
+              : msg
+          )
         )
-      )
+      }
       setIsLoading(false)
+      }
     }
+  }
+
+  // Handle retry with filter bypass
+  const handleRetryWithBypass = () => {
+    setBypassFilter(true)
+    setShowFilterModal(false)
+    // Automatically send with bypass flag
+    setTimeout(() => handleSend(), 100)
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -258,25 +407,35 @@ export default function ChatPage() {
             )}
 
             {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
+              <div key={message.id}>
+                {/* ReAct Display for assistant messages with ReAct steps */}
+                {message.role === 'assistant' && message.react_steps && message.tools_used && (
+                  <ReActDisplay
+                    steps={message.react_steps}
+                    toolsUsed={message.tools_used}
+                  />
+                )}
+
+                {/* Regular message bubble */}
                 <div
-                  className={`max-w-[80%] rounded-lg px-4 py-3 ${
-                    message.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white text-gray-900 shadow-sm'
-                  }`}
+                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                  <p
-                    className={`mt-1 text-xs ${
-                      message.role === 'user' ? 'text-blue-100' : 'text-gray-400'
+                  <div
+                    className={`max-w-[80%] rounded-lg px-4 py-3 ${
+                      message.role === 'user'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-900 shadow-sm'
                     }`}
                   >
-                    {message.timestamp.toLocaleTimeString('ko-KR')}
-                  </p>
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    <p
+                      className={`mt-1 text-xs ${
+                        message.role === 'user' ? 'text-blue-100' : 'text-gray-400'
+                      }`}
+                    >
+                      {message.timestamp.toLocaleTimeString('ko-KR')}
+                    </p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -300,11 +459,47 @@ export default function ChatPage() {
         {/* Input */}
         <div className="border-t bg-white p-6 shadow-lg">
           <div className="mx-auto max-w-3xl space-y-4">
+            {/* PII Masking Notice */}
+            {piiMasked && (
+              <PIIMaskingNotice
+                piiDetails={[
+                  { type: 'korean_id', description: '주민등록번호', count: 1 }
+                ]}
+                onDismiss={() => setPiiMasked(false)}
+              />
+            )}
+
             {/* Document Selector */}
             <DocumentSelector
               selectedDocuments={selectedDocuments}
               onSelectionChange={setSelectedDocuments}
             />
+
+            {/* ReAct Agent Toggle */}
+            <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg px-4 py-3">
+              <div className="flex items-center">
+                <span className="text-lg mr-2">🤖</span>
+                <div>
+                  <div className="text-sm font-medium text-purple-900">ReAct 에이전트 모드</div>
+                  <div className="text-xs text-purple-600">
+                    AI가 도구를 사용하여 단계별로 문제를 해결합니다
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setUseReActAgent(!useReActAgent)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  useReActAgent ? 'bg-purple-600' : 'bg-gray-300'
+                }`}
+                aria-label="ReAct 에이전트 모드 전환"
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    useReActAgent ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
 
             <div className="flex gap-2">
               <textarea
@@ -327,6 +522,18 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+
+      {/* Filter Warning Modal */}
+      {filterWarning && (
+        <FilterWarningModal
+          isOpen={showFilterModal}
+          onClose={() => setShowFilterModal(false)}
+          onRetry={filterWarning.canRetry ? handleRetryWithBypass : undefined}
+          message={filterWarning.message}
+          categories={filterWarning.categories}
+          canRetry={filterWarning.canRetry}
+        />
+      )}
     </div>
   )
 }

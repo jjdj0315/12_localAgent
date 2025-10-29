@@ -5,9 +5,9 @@
 
 ## Summary
 
-Build an air-gapped Local LLM web application for small local government employees to use AI assistance for administrative tasks without internet connectivity. The system provides conversational AI, document analysis, conversation history management, and multi-user support with administrative oversight - all running on local infrastructure using Meta-Llama-3-8B with vLLM for inference optimization.
+Build an air-gapped Local LLM web application for small local government employees to use AI assistance for administrative tasks without internet connectivity. The system provides conversational AI, document analysis, conversation history management, multi-user support with administrative oversight, **plus advanced features: Safety Filter (content moderation + PII masking), ReAct Agent (tool-augmented reasoning), and Multi-Agent System (task-specialized agents)** - all running on local infrastructure using Qwen2.5-1.5B-Instruct with HuggingFace Transformers for CPU-compatible deployment.
 
-**Key Value**: Replace unavailable cloud-based AI services (ChatGPT, Gemini) with a secure, locally-hosted alternative that maintains data privacy in a closed network environment.
+**Key Value**: Replace unavailable cloud-based AI services (ChatGPT, Gemini) with a secure, locally-hosted alternative that maintains data privacy in a closed network environment, while providing government-specific safety controls and task automation.
 
 ## Technical Context
 
@@ -26,11 +26,12 @@ Build an air-gapped Local LLM web application for small local government employe
 - SQLAlchemy ORM with Alembic migrations
 
 **LLM Infrastructure**:
-- Model: meta-llama/Meta-Llama-3-8B
-- Inference Engine: vLLM (optimized for throughput and latency)
+- Model: Qwen/Qwen2.5-1.5B-Instruct (primary, CPU-optimized) or meta-llama/Meta-Llama-3-8B (optional, GPU-accelerated)
+- Inference Engine: HuggingFace Transformers with BitsAndBytes 4-bit quantization (NF4) for CPU compatibility
 - Streaming: Server-Sent Events (SSE) for real-time response streaming
 - Context Management: 10-message window (5 user + 5 AI), 2,048 token limit, FIFO removal when exceeded (FR-036)
 - Response Limits: Default 4,000 characters / Document generation mode 10,000 characters (FR-017)
+- **Safety Filter Integration**: All user inputs and LLM outputs pass through two-phase filtering before processing/delivery (FR-050)
 
 **Document Processing**:
 - **pdfplumber** for PDF extraction (선택 이유: PyPDF2 대비 한글 텍스트 추출 품질 우수, 표/레이아웃 구조 보존, 활발한 유지보수)
@@ -43,6 +44,47 @@ Build an air-gapped Local LLM web application for small local government employe
   - Strategy: Embed conversation content + tag keywords, calculate cosine similarity
   - Threshold: Auto-assign tags with similarity > 0.7
   - Fallback: LLM-based classification if embedding quality insufficient
+
+**Safety Filter System** (FR-050 series):
+- **Two-Phase Filtering**:
+  - Phase 1 (Rule-based): Keyword matching + regex patterns for 5 categories (violence, sexual, dangerous, hate, PII)
+  - Phase 2 (ML-based): unitary/toxic-bert (~400MB, multilingual, CPU-compatible) for toxic content classification
+- **PII Detection & Masking** (FR-052):
+  - 주민등록번호: 6 digits + dash + 7 digits → 123456-*******
+  - Phone: 010-XXXX-XXXX or 01XXXXXXXXX → 010-****-****
+  - Email: user@domain → u***@domain
+- **Admin Customization** (FR-055): Keyword rules, confidence thresholds, category enable/disable
+- **Logging** (FR-056): Filter events logged (timestamp, user_id, category, action) WITHOUT message content
+- **False Positive Handling** (FR-058): Retry option with rule-based filter bypass, ML filter still applied
+
+**ReAct Agent System** (FR-060 series):
+- **Architecture**: Thought → Action → Observation loop (max 5 iterations, FR-062)
+- **Six Government Tools** (FR-061):
+  1. Document Search: Vector similarity search on uploaded docs (ChromaDB/FAISS)
+  2. Calculator: Mathematical expressions with Korean currency support (sympy/numexpr)
+  3. Date/Schedule: Business days, Korean holidays (JSON calendar), fiscal year conversions
+  4. Data Analysis: CSV/Excel loading (pandas, openpyxl), summary statistics
+  5. Document Template: Jinja2-based government document generation (공문서, 보고서, 안내문)
+  6. Legal Reference: Regulation/ordinance article search with citations
+- **Safety Features** (FR-063): 30-second timeout per tool, identical call detection (3x limit), sandboxed execution
+- **UX Display** (FR-064): Real-time Thought/Action/Observation with emoji prefixes (🤔/⚙️/👁️)
+- **Error Handling** (FR-065): Transparent failure display, agent provides alternative or guidance
+- **Audit Trail** (FR-066): All tool executions logged with sanitized parameters
+
+**Multi-Agent System** (FR-070 series):
+- **Orchestrator**: LLM-based intent classification (default, few-shot prompt with 2-3 examples per agent) OR keyword-based routing (admin-configurable alternative)
+- **Five Specialized Agents** (FR-071):
+  1. Citizen Support Agent: Empathetic citizen inquiry responses (존댓말, completeness check)
+  2. Document Writing Agent: Government document generation (formal language, standard sections)
+  3. Legal Research Agent: Regulation search + plain-language interpretation
+  4. Data Analysis Agent: Statistical analysis with Korean formatting (천 단위 쉼표)
+  5. Review Agent: Content review for errors (factual, grammatical, policy compliance)
+- **Workflow Support** (FR-072-079):
+  - Sequential workflows: Multi-step tasks with agent chaining
+  - Parallel execution: Independent sub-tasks dispatched simultaneously (max 3 parallel)
+  - Complexity limits: Max 5 agents per chain, 5-minute total timeout
+- **Context Sharing** (FR-077): Agents in same workflow share conversation context and previous outputs
+- **Admin Management** (FR-076): Enable/disable agents, configure routing mode, edit keyword patterns, view performance metrics
 
 **Deployment & Infrastructure**:
 - Architecture: Monolithic (single deployable unit for simplicity)
@@ -95,8 +137,9 @@ Build an air-gapped Local LLM web application for small local government employe
 - E2E: Playwright or Cypress
 
 **Target Platform**:
-- Server: Linux (Ubuntu 22.04 LTS recommended) with GPU support (NVIDIA CUDA for vLLM)
-  - Minimum hardware: CPU 8-core Intel Xeon, RAM 32GB (64GB recommended), GPU NVIDIA RTX 3090/A100 16GB+ VRAM, SSD 500GB+ (NVMe 1TB recommended)
+- Server: Linux (Ubuntu 22.04 LTS recommended) with CPU-first deployment, optional GPU acceleration
+  - Minimum hardware (CPU-only): CPU 8-core Intel Xeon (16-core recommended for production), RAM 32GB (64GB recommended), SSD 500GB+ (NVMe 1TB recommended)
+  - Optional GPU acceleration: NVIDIA RTX 3090/A100 16GB+ VRAM with CUDA support (for larger models like Meta-Llama-3-8B)
 - Client: Supported browsers on Windows workstations (FR-040)
   - Chrome 90+
   - Edge 90+
@@ -116,13 +159,17 @@ Build an air-gapped Local LLM web application for small local government employe
 
 **Constraints**:
 - **CRITICAL**: No internet connectivity (air-gapped/closed network)
-- Hardware: Minimal viable specs (CPU 8-core, RAM 32GB+, GPU 16GB+ VRAM for Llama-3-8B)
+- Hardware: CPU-first deployment (CPU 8-core minimum, 16-core recommended), RAM 32GB+ (64GB recommended), GPU optional for acceleration
 - Response limits: Default 4,000 characters / Document generation mode 10,000 characters (FR-017)
 - File upload: 50MB maximum per file
 - Conversation limit: 1,000 messages per conversation (FR-041)
 - Context window: 10 messages (5 user + 5 AI), 2,048 tokens (FR-036)
 - Korean language support mandatory
 - Maintainability: Priority over performance optimization
+- **Advanced Features Resource Limits** (FR-086):
+  - Max 10 concurrent ReAct sessions (queue additional)
+  - Max 5 concurrent multi-agent workflows (return 503 if exceeded)
+  - Safety filter timeout: 2 seconds (allow message through with warning if exceeded)
 
 **Scale/Scope**:
 - Users: 10-50 employees
@@ -134,17 +181,65 @@ Build an air-gapped Local LLM web application for small local government employe
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-**Constitution Status**: Constitution template is not yet populated. Proceeding with standard software engineering principles:
+**Constitution Loaded**: `.specify/memory/constitution.md` v1.0.0 (Ratified: 2025-10-22)
 
-✅ **Simplicity First**: Monolithic architecture chosen over microservices for maintainability
-✅ **Library-First**: Use established libraries (vLLM, LangChain, React Query) over custom implementations
-✅ **Testability**: Clear separation of concerns (frontend/backend/LLM service) enables independent testing
-✅ **Observability**: Structured logging for debugging in air-gapped environment
-✅ **No External Dependencies**: All services run locally, no internet required
+### Core Principles Compliance
 
-**Potential Violations to Monitor**:
-- ⚠️ Document Q&A with embeddings adds complexity - **Decision**: Phase 3 feature, can start with simple text extraction
-- ⚠️ Custom admin UI vs Django Admin - **Decision**: FastAPI-only backend with React admin UI. Django would add second framework; small admin UI (10-15 components) is manageable with shadcn/ui or Headless UI component libraries
+✅ **I. Air-Gap Compatibility (NON-NEGOTIABLE)**
+- All ML models bundled locally: Qwen2.5-1.5B-Instruct, unitary/toxic-bert, sentence-transformers
+- No external API calls: All safety filters, ReAct tools, and agents operate offline
+- Dependencies: All Python packages in requirements.txt for offline pip install
+- Documentation: Deployment procedures documented in quickstart.md
+
+✅ **II. Korean Language Support (MANDATORY)**
+- UI: All labels, error messages in Korean (FR-037)
+- LLM: Qwen2.5-1.5B-Instruct supports Korean
+- Safety Filter: unitary/toxic-bert supports multilingual (including Korean)
+- Document templates: Jinja2 templates in Korean for government documents
+
+✅ **III. Security & Privacy First**
+- Data isolation: user_id filtering enforced (FR-032)
+- Session timeout: 30 minutes with warning modal (FR-012)
+- Password: bcrypt cost 12 (FR-029)
+- Admin: Separate table, DB-only privilege grants (FR-033)
+- **Safety Filter**: PII masking prevents accidental exposure (FR-052)
+
+✅ **IV. Simplicity Over Optimization**
+- Monolithic deployment (single docker-compose.yml)
+- Established libraries: HuggingFace Transformers, FastAPI, React Query
+- Clear separation: frontend / backend / LLM service / safety filter / agents
+
+✅ **V. Testability & Observability**
+- Structured logging for all components
+- Health check endpoints for monitoring
+- **Audit logs**: All tool executions, agent invocations, filter events logged (FR-066, FR-075, FR-083)
+- Manual testing via acceptance scenarios (constitution allows this for MVP)
+
+### Potential Complexity Concerns
+
+⚠️ **Safety Filter + ReAct + Multi-Agent adds significant complexity**
+- **Justification**:
+  - These are P3/P4 features (lower priority than core P1/P2)
+  - Can be implemented incrementally: Safety Filter → ReAct → Multi-Agent
+  - Each has clear boundaries and can be disabled independently (FR-087 graceful degradation)
+  - Government use case requires these for safety and productivity
+- **Mitigation**:
+  - Phase implementation: Deliver core features first, then advanced features
+  - Comprehensive error handling and logging for debugging
+  - Admin controls to enable/disable features (FR-067, FR-076)
+
+⚠️ **CPU-only deployment may have performance limitations**
+- **Justification**:
+  - Qwen2.5-1.5B is lightweight enough for CPU inference
+  - BitsAndBytes 4-bit quantization reduces memory footprint
+  - Government priority: availability > performance
+  - GPU optional for acceleration if available
+- **Mitigation**:
+  - Resource limits prevent system overload (FR-086)
+  - Queueing for ReAct/Multi-Agent sessions
+  - Performance testing with 10 concurrent users (SC-002)
+
+**GATE STATUS**: ✅ PASS - All core principles satisfied, complexity justified for government requirements
 
 ## Project Structure
 

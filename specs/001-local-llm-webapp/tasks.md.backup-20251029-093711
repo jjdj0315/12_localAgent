@@ -22,14 +22,14 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [X] T001 Create root project structure with frontend/, backend/, llm-service/, docker/ directories
-- [X] T002 [P] Initialize backend Python project in backend/ with pyproject.toml and requirements.txt (FastAPI, SQLAlchemy, Alembic, HuggingFace Transformers dependencies)
-- [X] T003 [P] Initialize frontend Next.js 14 project in frontend/ with TypeScript, TailwindCSS, React Query
-- [X] T004 [P] Create Docker configuration files in docker/ (frontend.Dockerfile, backend.Dockerfile)
-- [X] T005 Create docker-compose.yml for full stack orchestration (postgres, backend, frontend)
-- [X] T006 [P] Create .env.example with all required environment variables (database, secrets, LLM config, API URLs)
-- [X] T007 [P] Configure ESLint and Prettier for frontend in frontend/.eslintrc.js and frontend/.prettierrc
-- [X] T008 [P] Configure Black, Ruff, and mypy for backend in backend/pyproject.toml
+- [ ] T001 Create root project structure with frontend/, backend/, llm-service/, docker/ directories
+- [ ] T002 [P] Initialize backend Python project in backend/ with pyproject.toml and requirements.txt (FastAPI, SQLAlchemy, Alembic, HuggingFace Transformers dependencies)
+- [ ] T003 [P] Initialize frontend Next.js 14 project in frontend/ with TypeScript, TailwindCSS, React Query
+- [ ] T004 [P] Create Docker configuration files in docker/ (frontend.Dockerfile, backend.Dockerfile)
+- [ ] T005 Create docker-compose.yml for full stack orchestration (postgres, backend, frontend)
+- [ ] T006 [P] Create .env.example with all required environment variables (database, secrets, LLM config, API URLs)
+- [ ] T007 [P] Configure ESLint and Prettier for frontend in frontend/.eslintrc.js and frontend/.prettierrc
+- [ ] T008 [P] Configure Black, Ruff, and mypy for backend in backend/pyproject.toml
 
 ---
 
@@ -41,58 +41,58 @@
 
 ### Database & ORM Setup
 
-- [X] T009 Create PostgreSQL schema and Alembic migration framework in backend/alembic/
-- [X] T010 [P] Implement database connection and session management in backend/app/core/database.py
-- [X] T011 Create initial migration (v0.1.0) defining core tables (users, admins, conversations, messages, documents, sessions, tags, conversation_tags, login_attempts, safety_filter_rules, filter_events, tools, tool_executions, agents, agent_workflows, agent_workflow_steps, audit_logs) in backend/alembic/versions/001_initial_schema.py
+- [ ] T009 Create PostgreSQL schema and Alembic migration framework in backend/alembic/
+- [ ] T010 [P] Implement database connection and session management in backend/app/core/database.py
+- [ ] T011 Create initial migration (v0.1.0) defining core tables (users, admins, conversations, messages, documents, sessions, tags, conversation_tags, login_attempts, safety_filter_rules, filter_events, tools, tool_executions, agents, agent_workflows, agent_workflow_steps, audit_logs) in backend/alembic/versions/001_initial_schema.py
 
 ### Authentication & Security
 
-- [X] T012 Implement password hashing utilities (bcrypt cost 12) in backend/app/core/security.py
-- [X] T013 Implement session management service in backend/app/services/auth_service.py
-- [X] T014 Create authentication dependency for route protection in backend/app/api/deps.py (get_current_user, get_current_admin)
-- [X] T015 [P] Implement admin role check middleware in backend/app/api/deps.py (require_admin dependency)
+- [ ] T012 Implement password hashing utilities (bcrypt cost 12) in backend/app/core/security.py
+- [ ] T013 Implement session management service in backend/app/services/auth_service.py
+- [ ] T014 Create authentication dependency for route protection in backend/app/api/deps.py (get_current_user, get_current_admin)
+- [ ] T015 [P] Implement admin role check middleware in backend/app/api/deps.py (require_admin dependency)
 
 ### Core Data Models (Shared Entities)
 
-- [X] T016 [P] Create User model (SQLAlchemy) in backend/app/models/user.py
-- [X] T017 [P] Create Admin model (SQLAlchemy) in backend/app/models/admin.py
-- [X] T018 [P] Create Session model (SQLAlchemy) in backend/app/models/session.py
-- [X] T019 [P] Create Conversation model (SQLAlchemy) in backend/app/models/conversation.py
-- [X] T020 [P] Create Message model (SQLAlchemy) in backend/app/models/message.py
-- [X] T021 [P] Create Document model (SQLAlchemy) in backend/app/models/document.py
-- [X] T022 [P] Create Tag model (SQLAlchemy) in backend/app/models/tag.py
-- [X] T023 [P] Create ConversationTag association model (SQLAlchemy) in backend/app/models/conversation_tag.py
-- [X] T024 [P] Create LoginAttempt model (SQLAlchemy) in backend/app/models/login_attempt.py
+- [ ] T016 [P] Create User model (SQLAlchemy) in backend/app/models/user.py
+- [ ] T017 [P] Create Admin model (SQLAlchemy) in backend/app/models/admin.py
+- [ ] T018 [P] Create Session model (SQLAlchemy) in backend/app/models/session.py
+- [ ] T019 [P] Create Conversation model (SQLAlchemy) in backend/app/models/conversation.py
+- [ ] T020 [P] Create Message model (SQLAlchemy) in backend/app/models/message.py
+- [ ] T021 [P] Create Document model (SQLAlchemy) in backend/app/models/document.py
+- [ ] T022 [P] Create Tag model (SQLAlchemy) in backend/app/models/tag.py
+- [ ] T023 [P] Create ConversationTag association model (SQLAlchemy) in backend/app/models/conversation_tag.py
+- [ ] T024 [P] Create LoginAttempt model (SQLAlchemy) in backend/app/models/login_attempt.py
 
 ### Pydantic Schemas (API Contracts)
 
-- [X] T025 [P] Create auth schemas (LoginRequest, LoginResponse, UserProfile) in backend/app/schemas/auth.py
-- [X] T026 [P] Create conversation schemas (ConversationCreate, ConversationUpdate, ConversationResponse) in backend/app/schemas/conversation.py
-- [X] T027 [P] Create message schemas (MessageCreate, MessageResponse) in backend/app/schemas/message.py
-- [X] T028 [P] Create document schemas (DocumentCreate, DocumentResponse) in backend/app/schemas/document.py
-- [X] T029 [P] Create admin schemas (UserCreate, UserResponse, StatsResponse) in backend/app/schemas/admin.py
-- [X] T030 [P] Create tag schemas (TagCreate, TagUpdate, TagResponse) in backend/app/schemas/tag.py
+- [ ] T025 [P] Create auth schemas (LoginRequest, LoginResponse, UserProfile) in backend/app/schemas/auth.py
+- [ ] T026 [P] Create conversation schemas (ConversationCreate, ConversationUpdate, ConversationResponse) in backend/app/schemas/conversation.py
+- [ ] T027 [P] Create message schemas (MessageCreate, MessageResponse) in backend/app/schemas/message.py
+- [ ] T028 [P] Create document schemas (DocumentCreate, DocumentResponse) in backend/app/schemas/document.py
+- [ ] T029 [P] Create admin schemas (UserCreate, UserResponse, StatsResponse) in backend/app/schemas/admin.py
+- [ ] T030 [P] Create tag schemas (TagCreate, TagUpdate, TagResponse) in backend/app/schemas/tag.py
 
 ### API Infrastructure
 
-- [X] T031 Create FastAPI application instance with CORS, middleware, error handlers in backend/app/main.py
-- [X] T032 Setup API router structure in backend/app/api/v1/ (auth.py, chat.py, conversations.py, documents.py, admin.py, tags.py)
-- [X] T033 [P] Implement global error handler and logging configuration in backend/app/main.py
-- [X] T034 [P] Configure environment variables and settings management in backend/app/config.py (include PER_USER_QUOTA_GB=10, SESSION_TIMEOUT_MINUTES=30)
+- [ ] T031 Create FastAPI application instance with CORS, middleware, error handlers in backend/app/main.py
+- [ ] T032 Setup API router structure in backend/app/api/v1/ (auth.py, chat.py, conversations.py, documents.py, admin.py, tags.py)
+- [ ] T033 [P] Implement global error handler and logging configuration in backend/app/main.py
+- [ ] T034 [P] Configure environment variables and settings management in backend/app/config.py (include PER_USER_QUOTA_GB=10, SESSION_TIMEOUT_MINUTES=30)
 
 ### LLM Service Setup (HuggingFace Transformers)
 
-- [X] T035 Create HuggingFace Transformers LLM service wrapper in backend/app/services/llm_service.py (load Qwen2.5-1.5B-Instruct with 4-bit quantization using BitsAndBytes)
-- [X] T036 Create LLM configuration in backend/app/config.py (model_name, max_model_len: 4096, device_map: auto, quantization_config)
-- [X] T037 Implement streaming response handler using Server-Sent Events in backend/app/services/llm_service.py
+- [ ] T035 Create HuggingFace Transformers LLM service wrapper in backend/app/services/llm_service.py (load Qwen2.5-1.5B-Instruct with 4-bit quantization using BitsAndBytes)
+- [ ] T036 Create LLM configuration in backend/app/config.py (model_name, max_model_len: 4096, device_map: auto, quantization_config)
+- [ ] T037 Implement streaming response handler using Server-Sent Events in backend/app/services/llm_service.py
 
 ### Frontend Infrastructure
 
-- [X] T038 Create Next.js app structure with App Router in frontend/src/app/ ((auth), (user), (admin) route groups)
-- [X] T039 [P] Implement API client with session management in frontend/src/lib/api.ts
-- [X] T040 [P] Create TypeScript types from OpenAPI spec in frontend/src/types/api.ts
-- [X] T041 [P] Setup React Query configuration in frontend/src/app/providers.tsx
-- [X] T042 [P] Create reusable UI components (Button, Input, Card, Loading) in frontend/src/components/ui/
+- [ ] T038 Create Next.js app structure with App Router in frontend/src/app/ ((auth), (user), (admin) route groups)
+- [ ] T039 [P] Implement API client with session management in frontend/src/lib/api.ts
+- [ ] T040 [P] Create TypeScript types from OpenAPI spec in frontend/src/types/api.ts
+- [ ] T041 [P] Setup React Query configuration in frontend/src/app/providers.tsx
+- [ ] T042 [P] Create reusable UI components (Button, Input, Card, Loading) in frontend/src/components/ui/
 
 **Checkpoint**: ✅ Foundation ready - user story implementation can now begin in parallel
 
@@ -106,25 +106,25 @@
 
 ### Backend Implementation
 
-- [X] T043 [US1] Implement conversation context management service in backend/app/services/context_service.py (10-message window, 2048 token limit, FIFO)
-- [X] T044 [US1] Implement chat endpoint POST /api/v1/chat with streaming support in backend/app/api/v1/chat.py
-- [X] T045 [US1] Implement conversation CRUD endpoints in backend/app/api/v1/conversations.py (create, list, get, delete)
-- [X] T046 [US1] Implement message history endpoint GET /api/v1/conversations/{id}/messages in backend/app/api/v1/conversations.py
+- [ ] T043 [US1] Implement conversation context management service in backend/app/services/context_service.py (10-message window, 2048 token limit, FIFO)
+- [ ] T044 [US1] Implement chat endpoint POST /api/v1/chat with streaming support in backend/app/api/v1/chat.py
+- [ ] T045 [US1] Implement conversation CRUD endpoints in backend/app/api/v1/conversations.py (create, list, get, delete)
+- [ ] T046 [US1] Implement message history endpoint GET /api/v1/conversations/{id}/messages in backend/app/api/v1/conversations.py
 
 ### Frontend Implementation
 
-- [X] T047 [P] [US1] Create chat page layout in frontend/src/app/(user)/chat/page.tsx
-- [X] T048 [P] [US1] Implement ChatInput component with 6 UI states in frontend/src/components/chat/ChatInput.tsx (idle, typing, processing, streaming, completed, error per FR-035)
-- [X] T049 [P] [US1] Implement MessageList component in frontend/src/components/chat/MessageList.tsx
-- [X] T050 [P] [US1] Implement StreamingMessage component with real-time text display in frontend/src/components/chat/StreamingMessage.tsx
-- [X] T051 [US1] Integrate chat API with React Query in frontend/src/app/(user)/chat/page.tsx
+- [ ] T047 [P] [US1] Create chat page layout in frontend/src/app/(user)/chat/page.tsx
+- [ ] T048 [P] [US1] Implement ChatInput component with 6 UI states in frontend/src/components/chat/ChatInput.tsx (idle, typing, processing, streaming, completed, error per FR-035)
+- [ ] T049 [P] [US1] Implement MessageList component in frontend/src/components/chat/MessageList.tsx
+- [ ] T050 [P] [US1] Implement StreamingMessage component with real-time text display in frontend/src/components/chat/StreamingMessage.tsx
+- [ ] T051 [US1] Integrate chat API with React Query in frontend/src/app/(user)/chat/page.tsx
 
 ### Manual Testing (Per Acceptance Scenarios)
 
-- [X] T052 [US1] Verify query submission and response generation (<10 seconds per SC-001)
-- [X] T053 [US1] Verify streaming response display works correctly
-- [X] T054 [US1] Verify conversational context maintained across follow-up questions
-- [X] T055 [US1] Test Korean response quality using test script (90% pass rate per SC-004)
+- [ ] T052 [US1] Verify query submission and response generation (<10 seconds per SC-001)
+- [ ] T053 [US1] Verify streaming response display works correctly
+- [ ] T054 [US1] Verify conversational context maintained across follow-up questions
+- [ ] T055 [US1] Test Korean response quality using test script (90% pass rate per SC-004)
 
 ---
 
@@ -136,27 +136,27 @@
 
 ### Backend Implementation
 
-- [X] T056 [US2] Implement conversation title edit endpoint PATCH /api/v1/conversations/{id} in backend/app/api/v1/conversations.py
-- [X] T057 [US2] Implement conversation search endpoint GET /api/v1/conversations/search in backend/app/api/v1/conversations.py
-- [X] T058 [US2] Implement tag service with semantic similarity matching in backend/app/services/tag_service.py (sentence-transformers, cosine similarity >0.7)
-- [X] T059 [US2] Implement auto-tag assignment logic triggered on first message in backend/app/services/tag_service.py
-- [X] T060 [US2] Implement tag management endpoints in backend/app/api/v1/tags.py (create, edit, delete, list)
-- [X] T061 [US2] Implement conversation filtering by tags endpoint GET /api/v1/conversations?tags= in backend/app/api/v1/conversations.py
+- [ ] T056 [US2] Implement conversation title edit endpoint PATCH /api/v1/conversations/{id} in backend/app/api/v1/conversations.py
+- [ ] T057 [US2] Implement conversation search endpoint GET /api/v1/conversations/search in backend/app/api/v1/conversations.py
+- [ ] T058 [US2] Implement tag service with semantic similarity matching in backend/app/services/tag_service.py (sentence-transformers, cosine similarity >0.7)
+- [ ] T059 [US2] Implement auto-tag assignment logic triggered on first message in backend/app/services/tag_service.py
+- [ ] T060 [US2] Implement tag management endpoints in backend/app/api/v1/tags.py (create, edit, delete, list)
+- [ ] T061 [US2] Implement conversation filtering by tags endpoint GET /api/v1/conversations?tags= in backend/app/api/v1/conversations.py
 
 ### Frontend Implementation
 
-- [X] T062 [P] [US2] Create conversation history page in frontend/src/app/(user)/history/page.tsx
-- [X] T063 [P] [US2] Implement ConversationList component in frontend/src/components/conversation/ConversationList.tsx
-- [X] T064 [P] [US2] Implement conversation search bar in frontend/src/components/conversation/SearchBar.tsx
-- [X] T065 [P] [US2] Implement tag filter UI in frontend/src/components/conversation/TagFilter.tsx
-- [X] T066 [US2] Integrate conversation management with React Query in frontend/src/app/(user)/history/page.tsx
+- [ ] T062 [P] [US2] Create conversation history page in frontend/src/app/(user)/history/page.tsx
+- [ ] T063 [P] [US2] Implement ConversationList component in frontend/src/components/conversation/ConversationList.tsx
+- [ ] T064 [P] [US2] Implement conversation search bar in frontend/src/components/conversation/SearchBar.tsx
+- [ ] T065 [P] [US2] Implement tag filter UI in frontend/src/components/conversation/TagFilter.tsx
+- [ ] T066 [US2] Integrate conversation management with React Query in frontend/src/app/(user)/history/page.tsx
 
 ### Manual Testing
 
-- [X] T067 [US2] Verify conversation save and retrieval
-- [X] T068 [US2] Verify search functionality across conversation titles and content
-- [X] T069 [US2] Verify auto-tag assignment on first message
-- [X] T070 [US2] Verify tag filtering works correctly
+- [ ] T067 [US2] Verify conversation save and retrieval
+- [ ] T068 [US2] Verify search functionality across conversation titles and content
+- [ ] T069 [US2] Verify auto-tag assignment on first message
+- [ ] T070 [US2] Verify tag filtering works correctly
 
 ---
 
@@ -168,25 +168,25 @@
 
 ### Backend Implementation
 
-- [X] T071 [US3] Implement document upload endpoint POST /api/v1/documents in backend/app/api/v1/documents.py (file validation, size limits per FR-015)
-- [X] T072 [US3] Implement document processing service in backend/app/services/document_service.py (pdfplumber for PDF, python-docx for DOCX extraction)
-- [X] T073 [US3] Implement vector embedding service in backend/app/services/embedding_service.py (ChromaDB or FAISS, sentence-transformers)
-- [X] T074 [US3] Implement document search service in backend/app/services/document_service.py (semantic search, return snippets with page numbers)
-- [X] T075 [US3] Implement document list/delete endpoints in backend/app/api/v1/documents.py
-- [X] T076 [US3] Integrate document context into chat endpoint for document-aware responses in backend/app/api/v1/chat.py
+- [ ] T071 [US3] Implement document upload endpoint POST /api/v1/documents in backend/app/api/v1/documents.py (file validation, size limits per FR-015)
+- [ ] T072 [US3] Implement document processing service in backend/app/services/document_service.py (pdfplumber for PDF, python-docx for DOCX extraction)
+- [ ] T073 [US3] Implement vector embedding service in backend/app/services/embedding_service.py (ChromaDB or FAISS, sentence-transformers)
+- [ ] T074 [US3] Implement document search service in backend/app/services/document_service.py (semantic search, return snippets with page numbers)
+- [ ] T075 [US3] Implement document list/delete endpoints in backend/app/api/v1/documents.py
+- [ ] T076 [US3] Integrate document context into chat endpoint for document-aware responses in backend/app/api/v1/chat.py
 
 ### Frontend Implementation
 
-- [X] T077 [P] [US3] Create document upload UI in frontend/src/components/document/DocumentUpload.tsx (drag-drop, progress bar)
-- [X] T078 [P] [US3] Create document list UI in frontend/src/components/document/DocumentList.tsx
-- [X] T079 [US3] Integrate document upload with chat interface in frontend/src/app/(user)/chat/page.tsx
+- [ ] T077 [P] [US3] Create document upload UI in frontend/src/components/document/DocumentUpload.tsx (drag-drop, progress bar)
+- [ ] T078 [P] [US3] Create document list UI in frontend/src/components/document/DocumentList.tsx
+- [ ] T079 [US3] Integrate document upload with chat interface in frontend/src/app/(user)/chat/page.tsx
 
 ### Manual Testing
 
-- [X] T080 [US3] Test PDF upload and text extraction (20-page document <60 seconds per SC-003)
-- [X] T081 [US3] Test DOCX and TXT file processing
-- [X] T082 [US3] Verify document Q&A returns accurate answers with source references
-- [X] T083 [US3] Test multi-document comparison queries
+- [ ] T080 [US3] Test PDF upload and text extraction (20-page document <60 seconds per SC-003)
+- [ ] T081 [US3] Test DOCX and TXT file processing
+- [ ] T082 [US3] Verify document Q&A returns accurate answers with source references
+- [ ] T083 [US3] Test multi-document comparison queries
 
 ---
 
@@ -198,28 +198,28 @@
 
 ### Backend Implementation
 
-- [X] T084 [US4] Implement user login endpoint POST /api/v1/auth/login in backend/app/api/v1/auth.py (password validation, session creation)
-- [X] T085 [US4] Implement user logout endpoint POST /api/v1/auth/logout in backend/app/api/v1/auth.py (session invalidation)
-- [X] T086 [US4] Implement session timeout logic with 30-minute inactivity in backend/app/middleware/session_middleware.py
-- [X] T087 [US4] Implement concurrent session management (max 3 sessions, oldest terminated) in backend/app/services/auth_service.py (FR-030)
-- [X] T088 [US4] Implement login attempt tracking and rate limiting in backend/app/services/auth_service.py (5 attempts = 30min lockout, FR-031)
-- [X] T089 [US4] Implement data isolation middleware ensuring user_id filtering in backend/app/middleware/data_isolation_middleware.py (FR-032)
-- [X] T090 [US4] Implement storage quota checking in backend/app/services/storage_service.py (10GB per user, auto-cleanup at limit per FR-020)
+- [ ] T084 [US4] Implement user login endpoint POST /api/v1/auth/login in backend/app/api/v1/auth.py (password validation, session creation)
+- [ ] T085 [US4] Implement user logout endpoint POST /api/v1/auth/logout in backend/app/api/v1/auth.py (session invalidation)
+- [ ] T086 [US4] Implement session timeout logic with 30-minute inactivity in backend/app/middleware/session_middleware.py
+- [ ] T087 [US4] Implement concurrent session management (max 3 sessions, oldest terminated) in backend/app/services/auth_service.py (FR-030)
+- [ ] T088 [US4] Implement login attempt tracking and rate limiting in backend/app/services/auth_service.py (5 attempts = 30min lockout, FR-031)
+- [ ] T089 [US4] Implement data isolation middleware ensuring user_id filtering in backend/app/middleware/data_isolation_middleware.py (FR-032)
+- [ ] T090 [US4] Implement storage quota checking in backend/app/services/storage_service.py (10GB per user, auto-cleanup at limit per FR-020)
 
 ### Frontend Implementation
 
-- [X] T091 [P] [US4] Create login page in frontend/src/app/(auth)/login/page.tsx
-- [X] T092 [P] [US4] Implement session timeout warning modal in frontend/src/components/auth/SessionWarningModal.tsx (3-minute warning per FR-012)
-- [X] T093 [P] [US4] Implement draft message recovery from localStorage in frontend/src/lib/localStorage.ts
-- [X] T094 [US4] Integrate authentication flow with React Query in frontend/src/app/providers.tsx
+- [ ] T091 [P] [US4] Create login page in frontend/src/app/(auth)/login/page.tsx
+- [ ] T092 [P] [US4] Implement session timeout warning modal in frontend/src/components/auth/SessionWarningModal.tsx (3-minute warning per FR-012)
+- [ ] T093 [P] [US4] Implement draft message recovery from localStorage in frontend/src/lib/localStorage.ts
+- [ ] T094 [US4] Integrate authentication flow with React Query in frontend/src/app/providers.tsx
 
 ### Manual Testing
 
-- [X] T095 [US4] Test user login/logout flow
-- [X] T096 [US4] Verify session timeout after 30 minutes inactivity
-- [X] T097 [US4] Verify data isolation (User A cannot access User B's conversations)
-- [X] T098 [US4] Test concurrent session limit (4th login terminates oldest)
-- [X] T099 [US4] Test login rate limiting and account lockout
+- [ ] T095 [US4] Test user login/logout flow
+- [ ] T096 [US4] Verify session timeout after 30 minutes inactivity
+- [ ] T097 [US4] Verify data isolation (User A cannot access User B's conversations)
+- [ ] T098 [US4] Test concurrent session limit (4th login terminates oldest)
+- [ ] T099 [US4] Test login rate limiting and account lockout
 
 ---
 
@@ -231,34 +231,34 @@
 
 ### Backend Implementation
 
-- [X] T100 [US5] Implement admin login endpoint POST /api/v1/admin/auth/login in backend/app/api/v1/admin_auth.py (separate admin authentication)
-- [X] T101 [US5] Implement user management endpoints in backend/app/api/v1/admin.py (create user, delete user, reset password, list users per FR-025-027)
-- [X] T102 [US5] Implement usage statistics endpoint GET /api/v1/admin/stats in backend/app/api/v1/admin.py (FR-038: users, queries, resources)
-- [X] T103 [US5] Implement system health endpoint GET /api/v1/admin/health in backend/app/api/v1/admin.py (uptime, storage, LLM status per FR-028)
-- [X] T104 [US5] Implement storage metrics endpoint GET /api/v1/admin/storage in backend/app/api/v1/admin.py (per-user usage, warnings at 80%)
-- [X] T105 [US5] Implement initial setup wizard endpoint POST /api/v1/setup in backend/app/api/v1/setup.py (first admin creation, setup.lock file per FR-034)
-- [X] T106 [US5] Implement backup management endpoints in backend/app/api/v1/admin.py (trigger backup, view backup history per FR-042)
+- [ ] T100 [US5] Implement admin login endpoint POST /api/v1/admin/auth/login in backend/app/api/v1/admin_auth.py (separate admin authentication)
+- [ ] T101 [US5] Implement user management endpoints in backend/app/api/v1/admin.py (create user, delete user, reset password, list users per FR-025-027)
+- [ ] T102 [US5] Implement usage statistics endpoint GET /api/v1/admin/stats in backend/app/api/v1/admin.py (FR-038: users, queries, resources)
+- [ ] T103 [US5] Implement system health endpoint GET /api/v1/admin/health in backend/app/api/v1/admin.py (uptime, storage, LLM status per FR-028)
+- [ ] T104 [US5] Implement storage metrics endpoint GET /api/v1/admin/storage in backend/app/api/v1/admin.py (per-user usage, warnings at 80%)
+- [ ] T105 [US5] Implement initial setup wizard endpoint POST /api/v1/setup in backend/app/api/v1/setup.py (first admin creation, setup.lock file per FR-034)
+- [ ] T106 [US5] Implement backup management endpoints in backend/app/api/v1/admin.py (trigger backup, view backup history per FR-042)
 
 ### Frontend Implementation
 
-- [X] T107 [P] [US5] Create admin login page in frontend/src/app/(admin)/login/page.tsx
-- [X] T108 [P] [US5] Create admin dashboard layout in frontend/src/app/(admin)/dashboard/layout.tsx
-- [X] T109 [P] [US5] Implement UserManagement component in frontend/src/components/admin/UserManagement.tsx
-- [X] T110 [P] [US5] Implement StatsDashboard component in frontend/src/components/admin/StatsDashboard.tsx
-- [X] T111 [P] [US5] Implement SystemHealth component in frontend/src/components/admin/SystemHealth.tsx
-- [X] T112 [P] [US5] Implement StorageMetrics component in frontend/src/components/admin/StorageMetrics.tsx
-- [X] T113 [P] [US5] Implement TagManagement component in frontend/src/components/admin/TagManagement.tsx
-- [X] T114 [P] [US5] Implement BackupManagement component in frontend/src/components/admin/BackupManagement.tsx
-- [X] T115 [US5] Create initial setup wizard page in frontend/src/app/setup/page.tsx
+- [ ] T107 [P] [US5] Create admin login page in frontend/src/app/(admin)/login/page.tsx
+- [ ] T108 [P] [US5] Create admin dashboard layout in frontend/src/app/(admin)/dashboard/layout.tsx
+- [ ] T109 [P] [US5] Implement UserManagement component in frontend/src/components/admin/UserManagement.tsx
+- [ ] T110 [P] [US5] Implement StatsDashboard component in frontend/src/components/admin/StatsDashboard.tsx
+- [ ] T111 [P] [US5] Implement SystemHealth component in frontend/src/components/admin/SystemHealth.tsx
+- [ ] T112 [P] [US5] Implement StorageMetrics component in frontend/src/components/admin/StorageMetrics.tsx
+- [ ] T113 [P] [US5] Implement TagManagement component in frontend/src/components/admin/TagManagement.tsx
+- [ ] T114 [P] [US5] Implement BackupManagement component in frontend/src/components/admin/BackupManagement.tsx
+- [ ] T115 [US5] Create initial setup wizard page in frontend/src/app/setup/page.tsx
 
 ### Manual Testing
 
-- [X] T116 [US5] Test admin login and access control
-- [X] T117 [US5] Test user account creation (<1 minute per SC-011)
-- [X] T118 [US5] Test password reset functionality
-- [X] T119 [US5] Verify statistics dashboard displays correct data (<3 seconds load per SC-012)
-- [X] T120 [US5] Verify system health monitoring updates in real-time
-- [X] T121 [US5] Test initial setup wizard flow
+- [ ] T116 [US5] Test admin login and access control
+- [ ] T117 [US5] Test user account creation (<1 minute per SC-011)
+- [ ] T118 [US5] Test password reset functionality
+- [ ] T119 [US5] Verify statistics dashboard displays correct data (<3 seconds load per SC-012)
+- [ ] T120 [US5] Verify system health monitoring updates in real-time
+- [ ] T121 [US5] Test initial setup wizard flow
 
 ---
 
@@ -270,42 +270,42 @@
 
 ### Backend - Safety Filter Models
 
-- [X] T122 [US6] Create SafetyFilterRule model (SQLAlchemy) in backend/app/models/safety_filter_rule.py
-- [X] T123 [US6] Create FilterEvent model (SQLAlchemy) in backend/app/models/filter_event.py
-- [X] T124 [US6] Create safety filter schemas in backend/app/schemas/safety_filter.py
+- [ ] T122 [US6] Create SafetyFilterRule model (SQLAlchemy) in backend/app/models/safety_filter_rule.py
+- [ ] T123 [US6] Create FilterEvent model (SQLAlchemy) in backend/app/models/filter_event.py
+- [ ] T124 [US6] Create safety filter schemas in backend/app/schemas/safety_filter.py
 
 ### Backend - Safety Filter Implementation
 
-- [X] T125 [US6] Implement Phase 1 rule-based filter in backend/app/services/safety_filter/rule_based.py (keyword matching, regex patterns for 5 categories per FR-051)
-- [X] T126 [US6] Implement PII detection and masking in backend/app/services/safety_filter/pii_masker.py (주민등록번호, phone, email patterns per FR-052)
-- [X] T127 [US6] Download and bundle unitary/toxic-bert model in backend/app/models_storage/toxic-bert/ (local loading per FR-057, FR-081)
-- [X] T128 [US6] Implement Phase 2 ML-based filter in backend/app/services/safety_filter/ml_filter.py (toxic-bert CPU inference per FR-050)
-- [X] T129 [US6] Implement two-phase filter orchestrator in backend/app/services/safety_filter_service.py (rule-based → ML, input/output filtering per FR-050)
-- [X] T130 [US6] Integrate safety filter into chat endpoint (filter input before LLM, filter output before delivery) in backend/app/api/v1/chat.py
-- [X] T131 [US6] Implement filter event logging in backend/app/services/safety_filter_service.py (timestamp, user_id, category, NO message content per FR-056)
+- [ ] T125 [US6] Implement Phase 1 rule-based filter in backend/app/services/safety_filter/rule_based.py (keyword matching, regex patterns for 5 categories per FR-051)
+- [ ] T126 [US6] Implement PII detection and masking in backend/app/services/safety_filter/pii_masker.py (주민등록번호, phone, email patterns per FR-052)
+- [ ] T127 [US6] Download and bundle unitary/toxic-bert model in backend/app/models_storage/toxic-bert/ (local loading per FR-057, FR-081)
+- [ ] T128 [US6] Implement Phase 2 ML-based filter in backend/app/services/safety_filter/ml_filter.py (toxic-bert CPU inference per FR-050)
+- [ ] T129 [US6] Implement two-phase filter orchestrator in backend/app/services/safety_filter_service.py (rule-based → ML, input/output filtering per FR-050)
+- [ ] T130 [US6] Integrate safety filter into chat endpoint (filter input before LLM, filter output before delivery) in backend/app/api/v1/chat.py
+- [ ] T131 [US6] Implement filter event logging in backend/app/services/safety_filter_service.py (timestamp, user_id, category, NO message content per FR-056)
 
 ### Backend - Admin Interface
 
-- [X] T132 [US6] Implement safety filter management endpoints in backend/app/api/v1/admin/safety_filter.py (add/edit/remove keywords, enable/disable categories, adjust thresholds per FR-055)
-- [X] T133 [US6] Implement filter statistics endpoint GET /api/v1/admin/safety-filter/stats in backend/app/api/v1/admin/safety_filter.py (daily counts by category)
-- [X] T134 [US6] Implement false positive bypass logic in backend/app/services/safety_filter_service.py (retry with rule-based bypass, log attempts per FR-058)
+- [ ] T132 [US6] Implement safety filter management endpoints in backend/app/api/v1/admin/safety_filter.py (add/edit/remove keywords, enable/disable categories, adjust thresholds per FR-055)
+- [ ] T133 [US6] Implement filter statistics endpoint GET /api/v1/admin/safety-filter/stats in backend/app/api/v1/admin/safety_filter.py (daily counts by category)
+- [ ] T134 [US6] Implement false positive bypass logic in backend/app/services/safety_filter_service.py (retry with rule-based bypass, log attempts per FR-058)
 
 ### Frontend Implementation
 
-- [X] T135 [P] [US6] Implement FilterWarningModal component in frontend/src/components/safety/FilterWarningModal.tsx (display blocked message with retry option per FR-058)
-- [X] T136 [P] [US6] Implement PIIMaskingNotice component in frontend/src/components/safety/PIIMaskingNotice.tsx ("개인정보가 자동으로 마스킹되었습니다." per FR-052)
-- [X] T137 [P] [US6] Create SafetyFilterManagement admin component in frontend/src/components/admin/SafetyFilterManagement.tsx
-- [X] T138 [P] [US6] Create FilterStatistics admin component in frontend/src/components/admin/FilterStatistics.tsx
-- [X] T139 [US6] Integrate safety filter warnings into chat interface in frontend/src/app/(user)/chat/page.tsx
+- [ ] T135 [P] [US6] Implement FilterWarningModal component in frontend/src/components/safety/FilterWarningModal.tsx (display blocked message with retry option per FR-058)
+- [ ] T136 [P] [US6] Implement PIIMaskingNotice component in frontend/src/components/safety/PIIMaskingNotice.tsx ("개인정보가 자동으로 마스킹되었습니다." per FR-052)
+- [ ] T137 [P] [US6] Create SafetyFilterManagement admin component in frontend/src/components/admin/SafetyFilterManagement.tsx
+- [ ] T138 [P] [US6] Create FilterStatistics admin component in frontend/src/components/admin/FilterStatistics.tsx
+- [ ] T139 [US6] Integrate safety filter warnings into chat interface in frontend/src/app/(user)/chat/page.tsx
 
 ### Manual Testing
 
-- [X] T140 [US6] Test Phase 1 rule-based filter blocks inappropriate keywords (violence, sexual, hate, dangerous)
-- [X] T141 [US6] Test Phase 2 ML filter detects toxic content (95%+ accuracy on test dataset per SC-014)
-- [X] T142 [US6] Test PII masking for 주민등록번호, phone, email (100% detection per SC-015)
-- [X] T143 [US6] Test filter bypasses rule-based on retry but still applies ML filter
-- [X] T144 [US6] Test filter event logging (verify no message content stored)
-- [X] T145 [US6] Verify filter processing time <2 seconds per check (per FR-082, SC-014)
+- [ ] T140 [US6] Test Phase 1 rule-based filter blocks inappropriate keywords (violence, sexual, hate, dangerous)
+- [ ] T141 [US6] Test Phase 2 ML filter detects toxic content (95%+ accuracy on test dataset per SC-014)
+- [ ] T142 [US6] Test PII masking for 주민등록번호, phone, email (100% detection per SC-015)
+- [ ] T143 [US6] Test filter bypasses rule-based on retry but still applies ML filter
+- [ ] T144 [US6] Test filter event logging (verify no message content stored)
+- [ ] T145 [US6] Verify filter processing time <2 seconds per check (per FR-082, SC-014)
 
 ---
 
@@ -317,26 +317,26 @@
 
 ### Backend - Tool Models
 
-- [X] T146 [US7] Create Tool model (SQLAlchemy) in backend/app/models/tool.py
-- [X] T147 [US7] Create ToolExecution model (SQLAlchemy) in backend/app/models/tool_execution.py
-- [X] T148 [US7] Create tool schemas in backend/app/schemas/tool.py
+- [ ] T146 [US7] Create Tool model (SQLAlchemy) in backend/app/models/tool.py
+- [ ] T147 [US7] Create ToolExecution model (SQLAlchemy) in backend/app/models/tool_execution.py
+- [ ] T148 [US7] Create tool schemas in backend/app/schemas/tool.py
 
 ### Backend - Tool Implementations
 
-- [X] T149 [P] [US7] Implement Document Search Tool in backend/app/services/react_tools/document_search.py (vector similarity on uploaded docs, return snippets with source refs per FR-061.1)
-- [X] T150 [P] [US7] Implement Calculator Tool in backend/app/services/react_tools/calculator.py (sympy or numexpr, handle Korean currency symbols per FR-061.2)
-- [X] T151 [P] [US7] Create Korean holiday calendar JSON file in backend/data/korean_holidays.json and implement Date/Schedule Tool in backend/app/services/react_tools/date_schedule.py (business days, fiscal year conversions per FR-061.3)
-- [X] T152 [P] [US7] Implement Data Analysis Tool in backend/app/services/react_tools/data_analysis.py (pandas, openpyxl, summary statistics per FR-061.4)
-- [X] T153 [P] [US7] Create government document templates (공문서, 보고서, 안내문 in Jinja2) in backend/templates/ and implement Document Template Tool in backend/app/services/react_tools/document_template.py (FR-061.5)
-- [X] T154 [P] [US7] Implement Legal Reference Tool in backend/app/services/react_tools/legal_reference.py (search regulations, return citations per FR-061.6)
+- [ ] T149 [P] [US7] Implement Document Search Tool in backend/app/services/react_tools/document_search.py (vector similarity on uploaded docs, return snippets with source refs per FR-061.1)
+- [ ] T150 [P] [US7] Implement Calculator Tool in backend/app/services/react_tools/calculator.py (sympy or numexpr, handle Korean currency symbols per FR-061.2)
+- [ ] T151 [P] [US7] Create Korean holiday calendar JSON file in backend/data/korean_holidays.json and implement Date/Schedule Tool in backend/app/services/react_tools/date_schedule.py (business days, fiscal year conversions per FR-061.3)
+- [ ] T152 [P] [US7] Implement Data Analysis Tool in backend/app/services/react_tools/data_analysis.py (pandas, openpyxl, summary statistics per FR-061.4)
+- [ ] T153 [P] [US7] Create government document templates (공문서, 보고서, 안내문 in Jinja2) in backend/templates/ and implement Document Template Tool in backend/app/services/react_tools/document_template.py (FR-061.5)
+- [ ] T154 [P] [US7] Implement Legal Reference Tool in backend/app/services/react_tools/legal_reference.py (search regulations, return citations per FR-061.6)
 
 ### Backend - ReAct Agent
 
-- [X] T155 [US7] Implement ReAct loop orchestrator in backend/app/services/react_agent_service.py (Thought → Action → Observation pattern, max 5 iterations per FR-062)
-- [X] T156 [US7] Implement tool execution safety in backend/app/services/react_agent_service.py (30-second timeout, identical call detection, sandboxing per FR-063)
-- [X] T157 [US7] Implement transparent error handling in backend/app/services/react_agent_service.py (display errors in Observation, agent provides alternatives per FR-065)
-- [X] T158 [US7] Implement tool execution audit logging in backend/app/services/react_agent_service.py (timestamp, user_id, tool_name, sanitized params, result per FR-066)
-- [X] T159 [US7] Integrate ReAct agent into chat endpoint (detect when to use tools) in backend/app/api/v1/chat.py
+- [ ] T155 [US7] Implement ReAct loop orchestrator in backend/app/services/react_agent_service.py (Thought → Action → Observation pattern, max 5 iterations per FR-062)
+- [ ] T156 [US7] Implement tool execution safety in backend/app/services/react_agent_service.py (30-second timeout, identical call detection, sandboxing per FR-063)
+- [ ] T157 [US7] Implement transparent error handling in backend/app/services/react_agent_service.py (display errors in Observation, agent provides alternatives per FR-065)
+- [ ] T158 [US7] Implement tool execution audit logging in backend/app/services/react_agent_service.py (timestamp, user_id, tool_name, sanitized params, result per FR-066)
+- [ ] T159 [US7] Integrate ReAct agent into chat endpoint (detect when to use tools) in backend/app/api/v1/chat.py
 
 ### Backend - Admin Interface
 

@@ -68,6 +68,8 @@ export const chatAPI = {
     conversation_id?: string
     content: string
     document_ids?: string[]
+    bypass_filter?: boolean
+    use_react_agent?: boolean
   }) => {
     return fetchAPI('/chat/send', {
       method: 'POST',
@@ -80,6 +82,8 @@ export const chatAPI = {
       conversation_id?: string
       content: string
       document_ids?: string[]
+      bypass_filter?: boolean
+      use_react_agent?: boolean
     },
     onToken: (token: string) => void,
     onDone: (message: any) => void,

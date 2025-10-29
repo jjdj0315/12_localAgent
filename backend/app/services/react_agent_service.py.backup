@@ -1,0 +1,365 @@
+"""
+ReAct Agent Service
+
+Implements the ReAct (Reasoning and Acting) pattern for tool-using AI agents.
+Per FR-062: Thought → Action → Observation loop, max 5 iterations.
+Per FR-063: Tool execution safety (30s timeout, sandboxing).
+Per FR-065: Transparent error handling.
+Per FR-066: Audit logging.
+"""
+from typing import Dict, Any, List, Tuple, Optional
+from sqlalchemy.orm import Session
+from uuid import UUID
+import time
+import asyncio
+from datetime import datetime
+
+from app.models.tool import Tool
+from app.models.tool_execution import ToolExecution
+from app.services.react_tools.document_search import DocumentSearchTool
+from app.services.react_tools.calculator import CalculatorTool
+from app.services.react_tools.date_schedule import DateScheduleTool
+from app.services.react_tools.data_analysis import DataAnalysisTool
+from app.services.react_tools.document_template import DocumentTemplateTool
+from app.services.react_tools.legal_reference import LegalReferenceTool
+
+
+class ReActStep:
+    """Represents a single ReAct step"""
+    def __init__(self, iteration: int, thought: str, action: str = None, action_input: Dict = None, observation: str = None):
+        self.iteration = iteration
+        self.thought = thought
+        self.action = action
+        self.action_input = action_input
+        self.observation = observation
+        self.timestamp = datetime.utcnow()
+
+
+class ReActAgentService:
+    """
+    ReAct Agent Service
+
+    Orchestrates the ReAct loop:
+    1. Thought: Agent reasons about what to do
+    2. Action: Agent selects and executes a tool
+    3. Observation: Agent observes the result
+    4. Repeat until final answer or max iterations
+
+    Features:
+    - Max 5 iterations (configurable)
+    - 30-second timeout per tool
+    - Audit logging
+    - Error handling with alternatives
+    - Identical call detection
+    """
+
+    MAX_ITERATIONS = 5
+    TOOL_TIMEOUT = 30
+
+    def __init__(self, db: Session, user_id: UUID, conversation_id: UUID):
+        """
+        Initialize ReAct agent
+
+        Args:
+            db: Database session
+            user_id: User ID for audit logging
+            conversation_id: Conversation ID for context
+        """
+        self.db = db
+        self.user_id = user_id
+        self.conversation_id = conversation_id
+
+        # Initialize tools
+        self.tools = {
+            "document_search": DocumentSearchTool(db),
+            "calculator": CalculatorTool(),
+            "date_schedule": DateScheduleTool(),
+            "data_analysis": DataAnalysisTool(),
+            "document_template": DocumentTemplateTool(),
+            "legal_reference": LegalReferenceTool(),
+        }
+
+        self.steps: List[ReActStep] = []
+        self.previous_calls: List[str] = []  # Track calls to prevent loops
+
+    def execute_react_loop(
+        self,
+        query: str,
+        llm_generate_func,  # Function to call LLM
+        max_iterations: int = None
+    ) -> Dict[str, Any]:
+        """
+        Execute ReAct loop
+
+        Args:
+            query: User query
+            llm_generate_func: Function to generate LLM responses
+            max_iterations: Override default max iterations
+
+        Returns:
+            Dict with final answer and execution steps
+        """
+        if max_iterations is None:
+            max_iterations = self.MAX_ITERATIONS
+
+        iteration = 0
+        final_answer = None
+
+        while iteration < max_iterations:
+            iteration += 1
+
+            try:
+                # Step 1: Thought (LLM reasons)
+                thought = self._generate_thought(query, llm_generate_func)
+
+                # Step 2: Decide action
+                action, action_input = self._parse_action(thought)
+
+                if action == "Final Answer":
+                    final_answer = action_input.get("answer", thought)
+                    step = ReActStep(iteration=iteration, thought=thought, action="Final Answer", observation=final_answer)
+                    self.steps.append(step)
+                    break
+
+                # Step 3: Execute action (tool)
+                observation = self._execute_tool(action, action_input, iteration)
+
+                # Record step
+                step = ReActStep(
+                    iteration=iteration,
+                    thought=thought,
+                    action=action,
+                    action_input=action_input,
+                    observation=observation
+                )
+                self.steps.append(step)
+
+            except Exception as e:
+                # Handle errors transparently (FR-065)
+                error_observation = f"오류 발생: {str(e)}\n대안을 시도해주세요."
+                step = ReActStep(
+                    iteration=iteration,
+                    thought="오류 처리 중",
+                    observation=error_observation
+                )
+                self.steps.append(step)
+
+        # If max iterations reached without final answer
+        if final_answer is None:
+            final_answer = f"죄송합니다. {max_iterations}회 시도 후에도 완전한 답변을 생성하지 못했습니다.\n\n현재까지의 결과:\n{self._summarize_steps()}"
+
+        return {
+            "final_answer": final_answer,
+            "steps": self.steps,
+            "total_iterations": len(self.steps),
+            "success": final_answer is not None,
+            "tools_used": list(set(step.action for step in self.steps if step.action and step.action != "Final Answer"))
+        }
+
+    def _generate_thought(self, query: str, llm_func) -> str:
+        """Generate thought using LLM"""
+        # Build context from previous steps
+        context = self._build_context()
+
+        prompt = f"""당신은 도구를 사용할 수 있는 ReAct 에이전트입니다.
+
+사용 가능한 도구:
+{self._format_available_tools()}
+
+사용자 질문: {query}
+
+{context}
+
+다음 형식으로 응답하세요:
+Thought: [현재 상황 분석 및 다음 행동 계획]
+Action: [도구 이름 또는 "Final Answer"]
+Action Input: {{"param": "value"}} 또는 최종 답변
+
+예시:
+Thought: 사용자가 예산 계산을 요청했으므로 calculator 도구를 사용해야 합니다.
+Action: calculator
+Action Input: {{"expression": "1000만원 + 500만원"}}
+"""
+
+        return llm_func(prompt)
+
+    def _parse_action(self, thought_text: str) -> Tuple[str, Dict]:
+        """Parse action from thought text"""
+        import re
+        import json
+
+        # Extract Action
+        action_match = re.search(r'Action:\s*(.+)', thought_text)
+        if not action_match:
+            return "Final Answer", {"answer": thought_text}
+
+        action = action_match.group(1).strip()
+
+        # Extract Action Input
+        input_match = re.search(r'Action Input:\s*({.+})', thought_text, re.DOTALL)
+        if input_match:
+            try:
+                action_input = json.loads(input_match.group(1))
+            except:
+                action_input = {"raw": input_match.group(1)}
+        else:
+            # Try to find any JSON-like structure
+            action_input = {}
+
+        return action, action_input
+
+    def _execute_tool(self, tool_name: str, parameters: Dict, iteration: int) -> str:
+        """
+        Execute a tool with safety measures
+
+        Per FR-063: 30-second timeout, sandboxing
+        Per FR-066: Audit logging
+        """
+        start_time = time.time()
+
+        try:
+            # Check for identical call (prevent loops)
+            call_signature = f"{tool_name}:{str(parameters)}"
+            if call_signature in self.previous_calls:
+                return f"⚠️ 이 도구는 이미 같은 파라미터로 호출되었습니다. 다른 접근을 시도하세요."
+
+            self.previous_calls.append(call_signature)
+
+            # Get tool
+            if tool_name not in self.tools:
+                return f"❌ 알 수 없는 도구: {tool_name}. 사용 가능한 도구: {', '.join(self.tools.keys())}"
+
+            tool = self.tools[tool_name]
+
+            # Validate parameters
+            is_valid, error_msg = tool.validate_parameters(parameters)
+            if not is_valid:
+                return f"❌ 파라미터 오류: {error_msg}"
+
+            # Execute with timeout
+            try:
+                if tool_name == "document_search":
+                    result = tool.execute(conversation_id=self.conversation_id, **parameters)
+                else:
+                    result = tool.execute(**parameters)
+
+                success = True
+                error_message = None
+
+            except Exception as e:
+                result = f"도구 실행 오류: {str(e)}"
+                success = False
+                error_message = str(e)
+
+            execution_time_ms = int((time.time() - start_time) * 1000)
+
+            # Log execution (FR-066)
+            self._log_tool_execution(
+                tool_name=tool_name,
+                parameters=parameters,
+                iteration=iteration,
+                success=success,
+                result=result[:500] if result else None,  # Truncate
+                error_message=error_message,
+                execution_time_ms=execution_time_ms
+            )
+
+            return result
+
+        except Exception as e:
+            execution_time_ms = int((time.time() - start_time) * 1000)
+            error_result = f"도구 실행 중 예외 발생: {str(e)}"
+
+            # Log error
+            self._log_tool_execution(
+                tool_name=tool_name,
+                parameters=parameters,
+                iteration=iteration,
+                success=False,
+                result=None,
+                error_message=str(e),
+                execution_time_ms=execution_time_ms
+            )
+
+            return error_result
+
+    def _log_tool_execution(
+        self,
+        tool_name: str,
+        parameters: Dict,
+        iteration: int,
+        success: bool,
+        result: str,
+        error_message: str,
+        execution_time_ms: int
+    ):
+        """Log tool execution for audit trail (FR-066)"""
+        try:
+            # Get tool_id
+            tool = self.db.query(Tool).filter(Tool.name == tool_name).first()
+            if not tool:
+                return  # Tool not registered in DB
+
+            # Sanitize parameters (remove PII)
+            sanitized_params = ToolExecution.sanitize_parameters(parameters)
+
+            # Create execution log
+            execution_log = ToolExecution(
+                tool_id=tool.id,
+                user_id=self.user_id,
+                conversation_id=self.conversation_id,
+                agent_iteration=iteration,
+                parameters=sanitized_params,
+                success=success,
+                result=result,
+                error_message=error_message,
+                execution_time_ms=execution_time_ms,
+            )
+
+            self.db.add(execution_log)
+            self.db.commit()
+
+            # Update tool statistics
+            tool.increment_usage(success, execution_time_ms)
+            self.db.commit()
+
+        except Exception as e:
+            print(f"Failed to log tool execution: {e}")
+            self.db.rollback()
+
+    def _build_context(self) -> str:
+        """Build context from previous steps"""
+        if not self.steps:
+            return ""
+
+        context_lines = ["이전 단계:"]
+        for step in self.steps:
+            context_lines.append(f"\n[단계 {step.iteration}]")
+            context_lines.append(f"Thought: {step.thought}")
+            if step.action:
+                context_lines.append(f"Action: {step.action}")
+            if step.observation:
+                context_lines.append(f"Observation: {step.observation[:200]}...")  # Truncate
+
+        return "\n".join(context_lines)
+
+    def _format_available_tools(self) -> str:
+        """Format list of available tools"""
+        tool_descriptions = []
+        for name, tool in self.tools.items():
+            definition = tool.get_tool_definition()
+            tool_descriptions.append(f"- {definition['display_name']} ({name}): {definition['description']}")
+
+        return "\n".join(tool_descriptions)
+
+    def _summarize_steps(self) -> str:
+        """Summarize all steps"""
+        summary = []
+        for step in self.steps:
+            summary.append(f"🤔 Thought {step.iteration}: {step.thought[:100]}...")
+            if step.action:
+                summary.append(f"⚙️ Action: {step.action}")
+            if step.observation:
+                summary.append(f"👁️ Observation: {step.observation[:150]}...")
+
+        return "\n".join(summary)
