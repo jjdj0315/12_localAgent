@@ -30,6 +30,12 @@
 - [X] T006 [P] Create .env.example with all required environment variables (database, secrets, LLM config, API URLs)
 - [X] T007 [P] Configure ESLint and Prettier for frontend in frontend/.eslintrc.js and frontend/.prettierrc
 - [X] T008 [P] Configure Black, Ruff, and mypy for backend in backend/pyproject.toml
+- [X] T008A [P] Create offline dependency bundling script in scripts/bundle-offline-deps.sh:
+  - Download all Python packages from requirements.txt using `pip download -d ./offline_packages/ -r backend/requirements.txt`
+  - Download HuggingFace models (GGUF for Phase 10, safetensors for Phase 13 optional) using huggingface-cli
+  - Download toxic-bert, sentence-transformers models for air-gapped installation
+  - Create tarball archive for transfer to air-gapped server
+  - Document usage in scripts/bundle-offline-deps.README.md (per FR-081, FR-082)
 
 ---
 
@@ -106,7 +112,11 @@
 
 ### Backend Implementation
 
-- [X] T043 [US1] Implement conversation context management service in backend/app/services/context_service.py (10-message window, 2048 token limit, FIFO)
+- [X] T043 [US1] Implement conversation context management service in backend/app/services/context_service.py:
+  - 10-message window (5 user + 5 AI), FIFO removal when exceeded
+  - 2048 token limit using actual tokenizer (transformers.AutoTokenizer.from_pretrained for accurate Korean token counting)
+  - Do NOT use character approximation (1 token ≈ 4 chars) - this is inaccurate for Korean text
+  - Count tokens dynamically before each LLM call, trim oldest messages if limit exceeded
 - [X] T044 [US1] Implement chat endpoint POST /api/v1/chat with streaming support in backend/app/api/v1/chat.py
 - [X] T045 [US1] Implement conversation CRUD endpoints in backend/app/api/v1/conversations.py (create, list, get, delete)
 - [X] T046 [US1] Implement message history endpoint GET /api/v1/conversations/{id}/messages in backend/app/api/v1/conversations.py
@@ -238,6 +248,12 @@
 - [X] T104 [US5] Implement storage metrics endpoint GET /api/v1/admin/storage in backend/app/api/v1/admin.py (per-user usage, warnings at 80%)
 - [X] T105 [US5] Implement initial setup wizard endpoint POST /api/v1/setup in backend/app/api/v1/setup.py (first admin creation, setup.lock file per FR-034)
 - [X] T106 [US5] Implement backup management endpoints in backend/app/api/v1/admin.py (trigger backup, view backup history per FR-042)
+- [X] T106A [P] [US5] Create backup automation scripts in scripts/:
+  - backup-daily.sh: Incremental backup using pg_dump + rsync for documents (scheduled daily at 2 AM via cron)
+  - backup-weekly.sh: Full backup using pg_dump --format=custom (scheduled weekly on Sunday)
+  - cleanup-old-backups.sh: Delete backups older than 30 days, keep minimum 4 weekly full backups
+  - restore-from-backup.sh: Restore database and documents from backup (documented procedure for IT staff)
+  - Create crontab configuration example in scripts/crontab.example (per FR-042)
 
 ### Frontend Implementation
 
@@ -300,6 +316,12 @@
 
 ### Manual Testing
 
+- [X] T139A [US6] Create labeled test dataset for safety filter evaluation in backend/data/safety_filter_test_dataset.json:
+  - 50 inappropriate samples (10 per category: violence, sexual, hate, dangerous, PII)
+  - 50 legitimate samples (normal government queries)
+  - Each sample labeled with expected_result: {is_safe: boolean, categories: string[]}
+  - Include edge cases (borderline content, context-dependent appropriateness)
+  - Document dataset creation criteria in backend/tests/data/safety_filter_test_dataset.README.md (per SC-014)
 - [X] T140 [US6] Test Phase 1 rule-based filter blocks inappropriate keywords (violence, sexual, hate, dangerous)
 - [X] T141 [US6] Test Phase 2 ML filter detects toxic content (95%+ accuracy on test dataset per SC-014)
 - [X] T142 [US6] Test PII masking for 주민등록번호, phone, email (100% detection per SC-015)
@@ -340,14 +362,14 @@
 
 ### Backend - Admin Interface
 
-- [ ] T160 [US7] Implement tool management endpoints in backend/app/api/v1/admin/tools.py (enable/disable tools, view tool list per FR-067)
-- [ ] T161 [US7] Implement tool usage statistics endpoint GET /api/v1/admin/tools/stats in backend/app/api/v1/admin/tools.py (per-tool usage, avg time, error rate per FR-069)
+- [X] T160 [US7] Implement tool management endpoints in backend/app/api/v1/admin/tools.py (enable/disable tools, view tool list per FR-067)
+- [X] T161 [US7] Implement tool usage statistics endpoint GET /api/v1/admin/tools/stats in backend/app/api/v1/admin/tools.py (per-tool usage, avg time, error rate per FR-069)
 
 ### Frontend Implementation
 
-- [ ] T162 [P] [US7] Implement ReActDisplay component in frontend/src/components/react/ReActDisplay.tsx (show Thought/Action/Observation with emoji prefixes 🤔/⚙️/👁️ per FR-064)
-- [ ] T163 [P] [US7] Create ToolManagement admin component in frontend/src/components/admin/ToolManagement.tsx
-- [ ] T164 [P] [US7] Create ToolStatistics admin component in frontend/src/components/admin/ToolStatistics.tsx
+- [X] T162 [P] [US7] Implement ReActDisplay component in frontend/src/components/react/ReActDisplay.tsx (show Thought/Action/Observation with emoji prefixes 🤔/⚙️/👁️ per FR-064)
+- [X] T163 [P] [US7] Create ToolManagement admin component in frontend/src/components/admin/ToolManagement.tsx
+- [X] T164 [P] [US7] Create ToolStatistics admin component in frontend/src/components/admin/ToolStatistics.tsx
 - [ ] T165 [US7] Integrate ReAct display into chat interface in frontend/src/app/(user)/chat/page.tsx
 
 ### Manual Testing
@@ -369,59 +391,87 @@
 
 ### Backend - Agent Models
 
-- [ ] T172 [US8] Create Agent model (SQLAlchemy) in backend/app/models/agent.py
-- [ ] T173 [US8] Create AgentWorkflow model (SQLAlchemy) in backend/app/models/agent_workflow.py
-- [ ] T174 [US8] Create AgentWorkflowStep model (SQLAlchemy) in backend/app/models/agent_workflow_step.py
-- [ ] T175 [US8] Create agent schemas in backend/app/schemas/agent.py
+- [X] T172 [US8] Create Agent model (SQLAlchemy) in backend/app/models/agent.py
+- [X] T173 [US8] Create AgentWorkflow model (SQLAlchemy) in backend/app/models/agent_workflow.py
+- [X] T174 [US8] Create AgentWorkflowStep model (SQLAlchemy) in backend/app/models/agent_workflow_step.py
+- [X] T175 [US8] Create agent schemas in backend/app/schemas/agent.py
+
+### Backend - LLM Service Infrastructure (FR-071A)
+
+- [X] T175A [US8] Create abstract base class in backend/app/services/base_llm_service.py (define generate(), generate_with_agent(), get_agent_prompt() methods for environment-agnostic interface)
+- [X] T175B [P] [US8] Implement llama.cpp service in backend/app/services/llama_cpp_llm_service.py (GGUF model loading, CPU optimization, optional LoRA adapter loading for infrastructure testing)
+- [X] T175C [US8] Create LLM service factory in backend/app/services/llm_service_factory.py (environment variable LLM_BACKEND selector: llama_cpp or vLLM)
+- [X] T175D [US8] Create vLLM service stub in backend/app/services/vllm_llm_service.py (production implementation placeholder, to be completed later)
+- [X] T175E [P] [US8] Create GGUF model download script in scripts/download_gguf_model.py (download Qwen2.5-1.5B-Instruct GGUF Q4_K_M from HuggingFace for local testing)
+- [X] T175F [P] [US8] Create dummy LoRA generator script in scripts/create_dummy_lora.py:
+  - Create 5 dummy GGUF LoRA files for infrastructure testing (not actual fine-tuning)
+  - **Important**: Dummy files are for path detection and loading mechanism testing only
+  - If llama.cpp requires valid LoRA file format for loading, generate minimal valid empty LoRA files using llama.cpp tools or compatible library
+  - If llama.cpp accepts any file, simple placeholder files (b'DUMMY_LORA') are sufficient
+  - Test script should verify: file exists, loading mechanism works (even if adapter has no effect)
+  - **Removal**: Per plan.md LoRA Transition Decision Tree, if Phase 10 completes successfully with dummy LoRA, immediately remove dummy LoRA loading code (T175F files) before Phase 11 unless proceeding with actual fine-tuning
+- [X] T175G [US8] Update requirements.txt to include llama-cpp-python (for Phase 10), add vllm as optional dependency (for later)
+- [X] T175H [US8] Create models directory structure (models/ for GGUF base model, models/lora/ for dummy adapters) and configure paths in backend/app/config.py
 
 ### Backend - Agent Implementations
 
-- [ ] T176 [P] [US8] Create Citizen Support Agent prompt template in backend/prompts/citizen_support_agent.txt and implement in backend/app/services/agents/citizen_support.py (empathetic responses, 존댓말, completeness check per FR-071.1)
-- [ ] T177 [P] [US8] Create Document Writing Agent prompt template in backend/prompts/document_writing_agent.txt and implement in backend/app/services/agents/document_writing.py (formal language, standard sections per FR-071.2)
-- [ ] T178 [P] [US8] Create Legal Research Agent prompt template in backend/prompts/legal_research_agent.txt and implement in backend/app/services/agents/legal_research.py (cite articles, plain-language interpretation per FR-071.3)
-- [ ] T179 [P] [US8] Create Data Analysis Agent prompt template in backend/prompts/data_analysis_agent.txt and implement in backend/app/services/agents/data_analysis.py (Korean formatting, trend identification per FR-071.4)
-- [ ] T180 [P] [US8] Create Review Agent prompt template in backend/prompts/review_agent.txt and implement in backend/app/services/agents/review.py (error detection, improvement suggestions per FR-071.5)
+- [X] T176 [P] [US8] Create Citizen Support Agent prompt template in backend/prompts/citizen_support.txt and implement in backend/app/services/agents/citizen_support.py (use BaseLLMService via factory pattern, empathetic responses, 존댓말, completeness check per FR-071.1)
+- [X] T177 [P] [US8] Create Document Writing Agent prompt template in backend/prompts/document_writing.txt and implement in backend/app/services/agents/document_writing.py (use BaseLLMService, formal language, standard sections per FR-071.2)
+- [X] T178 [P] [US8] Create Legal Research Agent prompt template in backend/prompts/legal_research.txt and implement in backend/app/services/agents/legal_research.py (use BaseLLMService, cite articles, plain-language interpretation per FR-071.3)
+- [X] T179 [P] [US8] Create Data Analysis Agent prompt template in backend/prompts/data_analysis.txt and implement in backend/app/services/agents/data_analysis.py (use BaseLLMService, Korean formatting, trend identification per FR-071.4)
+- [X] T180 [P] [US8] Create Review Agent prompt template in backend/prompts/review.txt and implement in backend/app/services/agents/review.py (use BaseLLMService, error detection, improvement suggestions per FR-071.5)
 
-### Backend - Orchestrator
+### Backend - Orchestrator (LangGraph-based)
 
-- [ ] T181 [US8] Create few-shot orchestrator prompt file in backend/prompts/orchestrator_few_shot.txt (2-3 example queries per agent per FR-070)
-- [ ] T182 [US8] Implement LLM-based orchestrator in backend/app/services/orchestrator_service.py (default mode, few-shot classification per FR-070)
-- [ ] T183 [US8] Implement keyword-based orchestrator alternative in backend/app/services/orchestrator_service.py (admin-configurable per FR-076)
-- [ ] T184 [US8] Implement sequential workflow logic in backend/app/services/orchestrator_service.py (detect multi-step requests, chain agents per FR-072)
-- [ ] T185 [US8] Implement parallel agent execution in backend/app/services/orchestrator_service.py (independent sub-tasks, max 3 parallel per FR-078)
-- [ ] T186 [US8] Implement agent context sharing in backend/app/services/orchestrator_service.py (workflow context, previous outputs per FR-077)
-- [ ] T187 [US8] Implement workflow failure handling in backend/app/services/orchestrator_service.py (upstream failures, retry logic per FR-073)
-- [ ] T188 [US8] Implement workflow complexity limits in backend/app/services/orchestrator_service.py (max 5 agents, max 3 parallel, 5-minute timeout per FR-079)
-- [ ] T189 [US8] Implement workflow execution logging in backend/app/services/orchestrator_service.py (timestamp, agents, summaries, timing per FR-075)
-- [ ] T190 [US8] Integrate multi-agent system into chat endpoint in backend/app/api/v1/chat.py
+- [X] T181 [US8] Create few-shot orchestrator prompt file in backend/prompts/orchestrator_few_shot.txt (2-3 example queries per agent per FR-070)
+- [X] T182 [P] [US8] Implement LangGraph-based orchestrator in backend/app/services/orchestrator_service.py (AgentState TypedDict, StateGraph setup, classify_intent node per FR-070)
+- [X] T183 [US8] Implement single agent execution node in orchestrator_service.py (_execute_single_agent method)
+- [X] T184 [US8] Implement sequential workflow node in orchestrator_service.py (_execute_sequential method, agent chaining with context sharing per FR-072, FR-077)
+- [X] T185 [US8] Implement parallel agent execution node in orchestrator_service.py (_execute_parallel method, asyncio.gather for max 3 agents per FR-078)
+- [X] T186 [US8] Implement workflow routing logic in orchestrator_service.py (_route_workflow_type conditional edges)
+- [X] T187 [US8] Implement error handling node in orchestrator_service.py (_handle_error method, upstream failure detection per FR-073)
+- [X] T188 [US8] Implement workflow complexity limits in orchestrator_service.py (max 5 agents, max 3 parallel, 5-minute timeout with asyncio.wait_for per FR-079)
+- [X] T189 [US8] Implement workflow execution logging in orchestrator_service.py (execution_log in state, timestamp/agent/status tracking per FR-075)
+- [X] T189A [US8] Implement keyword-based orchestrator alternative (optional admin-configurable mode, fallback if LangGraph fails per FR-076)
+- [X] T190 [US8] Integrate multi-agent system into chat endpoint in backend/app/api/v1/chat.py (call orchestrator.route_and_execute)
 
 ### Backend - Admin Interface
 
-- [ ] T191 [US8] Implement agent management endpoints in backend/app/api/v1/admin/agents.py (enable/disable agents, configure routing mode, edit keywords per FR-076)
-- [ ] T192 [US8] Implement agent performance metrics endpoint GET /api/v1/admin/agents/stats in backend/app/api/v1/admin/agents.py (task counts, response time, error rate per FR-076)
+- [X] T191 [US8] Implement agent management endpoints in backend/app/api/v1/admin/agents.py:
+  - POST /api/v1/admin/agents/{agent_name}/toggle (enable/disable individual agents per FR-076)
+  - PUT /api/v1/admin/agents/routing-mode (body: {mode: 'llm' | 'keyword'}, configure orchestrator routing mode, takes effect immediately without restart per FR-076)
+  - GET /api/v1/admin/agents/routing-mode (retrieve current routing mode configuration)
+  - PUT /api/v1/admin/agents/{agent_name}/keywords (body: {keywords: string[]}, edit keyword patterns for agent routing rules per FR-076)
+- [X] T192 [US8] Implement agent performance metrics endpoint GET /api/v1/admin/agents/stats in backend/app/api/v1/admin/agents.py (task counts, response time, error rate per FR-076)
 
 ### Frontend Implementation
 
-- [ ] T193 [P] [US8] Implement MultiAgentDisplay component in frontend/src/components/agents/MultiAgentDisplay.tsx (agent attribution with labels and icons per FR-074)
-- [ ] T194 [P] [US8] Implement WorkflowProgress component in frontend/src/components/agents/WorkflowProgress.tsx (show current agent and stage per FR-072)
-- [ ] T195 [P] [US8] Create AgentManagement admin component in frontend/src/components/admin/AgentManagement.tsx
-- [ ] T196 [P] [US8] Create AgentStatistics admin component in frontend/src/components/admin/AgentStatistics.tsx
+- [X] T193 [P] [US8] Implement MultiAgentDisplay component in frontend/src/components/agents/MultiAgentDisplay.tsx (agent attribution with labels and icons per FR-074)
+- [X] T194 [P] [US8] Implement WorkflowProgress component in frontend/src/components/agents/WorkflowProgress.tsx (show current agent and stage per FR-072)
+- [X] T195 [P] [US8] Create AgentManagement admin component in frontend/src/components/admin/AgentManagement.tsx
+- [X] T196 [P] [US8] Create AgentStatistics admin component in frontend/src/components/admin/AgentStatistics.tsx
 - [ ] T197 [US8] Integrate multi-agent display into chat interface in frontend/src/app/(user)/chat/page.tsx
 
 ### Manual Testing
 
-- [ ] T198 [US8] Test orchestrator routing accuracy (85%+ correct per SC-018) on test dataset of 50 queries
-- [ ] T199 [US8] Test sequential 3-agent workflow completes within 90 seconds (per SC-019)
-- [ ] T200 [US8] Test parallel agent execution for independent sub-tasks
+- [ ] T197A [US8] Test LLM service factory (verify llama.cpp loads correctly with LLM_BACKEND=llama_cpp environment variable)
+- [ ] T197B [US8] Test GGUF model loading (Qwen2.5-1.5B Q4_K_M loads successfully on CPU)
+- [ ] T197C [US8] Test dummy LoRA adapter detection (optional, verify dummy files detected without errors if present)
+- [ ] T198 [US8] Test orchestrator routing accuracy (85%+ correct per SC-021) on test dataset of 50 queries
+- [ ] T199 [US8] Test sequential 3-agent workflow completes within 90 seconds (per SC-022)
+- [ ] T200 [US8] Test parallel agent execution for independent sub-tasks (max 3 agents)
 - [ ] T201 [US8] Test agent failure handling (upstream failure stops downstream)
 - [ ] T202 [US8] Test workflow complexity limits (5 agents, 3 parallel, 5-minute timeout)
 - [ ] T203 [US8] Verify agent attribution clearly labels each contribution
+- [ ] T204 [US8] Test CPU performance (verify responses complete within acceptable time on 8-16 core CPU)
 
 ---
 
 ## Phase 11: Common Air-Gapped & Advanced Features Integration (Priority: P3-P4)
 
 **Goal**: Ensure all advanced features work in air-gapped environment, implement resource limits, graceful degradation, and documentation
+
+**Prerequisites**: Phase 8 (US6 - Safety Filter), Phase 9 (US7 - ReAct Agent), Phase 10 (US8 - Multi-Agent) MUST be completed before Phase 11 air-gapped testing (T220 requires all advanced features operational)
 
 **Independent Test**: Disable internet → verify all features work. Test resource limits → verify queueing/503 responses.
 
@@ -450,13 +500,35 @@
 
 - [ ] T216 Create backup and restore procedures document in docs/admin/backup-restore-guide.md (pg_dump commands, rsync procedures per FR-042, FR-088)
 - [ ] T217 Create advanced features administration manual in docs/admin/advanced-features-manual.md (safety filter config, tool management, agent setup per FR-088)
-- [ ] T218 Create customization guide in docs/admin/customization-guide.md (document templates, agent keywords, resource limits per FR-088)
+- [ ] T218 Create customization guide in docs/admin/customization-guide.md:
+  - Document template customization (upload .jinja2 files, template variables reference)
+  - Agent routing keyword editing (keyword patterns per agent, routing mode switching)
+  - Resource limit configuration (concurrency limits, timeout values)
+  - Safety filter customization (keyword lists, category enable/disable, confidence thresholds)
+  - **Include "Effect Time" table** (per FR-084 requirement):
+    | Setting Category | Setting Name | Effect Time | Notes |
+    |-----------------|--------------|-------------|-------|
+    | Safety Filter | Keyword patterns | Immediate | No restart |
+    | Safety Filter | Category enable/disable | Immediate | No restart |
+    | Safety Filter | ML confidence threshold | Immediate | No restart |
+    | Agent System | Routing mode (LLM/keyword) | Immediate | No restart (FR-076) |
+    | Agent System | Agent enable/disable | Immediate | No restart |
+    | Agent System | Keyword patterns | Immediate | No restart |
+    | ReAct Tools | Tool enable/disable | Immediate | No restart |
+    | Resource Limits | Concurrency limits | Restart required | Middleware initialization |
+    | Document Templates | Upload .jinja2 | Immediate | Loaded on next use |
+    | LLM Backend | Switch llama.cpp ↔ vLLM | Restart required | Service initialization |
 - [ ] T219 Create Korean user manual in docs/user/user-guide-ko.md (basic usage, document upload, safety features)
 
 ### Air-Gapped Deployment Testing
 
 - [ ] T220 Test complete air-gapped deployment (disable all network, verify all features work per SC-020)
-- [ ] T221 Verify all AI models load from local disk (Qwen2.5-1.5B, toxic-bert, sentence-transformers per FR-081)
+- [ ] T221 Verify all AI models and tool data files load from local disk:
+  - AI models: Qwen2.5-1.5B (or GGUF equivalent), toxic-bert, sentence-transformers (per FR-081)
+  - ReAct tool data: korean_holidays.json in backend/data/, Jinja2 templates in backend/templates/ (per FR-068)
+  - Multi-agent prompts: agent prompt templates in backend/prompts/*.txt (per FR-080)
+  - Verify file paths configured correctly in backend/app/config.py
+  - Confirm no "file not found" errors during service startup
 - [ ] T222 Verify model loading time <60 seconds and feature execution within normal ranges (per SC-020)
 
 ---
@@ -497,6 +569,56 @@
 - [ ] T238 Final Korean language quality test (90% pass rate per SC-004)
 - [ ] T239 Security audit (verify FR-029 bcrypt cost 12, FR-032 data isolation, FR-033 admin separation)
 - [ ] T240 Air-gapped deployment final verification
+
+---
+
+## Phase 13: vLLM Migration (Post-MVP, Optional)
+
+**Purpose**: Migrate from llama.cpp (CPU-optimized test environment) to vLLM (GPU-optimized production environment) for improved performance and multi-user concurrency
+
+**Prerequisites**: Phase 10 완료 (Multi-Agent with llama.cpp validated), GPU hardware available
+
+**When to Execute**: After Phase 10 SC-021/SC-022 validation, IF:
+- GPU server available (NVIDIA RTX 3090/A100 16GB+ VRAM)
+- Multi-user concurrency required (>10 concurrent users)
+- Response time improvement needed (current CPU latency >5 seconds)
+
+### vLLM Service Implementation
+
+- [ ] T241 Complete vLLM service implementation in backend/app/services/vllm_llm_service.py (currently stub at T175D) - implement generate(), generate_with_agent(), PagedAttention configuration
+- [ ] T242 Create vLLM Dockerfile in docker/vllm-service.Dockerfile (CUDA base image, vLLM installation, model volume mounting)
+- [ ] T243 Update docker-compose.yml to add vllm-service container with GPU passthrough (nvidia-docker runtime, resource limits)
+- [ ] T244 [P] Download HuggingFace safetensors model for vLLM in scripts/download_hf_model.py (Qwen/Qwen2.5-1.5B-Instruct or meta-llama/Meta-Llama-3-8B)
+- [ ] T245 [P] Create vLLM configuration file in llm-service/vllm_config.yaml (gpu_memory_utilization: 0.9, max_num_seqs: 16, tensor_parallel_size: 1)
+
+### Agent System Integration
+
+- [ ] T246 Update agent prompt templates to work with both llama.cpp and vLLM (ensure prompt format compatibility in backend/prompts/*.txt)
+- [ ] T247 Test BaseLLMService interface with vLLM backend (verify factory pattern works, agents switch transparently)
+- [ ] T248 (Optional) Implement vLLM LoRA support in vllm_llm_service.py IF Phase 10 LoRA decision tree determined LoRA is beneficial (enable_lora=True, LoRARequest per agent)
+
+### Migration & Validation
+
+- [ ] T249 Create migration guide in docs/deployment/llama-cpp-to-vllm-migration.md (environment variable changes, model file preparation, rollback procedures)
+- [ ] T250 Perform side-by-side performance comparison (llama.cpp CPU vs vLLM GPU):
+  - Response time: P50/P95 latency (target: vLLM <2s vs llama.cpp 2-5s)
+  - Throughput: Concurrent users (target: vLLM 10-16 users vs llama.cpp 1 user)
+  - Quality: Response quality comparison (50 test queries, blind evaluation)
+  - Memory: GPU memory usage vs CPU memory usage
+- [ ] T251 Execute gradual rollout: 10% traffic → 50% traffic → 100% traffic (monitor error rates, rollback if issues)
+- [ ] T252 Update production documentation to reflect vLLM as primary LLM backend (update .env.example, deployment-guide.md, README.md)
+
+### Air-Gapped Deployment Updates
+
+- [ ] T253 Create vLLM offline installation package (pip download vllm, CUDA dependencies, create tarball for air-gapped transfer)
+- [ ] T254 Update air-gapped deployment guide in docs/deployment/air-gapped-deployment.md (include vLLM model download, GPU driver requirements)
+
+### Fallback & Rollback
+
+- [ ] T255 Document rollback procedure in migration guide (set LLM_BACKEND=llama_cpp, restart services, verify system stability)
+- [ ] T256 Keep llama.cpp service code functional for fallback (do NOT delete llama_cpp_llm_service.py even after vLLM migration)
+
+**Decision Gate**: If vLLM migration provides <20% performance improvement OR requires significant operational overhead, **stay with llama.cpp** for simplicity (Constitution Principle IV: Simplicity Over Optimization)
 
 ---
 
@@ -562,7 +684,7 @@
 
 ## Summary
 
-**Total Tasks**: 240
+**Total Tasks**: 267 (updated with dual LLM strategy: llama.cpp + vLLM + migration path)
 - Setup: 8 tasks
 - Foundational: 34 tasks
 - US1 (P1): 13 tasks
@@ -572,12 +694,17 @@
 - US5 (P2): 22 tasks
 - US6 (P3): 24 tasks
 - US7 (P3): 26 tasks
-- US8 (P4): 32 tasks
+- US8 (P4): 43 tasks (includes 8 LLM infrastructure tasks + 4 testing tasks)
 - Common Integration (P3-P4): 19 tasks
 - Polish: 18 tasks
+- **vLLM Migration (Optional, Post-MVP): 16 tasks**
 
 **MVP Tasks**: ~150 (Phases 1-7 + Phase 12)
-**Advanced Features**: ~90 (Phases 8-11)
+**Advanced Features**: ~101 (Phases 8-11, includes Multi-Agent system)
+**Production Optimization**: 16 (Phase 13, optional vLLM migration)
+
+**Phase 10 Focus**: Multi-Agent system with llama.cpp (local testing)
+**Phase 13 Focus**: vLLM migration (optional production optimization, GPU-accelerated)
 
 **Parallel Opportunities**: ~120 tasks marked with [P] can execute in parallel
 
