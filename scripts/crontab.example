@@ -1,0 +1,132 @@
+# Crontab Configuration for Local LLM Web Application Backup Automation
+# Install: crontab scripts/crontab.example
+# Edit: crontab -e
+# View: crontab -l
+#
+# Implements FR-042: Backup automation with daily incremental and weekly full backups
+#
+# Format: minute hour day month weekday command
+# Example: 0 2 * * * means "every day at 2:00 AM"
+
+# Environment variables (adjust paths as needed)
+BACKUP_DIR=/var/backups/local-llm-webapp
+PROJECT_ROOT=/opt/local-llm-webapp
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Email notifications (optional - requires sendmail/postfix configured)
+# MAILTO=admin@example.com
+
+# ========================================
+# Daily Incremental Backup (2 AM)
+# ========================================
+# Runs: Every day at 2:00 AM
+# Duration: ~5-10 minutes
+# Storage: ~100-500MB per day (incremental)
+# Retention: 7 days (automatically cleaned)
+#
+# Creates:
+# - /var/backups/local-llm-webapp/daily/db_incremental_YYYYMMDD_HHMMSS.sql.gz
+# - /var/backups/local-llm-webapp/daily/documents_YYYYMMDD_HHMMSS/
+# - /var/backups/local-llm-webapp/daily/logs_YYYYMMDD_HHMMSS.tar.gz
+
+0 2 * * * /opt/local-llm-webapp/scripts/backup-daily.sh >> /var/backups/local-llm-webapp/logs/cron-daily.log 2>&1
+
+# ========================================
+# Weekly Full Backup (Sunday 3 AM)
+# ========================================
+# Runs: Every Sunday at 3:00 AM
+# Duration: ~15-30 minutes
+# Storage: ~1-2GB per week (full backup)
+# Retention: Minimum 4 most recent weekly backups (~30 days)
+#
+# Creates:
+# - /var/backups/local-llm-webapp/weekly/db_full_weekNN_YYYYMMDD_HHMMSS.dump
+# - /var/backups/local-llm-webapp/weekly/documents_full_weekNN_YYYYMMDD_HHMMSS.tar.gz
+# - /var/backups/local-llm-webapp/weekly/config_weekNN_YYYYMMDD_HHMMSS.tar.gz
+# - /var/backups/local-llm-webapp/weekly/logs_full_weekNN_YYYYMMDD_HHMMSS.tar.gz
+# - /var/backups/local-llm-webapp/weekly/checksums_weekNN_YYYYMMDD_HHMMSS.sha256
+
+0 3 * * 0 /opt/local-llm-webapp/scripts/backup-weekly.sh >> /var/backups/local-llm-webapp/logs/cron-weekly.log 2>&1
+
+# ========================================
+# Backup Cleanup (Daily 4 AM)
+# ========================================
+# Runs: Every day at 4:00 AM (after daily backup completes)
+# Duration: ~1-2 minutes
+# Purpose: Enforce retention policies and free disk space
+#
+# Retention policies:
+# - Daily backups: Keep last 7 days
+# - Weekly backups: Keep minimum 4 most recent
+# - Log files: Keep last 30 days
+
+0 4 * * * /opt/local-llm-webapp/scripts/cleanup-old-backups.sh >> /var/backups/local-llm-webapp/logs/cron-cleanup.log 2>&1
+
+# ========================================
+# Disk Space Monitoring (Optional)
+# ========================================
+# Runs: Every day at 5:00 AM
+# Purpose: Alert if backup directory exceeds 80% capacity
+# Requires: `mail` command configured for email alerts
+
+# 0 5 * * * USAGE=$(df -h /var/backups/local-llm-webapp | awk 'NR==2 {print $5}' | sed 's/%//'); if [ "$USAGE" -gt 80 ]; then echo "WARNING: Backup disk usage at ${USAGE}%" | mail -s "Backup Disk Space Alert" admin@example.com; fi
+
+# ========================================
+# Configuration Backup (Monthly)
+# ========================================
+# Runs: First day of every month at 1:00 AM
+# Purpose: Additional configuration snapshot (redundant safety)
+# Creates: /var/backups/local-llm-webapp/monthly/config_YYYYMM.tar.gz
+
+# 0 1 1 * * tar -czf /var/backups/local-llm-webapp/monthly/config_$(date +%Y%m).tar.gz -C /opt/local-llm-webapp backend/.env backend/alembic.ini docker-compose.yml
+
+# ========================================
+# Database Statistics (Weekly)
+# ========================================
+# Runs: Every Monday at 6:00 AM
+# Purpose: Log database size and table statistics for capacity planning
+# Creates: /var/backups/local-llm-webapp/logs/db-stats_YYYYMMDD.log
+
+# 0 6 * * 1 psql -U postgres -d llm_webapp -c "\l+" > /var/backups/local-llm-webapp/logs/db-stats_$(date +%Y%m%d).log 2>&1; psql -U postgres -d llm_webapp -c "\dt+" >> /var/backups/local-llm-webapp/logs/db-stats_$(date +%Y%m%d).log 2>&1
+
+# ========================================
+# Installation Instructions
+# ========================================
+# 1. Copy this file to the project root:
+#    cp scripts/crontab.example /tmp/crontab.txt
+#
+# 2. Edit paths and email addresses:
+#    nano /tmp/crontab.txt
+#
+# 3. Install crontab:
+#    crontab /tmp/crontab.txt
+#
+# 4. Verify installation:
+#    crontab -l
+#
+# 5. Monitor cron logs:
+#    tail -f /var/backups/local-llm-webapp/logs/cron-*.log
+#
+# 6. Test manual execution (before relying on cron):
+#    /opt/local-llm-webapp/scripts/backup-daily.sh
+#    /opt/local-llm-webapp/scripts/backup-weekly.sh
+#    /opt/local-llm-webapp/scripts/cleanup-old-backups.sh
+
+# ========================================
+# Troubleshooting
+# ========================================
+# - Check cron service status: systemctl status cron
+# - View system cron logs: grep CRON /var/log/syslog
+# - Verify script permissions: chmod +x /opt/local-llm-webapp/scripts/*.sh
+# - Test scripts manually before adding to cron
+# - Ensure BACKUP_DIR has sufficient disk space (minimum 10GB recommended)
+
+# ========================================
+# Security Notes
+# ========================================
+# - Ensure .env file contains POSTGRES_PASSWORD for pg_dump authentication
+# - Restrict backup directory access: chmod 700 /var/backups/local-llm-webapp
+# - Consider encrypting backup archives if storing on external media
+# - Regularly test restore procedures to verify backup integrity
+# - Keep minimum 4 weekly backups for disaster recovery (30-day recovery window)
