@@ -428,9 +428,9 @@ Government employees need complex tasks (like responding to citizen inquiries re
 ### Measurable Outcomes
 
 - **SC-001**: Users can submit a query and receive a relevant response within acceptable time for queries under 500 characters:
-  - **GPU-accelerated environment** (vLLM): Target 5 seconds, maximum acceptable 10 seconds
-  - **CPU-only environment** (llama.cpp with Qwen2.5-1.5B GGUF Q4_K_M): Target 10 seconds, maximum acceptable 15 seconds
-  - **Rationale**: CPU-only deployment prioritizes availability over performance (Assumption #2, Constitution Principle IV: Simplicity Over Optimization)
+  - **GPU-accelerated environment** (vLLM): Target 3 seconds, maximum acceptable 8 seconds
+  - **CPU-only environment** (llama.cpp with Qwen3-4B GGUF Q4_K_M): Target 8 seconds, maximum acceptable 12 seconds
+  - **Rationale**: CPU-only deployment prioritizes availability over performance (Assumption #2, Constitution Principle IV: Simplicity Over Optimization). Qwen3-4B provides superior quality (Qwen2.5-72B-level) with acceptable latency on modern CPU hardware
 - **SC-002**: System supports at least 10 concurrent users without response time degradation exceeding 20% (baseline: single-user average 5 seconds per SC-001, target: ≤6 seconds with 10 concurrent users)
 - **SC-003**: Users can upload and process a 20-page PDF document within 60 seconds
 - **SC-004**: 한국어 쿼리의 90%가 문법적으로 정확하고 맥락적으로 적절한 응답을 받음
@@ -492,10 +492,10 @@ Government employees need complex tasks (like responding to citizen inquiries re
 This specification is based on the following assumptions:
 
 1. **Network Environment**: The local government has an internal network infrastructure that supports web applications, even though it's isolated from the internet
-2. **Hardware Resources**: Server hardware meeting minimum specifications is available: CPU (8-core Intel Xeon or equivalent for CPU-only deployment, 16-core recommended for production), RAM (32GB minimum, 64GB recommended), GPU (optional: NVIDIA RTX 3090 or A100 with 16GB+ VRAM and CUDA support for acceleration; CPU-only deployment supported with acceptable performance for lightweight models like Qwen2.5-1.5B), Storage (500GB+ SSD for OS/app/data, NVMe SSD 1TB recommended), Network (internal Gigabit Ethernet)
+2. **Hardware Resources**: Server hardware meeting minimum specifications is available: CPU (8-core Intel Xeon or equivalent for CPU-only deployment, 16-core recommended for production), RAM (32GB minimum, 64GB recommended), GPU (optional: NVIDIA RTX 3090 or A100 with 16GB+ VRAM and CUDA support for acceleration; CPU-only deployment supported with acceptable performance for lightweight models like Qwen3-4B), Storage (500GB+ SSD for OS/app/data, NVMe SSD 1TB recommended), Network (internal Gigabit Ethernet)
 3. **User Devices**: Government employees have access to computers with supported browsers (Chrome 90+, Edge 90+, Firefox 88+, minimum 1280x720 resolution, JavaScript enabled). Internet Explorer is not supported.
 4. **Data Sensitivity**: While the environment is air-gapped for security, the specific classification level of data that can be processed is not defined
-5. **LLM Capabilities**: Qwen2.5-1.5B-Instruct or Meta-Llama-3-8B will be used as the local LLM model, providing reasonable quality Korean language support when deployed via HuggingFace Transformers with BitsAndBytes 4-bit quantization (CPU-compatible); lightweight models like Qwen2.5-1.5B prioritized for CPU-only deployments
+5. **LLM Capabilities**: Qwen3-4B-Instruct will be used as the local LLM model, providing high-quality Korean language support with Qwen2.5-72B-level performance when deployed via HuggingFace Transformers or llama.cpp with 4-bit quantization (CPU-compatible, ~2.5GB memory footprint); Qwen3-4B prioritized for optimal balance of quality and efficiency in CPU-only deployments (April 2025 release, 20-40% improvement in math/coding over Qwen2.5)
 6. **User Volume & Storage**: "Small local government" implies approximately 10-50 employees who might use the system. Storage provisioning assumes 10GB per user (500GB total for 50 users), with monthly growth of 1-5GB total. Administrators responsible for storage expansion when capacity warnings occur.
 7. **Authentication**: Basic username/password authentication is sufficient; advanced methods like SSO or multi-factor authentication are not required
 8. **Maintenance**: Technical staff are available to perform system maintenance, updates, and user management on the local server
@@ -506,7 +506,7 @@ This specification is based on the following assumptions:
 ## Dependencies
 
 - Local server infrastructure with sufficient compute resources (CPU-based deployment supported, GPU optional for acceleration)
-- Meta-Llama-3-8B model files (meta-llama/Meta-Llama-3-8B) OR Qwen2.5-1.5B-Instruct that support Korean language and can run on local hardware with HuggingFace Transformers + BitsAndBytes quantization
+- Qwen3-4B-Instruct model files (Qwen/Qwen3-4B-Instruct) supporting Korean language and running on local hardware with HuggingFace Transformers + BitsAndBytes 4-bit quantization or llama.cpp GGUF format (~2.5GB Q4_K_M)
 - Vector database (ChromaDB or FAISS) with embedding model for document semantic search
 - Embedding model files compatible with ChromaDB/FAISS (e.g., sentence-transformers paraphrase-multilingual-MiniLM-L12-v2) pre-downloaded for offline installation
 - **Safety Filter Dependencies**:
@@ -519,7 +519,7 @@ This specification is based on the following assumptions:
   - Python libraries: pandas (data analysis), openpyxl (Excel support), sympy or numexpr (calculator)
 - **Multi-Agent System Dependencies**:
   - Agent prompt templates (stored as text files in `/prompts` directory for each specialized agent)
-  - Agent-specific LoRA adapter weights: 5 fine-tuned adapters (~100-500MB each) for Citizen Support, Document Writing, Legal Research, Data Analysis, Review agents, pre-downloaded and stored in `/models/lora_adapters/` directory structure
+  - Agent-specific LoRA adapter weights: 5 fine-tuned adapters (~100-500MB each) for Citizen Support, Document Writing, Legal Research, Data Analysis, Review agents optimized for Qwen3-4B, pre-downloaded and stored in `/models/lora_adapters/` directory structure
   - HuggingFace PEFT (Parameter-Efficient Fine-Tuning) library for LoRA adapter loading and management (CPU-compatible)
   - Orchestrator routing configuration: LLM-based few-shot prompt file with 2-3 example queries per agent + brief descriptions (default), keyword patterns stored in database or config file (alternative mode)
 - Separate storage volume for backups (minimum 1TB recommended, separate from system disk for redundancy)

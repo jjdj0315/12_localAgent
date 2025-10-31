@@ -3,7 +3,7 @@
 **Input**: Design documents from `/specs/001-local-llm-webapp/`
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/
 
-**Tests**: Automated tests are NOT required per constitution (prioritizes deployment speed for small-scale government use). Manual acceptance testing per user story scenarios (spec.md) is MANDATORY per constitution L45. Focus on implementation and manual testing per acceptance scenarios.
+**Tests**: Manual acceptance testing per user story scenarios (spec.md) is MANDATORY per constitution L57-58. Automated unit/integration tests are NOT required (constitution prioritizes deployment speed for small-scale government use). Focus on implementation and manual functional validation per acceptance scenarios.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -88,7 +88,7 @@
 
 ### LLM Service Setup (HuggingFace Transformers)
 
-- [X] T035 Create HuggingFace Transformers LLM service wrapper in backend/app/services/llm_service.py (load Qwen2.5-1.5B-Instruct with 4-bit quantization using BitsAndBytes)
+- [X] T035 Create HuggingFace Transformers LLM service wrapper in backend/app/services/llm_service.py (load Qwen3-4B-Instruct with 4-bit quantization using BitsAndBytes)
 - [X] T036 Create LLM configuration in backend/app/config.py (model_name, max_model_len: 4096, device_map: auto, quantization_config)
 - [X] T037 Implement streaming response handler using Server-Sent Events in backend/app/services/llm_service.py
 
@@ -247,6 +247,7 @@
 - [X] T103 [US5] Implement system health endpoint GET /api/v1/admin/health in backend/app/api/v1/admin.py (uptime, storage, LLM status per FR-028)
 - [X] T104 [US5] Implement storage metrics endpoint GET /api/v1/admin/storage in backend/app/api/v1/admin.py (per-user usage, warnings at 80%)
 - [X] T105 [US5] Implement initial setup wizard endpoint POST /api/v1/setup in backend/app/api/v1/setup.py (first admin creation, setup.lock file per FR-034)
+- [ ] T105A [US5] Implement setup.lock file mechanism in backend/app/services/setup_service.py (create file on wizard completion in project root, check file existence in setup endpoint to return 403 Forbidden if already configured, document lock file location in .gitignore per FR-034)
 - [X] T106 [US5] Implement backup management endpoints in backend/app/api/v1/admin.py (trigger backup, view backup history per FR-042)
 - [X] T106A [P] [US5] Create backup automation scripts in scripts/:
   - backup-daily.sh: Incremental backup using pg_dump + rsync for documents (scheduled daily at 2 AM via cron)
@@ -260,12 +261,14 @@
 - [X] T107 [P] [US5] Create admin login page in frontend/src/app/(admin)/login/page.tsx
 - [X] T108 [P] [US5] Create admin dashboard layout in frontend/src/app/(admin)/dashboard/layout.tsx
 - [X] T109 [P] [US5] Implement UserManagement component in frontend/src/components/admin/UserManagement.tsx
+- [ ] T109A [P] [US5] Add account unlock functionality to UserManagement component (display locked status indicator, unlock button calls DELETE /api/v1/admin/users/{id}/lockout endpoint, refresh user list on success per FR-031)
 - [X] T110 [P] [US5] Implement StatsDashboard component in frontend/src/components/admin/StatsDashboard.tsx
 - [X] T111 [P] [US5] Implement SystemHealth component in frontend/src/components/admin/SystemHealth.tsx
 - [X] T112 [P] [US5] Implement StorageMetrics component in frontend/src/components/admin/StorageMetrics.tsx
 - [X] T113 [P] [US5] Implement TagManagement component in frontend/src/components/admin/TagManagement.tsx
 - [X] T114 [P] [US5] Implement BackupManagement component in frontend/src/components/admin/BackupManagement.tsx
 - [X] T114A [P] [US5] Add backup/restore documentation viewer in BackupManagement component (link to docs/admin/backup-restore-guide.md and scripts/restore-from-backup.sh accessible from admin panel per FR-042)
+- [ ] T114B [P] [US5] Integrate backup/restore UI controls into BackupManagement component (trigger backup button calling POST /api/v1/admin/backup, view backup history table, restore interface with file selection accessible from admin panel per FR-042)
 - [X] T115 [US5] Create initial setup wizard page in frontend/src/app/setup/page.tsx
 
 ### Manual Testing
@@ -403,7 +406,7 @@
 - [X] T175B [P] [US8] Implement llama.cpp service in backend/app/services/llama_cpp_llm_service.py (GGUF model loading, CPU optimization, optional LoRA adapter loading for infrastructure testing)
 - [X] T175C [US8] Create LLM service factory in backend/app/services/llm_service_factory.py (environment variable LLM_BACKEND selector: llama_cpp or vLLM)
 - [X] T175D [US8] Create vLLM service stub in backend/app/services/vllm_llm_service.py (production implementation placeholder, to be completed later)
-- [X] T175E [P] [US8] Create GGUF model download script in scripts/download_gguf_model.py (download Qwen2.5-1.5B-Instruct GGUF Q4_K_M from HuggingFace for local testing)
+- [X] T175E [P] [US8] Create GGUF model download script in scripts/download_gguf_model.py (download Qwen3-4B-Instruct GGUF Q4_K_M ~2.5GB from HuggingFace for local testing)
 - [X] T175F [P] [US8] Create dummy LoRA generator script in scripts/create_dummy_lora.py:
   - Create 5 dummy GGUF LoRA files for infrastructure testing (not actual fine-tuning)
   - **Important**: Dummy files are for path detection and loading mechanism testing only
@@ -458,8 +461,8 @@
 **Note**: T197A-B completed. T166-T204 require manual testing in Windows CMD/PowerShell (Cygwin bash incompatibility). See MANUAL_TEST_GUIDE.md.
 
 - [X] T197A [US8] Test LLM service factory (verify llama.cpp loads correctly with LLM_BACKEND=llama_cpp environment variable) ✅ **2025-10-31**
-- [X] T197B [US8] Test GGUF model loading (Qwen2.5-3B-Instruct Q4_K_M, 2GB, load time 435ms, CPU AVX2/FMA/F16C optimizations) ✅ **2025-10-31**
-  - **NOTE**: Model size mismatch detected - plan.md:L30 specifies "Qwen2.5-1.5B-Instruct" but 3B model was tested. MUST reconcile: either update plan.md to reflect 3B choice (with justification) OR switch to 1.5B model. See analysis finding I2.
+- [ ] T197B [US8] Test GGUF model loading (Qwen3-4B-Instruct Q4_K_M, ~2.5GB, expected load time <1 second, CPU AVX2/FMA/F16C optimizations)
+  - **UPDATE 2025-10-31**: Upgraded from Qwen2.5-1.5B to Qwen3-4B for superior performance (Qwen2.5-72B-level quality, 20-40% improvement in math/coding, April 2025 release, ~50% efficiency gain)
 - [ ] T197C [US8] Test dummy LoRA adapter detection (optional, verify dummy files detected without errors if present)
 - [ ] T198 [US8] Test orchestrator routing accuracy (85%+ correct per SC-021) on test dataset of 50 queries
 - [ ] T199 [US8] Test sequential 3-agent workflow completes within 90 seconds (per SC-022)
@@ -579,21 +582,21 @@
 
 ## Phase 13: vLLM Migration (Post-MVP, Optional)
 
-**Purpose**: Migrate from llama.cpp (CPU-optimized test environment) to vLLM (GPU-optimized production environment) for improved performance and multi-user concurrency
+**Purpose**: Migrate from llama.cpp (CPU-optimized baseline) to vLLM (GPU-accelerated deployment) for improved performance and multi-user concurrency
 
-**Prerequisites**: Phase 10 완료 (Multi-Agent with llama.cpp validated), GPU hardware available
+**Prerequisites**: Phase 10 완료 (Multi-Agent with llama.cpp + Qwen3-4B validated), GPU hardware available
 
 **When to Execute**: After Phase 10 SC-021/SC-022 validation, IF:
 - GPU server available (NVIDIA RTX 3090/A100 16GB+ VRAM)
 - Multi-user concurrency required (>10 concurrent users)
-- Response time improvement needed (current CPU latency >5 seconds)
+- Response time improvement needed (current CPU latency 8-12 seconds target < 5 seconds)
 
 ### vLLM Service Implementation
 
 - [ ] T241 Complete vLLM service implementation in backend/app/services/vllm_llm_service.py (currently stub at T175D) - implement generate(), generate_with_agent(), PagedAttention configuration
 - [ ] T242 Create vLLM Dockerfile in docker/vllm-service.Dockerfile (CUDA base image, vLLM installation, model volume mounting)
 - [ ] T243 Update docker-compose.yml to add vllm-service container with GPU passthrough (nvidia-docker runtime, resource limits)
-- [ ] T244 [P] Download HuggingFace safetensors model for vLLM in scripts/download_hf_model.py (Qwen/Qwen2.5-1.5B-Instruct or meta-llama/Meta-Llama-3-8B)
+- [ ] T244 [P] Download HuggingFace safetensors model for vLLM in scripts/download_hf_model.py (Qwen/Qwen3-4B-Instruct, ~8GB safetensors format)
 - [ ] T245 [P] Create vLLM configuration file in llm-service/vllm_config.yaml (gpu_memory_utilization: 0.9, max_num_seqs: 16, tensor_parallel_size: 1)
 
 ### Agent System Integration
@@ -689,7 +692,7 @@
 
 ## Summary
 
-**Total Tasks**: 269 (updated with dual LLM strategy: llama.cpp + vLLM + migration path; includes T114A, T225A added per analysis findings)
+**Total Tasks**: 270 (updated with Qwen3-4B model, dual LLM strategy: llama.cpp + vLLM + migration path; includes T114A, T114B, T225A added per analysis findings)
 - Setup: 8 tasks
 - Foundational: 34 tasks
 - US1 (P1): 13 tasks
@@ -708,8 +711,8 @@
 **Advanced Features**: ~101 (Phases 8-11, includes Multi-Agent system)
 **Production Optimization**: 16 (Phase 13, optional vLLM migration)
 
-**Phase 10 Focus**: Multi-Agent system with llama.cpp (local testing)
-**Phase 13 Focus**: vLLM migration (optional production optimization, GPU-accelerated)
+**Phase 10 Focus**: Multi-Agent system with llama.cpp + Qwen3-4B (CPU-optimized baseline deployment)
+**Phase 13 Focus**: vLLM migration (optional GPU acceleration for >10 concurrent users)
 
 **Parallel Opportunities**: ~120 tasks marked with [P] can execute in parallel
 

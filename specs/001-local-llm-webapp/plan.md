@@ -5,7 +5,7 @@
 
 ## Summary
 
-Build an air-gapped Local LLM web application for small local government employees to use AI assistance for administrative tasks without internet connectivity. The system provides conversational AI, document analysis, conversation history management, multi-user support with administrative oversight, **plus advanced features: Safety Filter (content moderation + PII masking), ReAct Agent (tool-augmented reasoning), and Multi-Agent System (task-specialized agents)** - all running on local infrastructure using Qwen2.5-1.5B-Instruct with HuggingFace Transformers for CPU-compatible deployment.
+Build an air-gapped Local LLM web application for small local government employees to use AI assistance for administrative tasks without internet connectivity. The system provides conversational AI, document analysis, conversation history management, multi-user support with administrative oversight, **plus advanced features: Safety Filter (content moderation + PII masking), ReAct Agent (tool-augmented reasoning), and Multi-Agent System (task-specialized agents)** - all running on local infrastructure using Qwen3-4B-Instruct with HuggingFace Transformers or llama.cpp for CPU-compatible deployment (~2.5GB Q4, Qwen2.5-72B-level performance).
 
 **Key Value**: Replace unavailable cloud-based AI services (ChatGPT, Gemini) with a secure, locally-hosted alternative that maintains data privacy in a closed network environment, while providing government-specific safety controls and task automation.
 
@@ -26,12 +26,13 @@ Build an air-gapped Local LLM web application for small local government employe
 - SQLAlchemy ORM with Alembic migrations
 
 **LLM Infrastructure**:
+- **Model Choice**: Qwen3-4B-Instruct (April 2025 release, ~2.5GB Q4_K_M, Qwen2.5-72B-level performance, 20-40% improvement in math/coding)
 - **Model Format Strategy**:
-  - **Phase 10 (Test Environment)**: GGUF format (Qwen2.5-1.5B-Instruct Q4_K_M) via llama.cpp for CPU-optimized local testing
-  - **Phase 13 (Production, Optional)**: HuggingFace safetensors (Qwen/Qwen2.5-1.5B-Instruct or meta-llama/Meta-Llama-3-8B) via vLLM for GPU-accelerated multi-user deployment
+  - **Phase 10 (CPU-optimized baseline)**: GGUF format (Qwen3-4B-Instruct Q4_K_M) via llama.cpp for CPU-optimized local deployment
+  - **Phase 13 (GPU-accelerated, Optional)**: HuggingFace safetensors (Qwen/Qwen3-4B-Instruct) via vLLM for GPU-accelerated multi-user deployment
 - **Inference Engine**: Dual backend via factory pattern (BaseLLMService):
-  - llama.cpp (CPU-optimized, single user, test environment)
-  - vLLM (GPU-accelerated, 10-16 concurrent users, production - optional migration per Phase 13)
+  - llama.cpp (CPU-optimized, 1-3 concurrent users, baseline deployment)
+  - vLLM (GPU-accelerated, 10-16 concurrent users, optional migration per Phase 13)
 - Streaming: Server-Sent Events (SSE) for real-time response streaming
 - Context Management: 10-message window (5 user + 5 AI), 2,048 token limit, FIFO removal when exceeded (FR-036)
 - Response Limits: Default 4,000 characters / Document generation mode 10,000 characters (FR-017)
@@ -84,12 +85,12 @@ Build an air-gapped Local LLM web application for small local government employe
   4. Data Analysis Agent: Statistical analysis with Korean formatting (천 단위 쉼표) + LoRA adapter
   5. Review Agent: Content review for errors (factual, grammatical, policy compliance) + LoRA adapter
 - **LoRA Adapter Architecture** (FR-071A):
-  - Base model: Qwen2.5-1.5B-Instruct or Meta-Llama-3-8B (loaded once on startup)
+  - Base model: Qwen3-4B-Instruct (loaded once on startup, ~2.5GB Q4_K_M)
   - Dynamic adapter loading: Each agent loads task-specific LoRA adapter on first invocation
   - Adapter caching: Loaded adapters cached in memory to minimize switching overhead
   - Switching latency: <3 seconds per agent invocation (adapter load + inference)
   - Implementation: HuggingFace PEFT library for CPU-compatible adapter management
-  - Storage: LoRA weights in `/models/lora_adapters/{agent_name}/` directories (~100-500MB per adapter)
+  - Storage: LoRA weights in `/models/lora_adapters/{agent_name}/` directories (~100-500MB per adapter, optimized for Qwen3-4B)
 - **Workflow Support** (FR-072-079):
   - Sequential workflows: Multi-step tasks with agent chaining (adapter switches between agents)
   - Parallel execution: Independent sub-tasks dispatched simultaneously (max 3 parallel, multiple adapters loaded concurrently)
@@ -205,14 +206,14 @@ Build an air-gapped Local LLM web application for small local government employe
 ### Core Principles Compliance
 
 ✅ **I. Air-Gap Compatibility (NON-NEGOTIABLE)**
-- All ML models bundled locally: Qwen2.5-1.5B-Instruct, unitary/toxic-bert, sentence-transformers
+- All ML models bundled locally: Qwen3-4B-Instruct, unitary/toxic-bert, sentence-transformers
 - No external API calls: All safety filters, ReAct tools, and agents operate offline
 - Dependencies: All Python packages in requirements.txt for offline pip install
 - Documentation: Deployment procedures documented in quickstart.md
 
 ✅ **II. Korean Language Support (MANDATORY)**
 - UI: All labels, error messages in Korean (FR-037)
-- LLM: Qwen2.5-1.5B-Instruct supports Korean
+- LLM: Qwen3-4B-Instruct with superior Korean support (trained on 36 trillion tokens, 119 languages)
 - Safety Filter: unitary/toxic-bert supports multilingual (including Korean)
 - Document templates: Jinja2 templates in Korean for government documents
 
@@ -253,10 +254,11 @@ Build an air-gapped Local LLM web application for small local government employe
 
 ⚠️ **CPU-only deployment may have performance limitations**
 - **Justification**:
-  - Qwen2.5-1.5B is lightweight enough for CPU inference
-  - BitsAndBytes 4-bit quantization reduces memory footprint
+  - Qwen3-4B provides Qwen2.5-72B-level quality with ~50% efficiency improvement
+  - 4-bit quantization reduces memory footprint to ~2.5GB
   - Government priority: availability > performance
   - GPU optional for acceleration if available
+  - Target 8-12 seconds response time on 16-core CPU (acceptable for administrative tasks)
 - **Mitigation**:
   - Resource limits prevent system overload (FR-086)
   - Queueing for ReAct/Multi-Agent sessions
@@ -406,9 +408,9 @@ local-llm-webapp/
 │
 ├── models/                     # AI model storage (air-gapped deployment)
 │   ├── base/                   # Base LLM models
-│   │   └── Qwen2.5-1.5B-Instruct/  # or Meta-Llama-3-8B
+│   │   └── Qwen3-4B-Instruct/  # GGUF Q4_K_M (~2.5GB) or HF safetensors
 │   └── lora_adapters/          # Agent-specific LoRA adapters (FR-071A)
-│       ├── citizen_support/    # Citizen Support Agent adapter (~100-500MB)
+│       ├── citizen_support/    # Citizen Support Agent adapter (~100-500MB, Qwen3-4B optimized)
 │       ├── document_writing/   # Document Writing Agent adapter
 │       ├── legal_research/     # Legal Research Agent adapter
 │       ├── data_analysis/      # Data Analysis Agent adapter
