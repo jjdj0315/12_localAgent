@@ -16,20 +16,6 @@ services:
       timeout: 5s
       retries: 5
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: llm-webapp-ollama
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
   backend:
     build:
       context: .
@@ -44,35 +30,42 @@ services:
       POSTGRES_PORT: 5432
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       SESSION_TIMEOUT_MINUTES: ${SESSION_TIMEOUT_MINUTES:-30}
-      LLM_SERVICE_URL: http://ollama:11434
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-tinyllama}
+      LLM_BACKEND: llama_cpp
+      GGUF_MODEL_PATH: /models/qwen2.5-3b-instruct-q4_k_m.gguf
+      LLAMA_N_THREADS: 8
+      LLAMA_N_CTX: 2048
+      LLAMA_N_GPU_LAYERS: 0
+      ENABLE_LORA: "false"
       PER_USER_QUOTA_GB: ${PER_USER_QUOTA_GB:-10}
       TOTAL_STORAGE_CAPACITY_GB: ${TOTAL_STORAGE_CAPACITY_GB:-500}
+      ENABLE_ML_FILTER: "true"
+      FILTER_SENSITIVITY: balanced
+      ORCHESTRATOR_ROUTING_MODE: llm
+      AGENT_TIMEOUT: 300
+      MAX_SEQUENTIAL_AGENTS: 5
+      MAX_PARALLEL_AGENTS: 3
     volumes:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       - ./backend/scripts:/app/scripts
+      - ./models:/models:ro
       - uploads_data:/uploads
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
     command: >
       sh -c "
-        echo 'Waiting for services...' &&
+        echo 'Waiting for PostgreSQL...' &&
         sleep 5 &&
         echo 'Running database migrations...' &&
         alembic upgrade head &&
         echo 'Creating initial admin user...' &&
         python scripts/create_admin.py --username admin --password admin123! 2>/dev/null || true &&
-        echo 'Pulling Ollama model (TinyLlama - 1.1B, CPU friendly)...' &&
-        curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"tinyllama\"}' &&
-        echo 'Model download started. Waiting...' &&
-        sleep 30 &&
-        echo 'Starting backend server...' &&
+        echo 'Verifying GGUF model...' &&
+        ls -lh /models/qwen2.5-3b-instruct-q4_k_m.gguf &&
+        echo 'Starting backend server with llama.cpp...' &&
         uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       "
 
@@ -92,7 +85,6 @@ services:
 
 volumes:
   postgres_data:
-  ollama_data:
   uploads_data:
 
 networks:

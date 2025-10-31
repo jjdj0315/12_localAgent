@@ -55,6 +55,7 @@
 
 ### Pre-Deployment Gates (Per User Story)
 - [ ] Independent test scenarios from spec.md passed
+- [ ] Manual acceptance testing completed for each user story per spec.md acceptance scenarios (MANDATORY)
 - [ ] Korean language functionality verified
 - [ ] User isolation verified (multi-user stories)
 - [ ] Air-gap deployment tested (no internet required)

@@ -9,6 +9,7 @@ import DocumentSelector from '@/components/chat/DocumentSelector'
 import FilterWarningModal from '@/components/safety/FilterWarningModal'
 import PIIMaskingNotice from '@/components/safety/PIIMaskingNotice'
 import ReActDisplay from '@/components/react/ReActDisplay'
+import MultiAgentDisplay from '@/components/agents/MultiAgentDisplay'
 import type { Message as APIMessage } from '@/types/conversation'
 
 interface ReActStep {
@@ -20,6 +21,20 @@ interface ReActStep {
   timestamp: string
 }
 
+interface AgentContribution {
+  agent_name: string
+  display_name: string
+  contribution: string
+  execution_time_ms: number
+  success: boolean
+}
+
+interface MultiAgentInfo {
+  workflow_type: string
+  agent_contributions: AgentContribution[]
+  total_execution_time_ms: number
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -27,6 +42,7 @@ interface Message {
   timestamp: Date
   react_steps?: ReActStep[]
   tools_used?: string[]
+  multi_agent_info?: MultiAgentInfo
 }
 
 interface FilterWarning {
@@ -56,6 +72,9 @@ export default function ChatPage() {
 
   // ReAct Agent state
   const [useReActAgent, setUseReActAgent] = useState(false)
+
+  // Multi-Agent state
+  const [useMultiAgent, setUseMultiAgent] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -133,15 +152,16 @@ export default function ChatPage() {
     console.log('Creating assistant message placeholder:', assistantMessageId)
     setMessages((prev) => [...prev, assistantMessage])
 
-    // Use non-streaming API when ReAct is enabled
-    if (useReActAgent) {
+    // Use non-streaming API when ReAct or Multi-Agent is enabled
+    if (useReActAgent || useMultiAgent) {
       try {
         const response = await chatAPI.sendMessage({
           content: currentInput,
           conversation_id: selectedConversationId,
           document_ids: selectedDocuments.length > 0 ? selectedDocuments : undefined,
           bypass_filter: currentBypassFlag,
-          use_react_agent: true,
+          use_react_agent: useReActAgent,
+          use_multi_agent: useMultiAgent,
         })
 
         // Update assistant message with response
@@ -153,6 +173,7 @@ export default function ChatPage() {
                   content: response.message.content,
                   react_steps: response.react_steps,
                   tools_used: response.tools_used,
+                  multi_agent_info: response.multi_agent_info,
                 }
               : msg
           )
@@ -408,6 +429,15 @@ export default function ChatPage() {
 
             {messages.map((message) => (
               <div key={message.id}>
+                {/* Multi-Agent Display for assistant messages with multi-agent info */}
+                {message.role === 'assistant' && message.multi_agent_info && (
+                  <MultiAgentDisplay
+                    workflowType={message.multi_agent_info.workflow_type}
+                    agentContributions={message.multi_agent_info.agent_contributions}
+                    totalExecutionTimeMs={message.multi_agent_info.total_execution_time_ms}
+                  />
+                )}
+
                 {/* ReAct Display for assistant messages with ReAct steps */}
                 {message.role === 'assistant' && message.react_steps && message.tools_used && (
                   <ReActDisplay
@@ -475,30 +505,65 @@ export default function ChatPage() {
               onSelectionChange={setSelectedDocuments}
             />
 
-            {/* ReAct Agent Toggle */}
-            <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg px-4 py-3">
-              <div className="flex items-center">
-                <span className="text-lg mr-2">🤖</span>
-                <div>
-                  <div className="text-sm font-medium text-purple-900">ReAct 에이전트 모드</div>
-                  <div className="text-xs text-purple-600">
-                    AI가 도구를 사용하여 단계별로 문제를 해결합니다
+            {/* Agent Mode Toggles */}
+            <div className="space-y-2">
+              {/* ReAct Agent Toggle */}
+              <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg px-4 py-3">
+                <div className="flex items-center">
+                  <span className="text-lg mr-2">🔧</span>
+                  <div>
+                    <div className="text-sm font-medium text-purple-900">ReAct 에이전트 모드</div>
+                    <div className="text-xs text-purple-600">
+                      AI가 도구를 사용하여 단계별로 문제를 해결합니다
+                    </div>
                   </div>
                 </div>
-              </div>
-              <button
-                onClick={() => setUseReActAgent(!useReActAgent)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  useReActAgent ? 'bg-purple-600' : 'bg-gray-300'
-                }`}
-                aria-label="ReAct 에이전트 모드 전환"
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    useReActAgent ? 'translate-x-6' : 'translate-x-1'
+                <button
+                  onClick={() => {
+                    setUseReActAgent(!useReActAgent);
+                    if (!useReActAgent) setUseMultiAgent(false); // Multi-Agent 비활성화
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    useReActAgent ? 'bg-purple-600' : 'bg-gray-300'
                   }`}
-                />
-              </button>
+                  aria-label="ReAct 에이전트 모드 전환"
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      useReActAgent ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Multi-Agent Toggle */}
+              <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
+                <div className="flex items-center">
+                  <span className="text-lg mr-2">🤖</span>
+                  <div>
+                    <div className="text-sm font-medium text-indigo-900">Multi-Agent 모드</div>
+                    <div className="text-xs text-indigo-600">
+                      여러 전문 에이전트가 협력하여 복잡한 작업을 처리합니다
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setUseMultiAgent(!useMultiAgent);
+                    if (!useMultiAgent) setUseReActAgent(false); // ReAct 비활성화
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    useMultiAgent ? 'bg-indigo-600' : 'bg-gray-300'
+                  }`}
+                  aria-label="Multi-Agent 모드 전환"
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      useMultiAgent ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-2">

@@ -5,6 +5,10 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
+# Load .env file for local development
+from dotenv import load_dotenv
+load_dotenv()
+
 # Import all models for Alembic to detect
 from app.models.user import User
 from app.models.session import Session
@@ -34,9 +38,25 @@ target_metadata = Base.metadata
 
 def get_url():
     """Get database URL from environment variables"""
+    # Check if SQLite is requested
+    use_sqlite = os.getenv("USE_SQLITE", "false").lower() == "true"
+    if use_sqlite:
+        url = "sqlite:///./data/app.db"
+        print(f"Database URL: {url}")
+        return url
+
+    # First try to get DATABASE_URL from .env (for local development)
+    url = os.getenv("DATABASE_URL")
+    if url:
+        # Replace asyncpg with psycopg2 for Alembic (sync driver)
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
+        print(f"Database URL: {url.split('@')[0].split('://')[0]}://***@{url.split('@')[1]}")
+        return url
+
+    # Fallback to individual env vars (for Docker)
     user = os.getenv("POSTGRES_USER", "llm_app")
     password = os.getenv("POSTGRES_PASSWORD", "changeme")
-    host = os.getenv("POSTGRES_HOST", "postgres")
+    host = os.getenv("POSTGRES_HOST", "localhost")  # Changed default to localhost
     port = os.getenv("POSTGRES_PORT", "5432")
     db = os.getenv("POSTGRES_DB", "llm_webapp")
     url = f"postgresql://{user}:{password}@{host}:{port}/{db}"

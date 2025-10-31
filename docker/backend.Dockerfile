@@ -2,9 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including C++ build tools for llama-cpp-python
 RUN apt-get update && apt-get install -y \
     gcc \
+    g++ \
+    make \
+    cmake \
     postgresql-client \
     libmagic1 \
     libmagic-dev \

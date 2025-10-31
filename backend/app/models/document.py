@@ -59,6 +59,7 @@ class Document(Base):
     # Relationships
     user = relationship("User", back_populates="documents")
     conversation = relationship("Conversation", back_populates="documents")
+    conversation_documents = relationship("ConversationDocument", back_populates="document", cascade="all, delete-orphan")
 
 
 class ConversationDocument(Base):

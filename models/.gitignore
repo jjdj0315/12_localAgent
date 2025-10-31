@@ -1,0 +1,10 @@
+# Exclude large GGUF model files
+*.gguf
+
+# Exclude other model formats
+*.bin
+*.safetensors
+
+# Keep directory structure
+!.gitkeep
+!README.md

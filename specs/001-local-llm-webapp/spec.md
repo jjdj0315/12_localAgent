@@ -217,9 +217,12 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **Covered by**: T117, T152 (health checks)
 
 **EC-008: Sensitive Information Detection**
-- **Scenario**: User uploads document potentially containing PII or classified data
-- **Handling**: OUT OF SCOPE for MVP. No automated detection. Rely on user training and assumption that air-gapped environment already provides security boundary. Future enhancement: keyword scanning for Social Security Numbers, classified markings.
-- **Status**: Deferred to post-MVP
+- **Scenario**: User uploads document or submits query potentially containing PII or classified data
+- **Handling**:
+  - **Basic PII masking (IN SCOPE for MVP)**: Automatically detect and mask 주민등록번호, phone numbers, email addresses in user inputs and AI outputs (covered by FR-052, Phase 8: US6 - Safety Filter, P3 priority)
+  - **Advanced document classification (OUT OF SCOPE for MVP)**: No automated detection of classified markings ("대외비", "비밀", "Confidential"), document-level sensitivity scoring, or complex PII patterns beyond basic masking. Rely on user training and assumption that air-gapped environment already provides security boundary.
+- **Rationale**: Basic PII masking (FR-052) is part of US6 (Safety Filter) which is P3 priority, included in Phase 2 Release (Advanced Features). Document classification is deferred to post-MVP.
+- **Status**: Basic PII masking in Phase 8, advanced classification deferred to post-MVP
 
 **EC-009: Empty or Whitespace-Only Query**
 - **Scenario**: User submits empty string or whitespace-only input
@@ -233,7 +236,14 @@ Government employees need complex tasks (like responding to citizen inquiries re
 
 **EC-011: Automatic Storage Cleanup**
 - **Scenario**: User's storage reaches 10GB limit, triggering automatic cleanup of conversations/documents inactive for 30+ days
-- **Handling**: System identifies oldest inactive items (sorted by last_accessed timestamp), deletes them until storage drops below 9GB (10% buffer), displays notification modal: "저장 공간 부족으로 30일 이상 사용하지 않은 항목을 자동으로 정리했습니다. [정리 내역 보기]" showing list of deleted items (title, last access date, size recovered). If cleanup fails mid-process, rollback transaction and display error: "자동 정리 중 오류가 발생했습니다. 관리자에게 문의하세요.", notify administrator.
+- **Handling**: System identifies oldest inactive items (sorted by last_accessed timestamp), deletes them until storage drops below 9GB (10% buffer), displays notification modal: "저장 공간 부족으로 30일 이상 사용하지 않은 항목을 자동으로 정리했습니다. [정리 내역 보기]" showing list of deleted items (title, last access date, size recovered).
+- **Rollback Strategy** (handles database transaction vs filesystem inconsistency): Use two-phase commit approach:
+  1. **Phase 1 - Mark for deletion**: Start database transaction, mark items for deletion in metadata table (status='pending_deletion'), commit transaction
+  2. **Phase 2 - Delete files**: Delete actual document files from filesystem (synchronous or background job)
+  3. **Phase 3 - Confirm deletion**: Start new transaction, update status='deleted' in metadata, commit transaction
+  4. **On failure**: If file deletion fails in Phase 2, mark as 'deletion_failed', retry in background job (scheduled hourly). Do NOT rollback Phase 1 metadata changes - keep metadata consistent with intent.
+  5. **Incomplete state recovery**: On system restart, check for items with status='pending_deletion', retry file deletion, log admin alert if failures persist after 3 retries.
+- **Error display**: If cleanup fails (file deletion error, insufficient items to clean), display error: "자동 정리 중 오류가 발생했습니다. 관리자에게 문의하세요.", notify administrator with failed item IDs.
 - **Edge case within edge case**: All items are recent (none >30 days old) but storage still at 10GB → Display error to user: "저장 공간이 부족합니다. 사용하지 않는 대화나 문서를 삭제해주세요." and prevent new uploads/conversations until manual deletion.
 - **Covered by**: FR-020, FR-019
 
@@ -291,7 +301,7 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FR-002**: System MUST provide a web-based interface accessible through standard web browsers on the internal network
 - **FR-003**: Users MUST be able to submit text queries and receive LLM-generated responses
 - **FR-004**: System MUST display a visual indicator when processing user queries
-- **FR-005**: System MUST support conversational context, allowing follow-up questions within the same session
+- **FR-005** *(High-level functional requirement)*: System MUST support conversational context, allowing follow-up questions within the same session *(Note: FR-036 provides technical implementation details for this requirement - intentional overlap for clarity)*
 - **FR-006**: System MUST allow users to create, view, and delete their saved conversations
 - **FR-007**: System MUST support searching or filtering through saved conversations
 - **FR-008**: System MUST accept document uploads in common formats (PDF, TXT, DOCX)
@@ -302,7 +312,7 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FR-013**: System MUST display error messages in user-friendly language when operations fail
 - **FR-014**: System MUST support Korean language for both queries and responses
 - **FR-015**: System MUST validate uploaded files for type and size before processing
-- **FR-016**: System MUST allow users to edit conversation titles and automatically assign tags from administrator-defined tag list when the first message is sent (system analyzes conversation title and first message content using semantic similarity to auto-assign relevant tags; administrators manage organization-wide tag list including creation, editing, and deletion of tags with optional keywords; users can manually add/remove auto-assigned tags at any time; tags are not automatically updated after initial assignment)
+- **FR-016**: System MUST allow users to edit conversation titles and automatically assign tags from administrator-defined tag list when the first message is sent (system analyzes first message content using semantic similarity to auto-assign relevant tags; if user has manually set a custom conversation title before sending first message, title is also included in analysis; administrators manage organization-wide tag list including creation, editing, and deletion of tags with optional keywords; users can manually add/remove auto-assigned tags at any time; tags are not automatically updated after initial assignment)
 - **FR-017**: System MUST limit response length with two modes: default mode (4,000 character maximum), document generation mode (10,000 character maximum activated by keyword detection in user queries: "문서 작성", "초안 생성", "공문", "보고서 작성", or similar document creation terms), truncating at 3,900/9,900 characters respectively with warning messages "응답이 길이 제한으로 잘렸습니다. 더 구체적인 질문으로 나누어 주세요." or "문서가 너무 깁니다. 더 짧게 요청해주세요."
 - **FR-018**: System MUST provide an administrator panel with user management (account creation/deletion, password resets), usage statistics, and system health monitoring capabilities
 - **FR-019**: System MUST retain conversations and uploaded documents until users manually delete them OR administrators remove them due to storage constraints (with user notification)
@@ -329,13 +339,15 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FR-040**: System MUST support browsers Chrome 90+, Edge 90+, Firefox 88+ (not Internet Explorer), require minimum 1280x720 resolution and JavaScript enabled
 - **FR-041**: System MUST limit conversations to 1,000 messages per conversation, display warning "대화가 너무 깁니다. 새 대화를 시작해주세요." when limit reached while allowing continued use with performance warning, and exempt administrators from limit for debugging
 - **FR-042**: System MUST implement automated backup strategy: daily incremental backups of database and uploaded documents at 2 AM, weekly full backups every Sunday, minimum 30-day backup retention, backups stored on separate storage volume (not system disk), and provide documented restore procedures accessible to IT staff through admin panel
-- **FR-043**: System MUST provide tag management interface for administrators to create, edit, and delete organization-wide tags (tag attributes: name, optional keywords for matching, color/icon for visual distinction, creation date), automatically assign tags to conversations when the first message is sent by analyzing conversation title and first message content and matching to tag names/keywords using semantic similarity (embedding-based with sentence-transformers), prevent deletion of tags currently in use by displaying usage count and requiring confirmation, allow users to filter conversations by single or multiple tags, and enable users to manually adjust auto-assigned tags at any time (tags not automatically updated after initial assignment)
+- **FR-043**: System MUST provide tag management interface for administrators to create, edit, and delete organization-wide tags (tag attributes: name, optional keywords for matching, color/icon for visual distinction, creation date), automatically assign tags to conversations when the first message is sent by analyzing first message content and matching to tag names/keywords using semantic similarity (embedding-based with sentence-transformers; if user has manually set a custom conversation title before sending first message, title is also included in analysis), prevent deletion of tags currently in use by displaying usage count and requiring confirmation, allow users to filter conversations by single or multiple tags, and enable users to manually adjust auto-assigned tags at any time (tags not automatically updated after initial assignment)
 
 #### Safety Filter Requirements (FR-050 series)
 
-- **FR-050**: System MUST implement two-phase content filtering for both user inputs and AI responses: Phase 1 (rule-based filter using keyword matching and regex patterns for CPU execution), Phase 2 (lightweight classification model unitary/toxic-bert running on CPU with local weights), with filtering applied synchronously before LLM processing (for input) and before response delivery (for output)
-- **FR-051**: System MUST filter content across five categories: violence (폭력성), sexual content (성적 내용), dangerous content (위험한 질문), hate speech (혐오 발언), and personal information exposure (개인정보 유출), with configurable keyword lists per category managed by administrators
-- **FR-052**: System MUST automatically detect and mask personal information patterns: 주민등록번호 (6 digits + dash + 7 digits → 123456-*******), phone numbers (010-XXXX-XXXX or 01XXXXXXXXX → 010-****-****), email addresses (user@domain → u***@domain), with notification "개인정보가 자동으로 마스킹되었습니다." displayed to user
+*Note: FR-051 and FR-052 are sub-requirements of FR-050's two-phase system, separated for clarity in implementation and testing*
+
+- **FR-050** *(Parent requirement - defines filtering architecture)*: System MUST implement two-phase content filtering for both user inputs and AI responses: Phase 1 (rule-based filter using keyword matching and regex patterns for CPU execution), Phase 2 (lightweight classification model unitary/toxic-bert running on CPU with local weights), with filtering applied synchronously before LLM processing (for input) and before response delivery (for output)
+- **FR-051** *(Sub-requirement of FR-050 - defines filtering categories)*: System MUST filter content across five categories: violence (폭력성), sexual content (성적 내용), dangerous content (위험한 질문), hate speech (혐오 발언), and personal information exposure (개인정보 유출), with configurable keyword lists per category managed by administrators
+- **FR-052** *(Sub-requirement of FR-050 - defines PII masking patterns)*: System MUST automatically detect and mask personal information patterns: 주민등록번호 (6 digits + dash + 7 digits → 123456-*******), phone numbers (010-XXXX-XXXX or 01XXXXXXXXX → 010-****-****), email addresses (user@domain → u***@domain), with notification "개인정보가 자동으로 마스킹되었습니다." displayed to user
 - **FR-053**: System MUST return filtering results with fields: is_safe (boolean), categories (list of violated categories), confidence (0-1 score from ML model if used), matched_patterns (list of triggered keywords from rule-based filter, not logged to preserve privacy)
 - **FR-054**: System MUST display predefined safe messages when content is blocked: for input filtering "부적절한 내용이 감지되어 요청을 처리할 수 없습니다." (Inappropriate content detected), for output filtering "안전한 응답을 생성할 수 없습니다. 질문을 다시 작성해주세요." (Cannot generate safe response), replacing entire original content to prevent exposure
 - **FR-055**: System MUST provide administrator interface for safety filter management: add/edit/remove keyword patterns per category, enable/disable categories, view filter statistics (daily counts by category for input/output), adjust confidence thresholds for ML model, with all changes taking effect immediately without restart
@@ -365,12 +377,13 @@ Government employees need complex tasks (like responding to citizen inquiries re
 #### Multi-Agent System Requirements (FR-070 series)
 
 - **FR-070**: System MUST implement orchestrator-based multi-agent architecture: orchestrator receives user query, analyzes intent using LLM-based classification (default mode: few-shot prompt with 2-3 example queries per agent + brief agent description for accuracy and flexibility) OR keyword matching (admin-configurable alternative for performance optimization), routes to appropriate specialized agent, returns agent output to user
-- **FR-071**: System MUST provide five specialized agents:
+- **FR-071**: System MUST provide five specialized agents, each using task-specific LoRA (Low-Rank Adaptation) adapters fine-tuned for optimal performance in their domain:
   1. Citizen Support Agent (민원 지원 에이전트): analyzes citizen inquiries, generates empathetic draft responses, ensures polite tone (존댓말), checks completeness (answers all parts of inquiry)
   2. Document Writing Agent (문서 작성 에이전트): generates government documents (보고서, 안내문, 정책 문서) following standard templates, uses formal language, includes proper sections (제목, 배경, 내용, 결론)
   3. Legal Research Agent (법규 검색 에이전트): searches uploaded regulations/ordinances, cites relevant articles with source references, provides plain-language interpretation (쉬운 설명) alongside legal text
   4. Data Analysis Agent (데이터 분석 에이전트): analyzes uploaded CSV/Excel data, provides summary statistics with Korean formatting (천 단위 쉼표), identifies trends, suggests visualization types suitable for government reports
   5. Review Agent (검토 에이전트): reviews drafted content for errors (factual, grammatical, policy compliance), highlights potential issues with explanations, suggests specific improvements with examples
+- **FR-071A** *(Separated from FR-071 as optional performance optimization - LoRA adapters may be removed if fine-tuning shows <10% improvement measured by 3-person blind quality evaluation (0-10 scale) on 50 test queries per agent, per plan.md LoRA Transition Decision Tree)*: System MUST implement dynamic LoRA adapter loading for multi-agent system: base model (Qwen2.5-1.5B-Instruct or Meta-Llama-3-8B) loaded once on startup, each agent loads its specific LoRA adapter on first invocation with adapter caching to minimize overhead, adapter switching latency must be <3 seconds per agent invocation, LLM service uses HuggingFace PEFT library for adapter management, all LoRA adapter weights bundled locally for air-gapped deployment
 - **FR-072**: System MUST support sequential multi-agent workflows: orchestrator detects multi-step requests using keyword patterns (e.g., "검색하고... 작성하고... 검토"), creates workflow chain with agent sequence, passes each agent's output as input to next agent, displays progress indicator showing current agent and workflow stage to user
 - **FR-073**: System MUST handle agent failures in workflows: if agent fails, subsequent agents receive failure notification, failed agent displays error "이전 단계가 실패하여 작업을 완료할 수 없습니다." with explanation of what was attempted, user can retry entire workflow or individual failed step
 - **FR-074**: System MUST display multi-agent outputs with clear attribution: each agent's contribution labeled with agent name (e.g., "📋 문서 작성 에이전트:", "⚖️ 법규 검색 에이전트:"), visual separators between agent outputs (horizontal lines), final combined result shown at end for multi-agent workflows
@@ -379,12 +392,12 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FR-077**: System MUST implement agent context sharing: agents in same workflow share conversation context (previous messages, uploaded documents), each agent can reference previous agent outputs in the workflow, context limited to current workflow execution (not persisted across different user requests)
 - **FR-078**: System MUST support parallel agent execution for independent tasks: if orchestrator detects independent sub-tasks (e.g., "Analyze data AND search regulations"), dispatch to multiple agents simultaneously, wait for all agents to complete, combine outputs in final response with clear attribution
 - **FR-079**: System MUST limit agent workflow complexity: maximum 5 agents per workflow chain, maximum 3 parallel agents per request, total workflow execution timeout 5 minutes, display "작업 시간이 초과되었습니다." if timeout reached with partial results shown
-- **FR-080**: System MUST load all agent implementations and routing rules locally: agent prompt templates stored in `/prompts` directory as text files, routing keyword patterns stored in database or config file, no external API dependencies for agent functionality
+- **FR-080**: System MUST load all agent implementations and routing rules locally: agent prompt templates stored in `/prompts` directory as text files, agent-specific LoRA adapter weights stored in `/models/lora_adapters/{agent_name}` directories (e.g., `/models/lora_adapters/citizen_support/`, `/models/lora_adapters/document_writing/`), routing keyword patterns stored in database or config file, no external API dependencies for agent functionality
 
 #### Common Air-Gapped Requirements (FR-081 series)
 
-- **FR-081**: System MUST bundle all AI models locally: safety filter model weights (unitary/toxic-bert, ~400MB), sentence-transformers embedding model for PII detection if needed, with models loaded from local disk on startup without internet access
-- **FR-082**: System MUST support CPU-only execution: all safety filter models must support CPU inference with acceptable latency (<2 seconds per check), ReAct tools must not require GPU, multi-agent LLM calls use existing local LLM (no separate model), with optional GPU acceleration if available
+- **FR-081**: System MUST bundle all AI models locally: base LLM model (Qwen2.5-1.5B-Instruct or Meta-Llama-3-8B), agent-specific LoRA adapter weights (~100-500MB per adapter, 5 adapters total for multi-agent system), safety filter model weights (unitary/toxic-bert, ~400MB), sentence-transformers embedding model for tag matching and PII detection, with all models loaded from local disk on startup without internet access
+- **FR-082**: System MUST support CPU-only execution: all safety filter models must support CPU inference with acceptable latency (<2 seconds per check), ReAct tools must not require GPU, multi-agent system uses base LLM with dynamically loaded LoRA adapters (CPU-compatible via PEFT library), with optional GPU acceleration if available for faster inference and adapter switching
 - **FR-083**: System MUST log all agent/tool/filter actions for audit: centralized audit log table with timestamp, user_id, action_type (filter/tool/agent), action_details (JSON), result (success/blocked/error), execution_time_ms, administrators can query logs by date range, user, or action type
 - **FR-084**: System MUST allow administrators to customize all rule-based systems: safety filter keywords (add/edit/delete per category), ReAct tool availability (enable/disable), agent routing rules (keyword patterns), document templates (upload new .jinja2 files), with changes taking effect immediately or after restart (documented per feature)
 - **FR-085**: System MUST provide admin dashboard section for advanced features: safety filter statistics (filter counts by category/day), ReAct tool usage statistics (per tool usage, avg time, error rate), multi-agent performance metrics (per agent task count, response time, success rate), combined into existing admin panel as new tabs
@@ -414,7 +427,10 @@ Government employees need complex tasks (like responding to citizen inquiries re
 
 ### Measurable Outcomes
 
-- **SC-001**: Users can submit a query and receive a relevant response within 10 seconds for queries under 500 characters (target: 5 seconds; maximum acceptable: 10 seconds)
+- **SC-001**: Users can submit a query and receive a relevant response within acceptable time for queries under 500 characters:
+  - **GPU-accelerated environment** (vLLM): Target 5 seconds, maximum acceptable 10 seconds
+  - **CPU-only environment** (llama.cpp with Qwen2.5-1.5B GGUF Q4_K_M): Target 10 seconds, maximum acceptable 15 seconds
+  - **Rationale**: CPU-only deployment prioritizes availability over performance (Assumption #2, Constitution Principle IV: Simplicity Over Optimization)
 - **SC-002**: System supports at least 10 concurrent users without response time degradation exceeding 20% (baseline: single-user average 5 seconds per SC-001, target: ≤6 seconds with 10 concurrent users)
 - **SC-003**: Users can upload and process a 20-page PDF document within 60 seconds
 - **SC-004**: 한국어 쿼리의 90%가 문법적으로 정확하고 맥락적으로 적절한 응답을 받음
@@ -423,8 +439,10 @@ Government employees need complex tasks (like responding to citizen inquiries re
     1. 문법 정확성: 맞춤법, 조사 사용, 문장 구조
     2. 질문 관련성: 질문에 대한 답변 적절성
     3. 한국어 자연스러움: 어색한 번역체 없이 자연스러운 표현
+  - **채점자**: 2-3명의 공무원(또는 한국어 원어민)이 독립적으로 채점
+  - **Inter-rater reliability**: 동일 응답에 대한 채점자 간 점수 차이가 3점 이상인 경우 재협의 후 평균 점수 사용
   - **합격 기준**: 90% 이상의 쿼리가 총 30점 만점에 24점 이상 (80% 점수)
-  - **테스트 도구**: `scripts/test-korean-quality.py` (T059)
+  - **테스트 도구**: `scripts/test-korean-quality.py` (채점 인터페이스 제공, 점수 수집 및 통계 계산)
 - **SC-005**: Conversation history retrieval completes within 2 seconds regardless of the number of saved conversations
 - **SC-006**: System maintains 99% uptime during business hours (weekdays 9 AM - 6 PM)
 - **SC-007**: 사용자가 24시간 후 저장된 대화를 재개할 때 컨텍스트를 95% 정확도로 유지
@@ -501,6 +519,8 @@ This specification is based on the following assumptions:
   - Python libraries: pandas (data analysis), openpyxl (Excel support), sympy or numexpr (calculator)
 - **Multi-Agent System Dependencies**:
   - Agent prompt templates (stored as text files in `/prompts` directory for each specialized agent)
+  - Agent-specific LoRA adapter weights: 5 fine-tuned adapters (~100-500MB each) for Citizen Support, Document Writing, Legal Research, Data Analysis, Review agents, pre-downloaded and stored in `/models/lora_adapters/` directory structure
+  - HuggingFace PEFT (Parameter-Efficient Fine-Tuning) library for LoRA adapter loading and management (CPU-compatible)
   - Orchestrator routing configuration: LLM-based few-shot prompt file with 2-3 example queries per agent + brief descriptions (default), keyword patterns stored in database or config file (alternative mode)
 - Separate storage volume for backups (minimum 1TB recommended, separate from system disk for redundancy)
 - Internal network with stable connectivity between employee workstations and the application server

@@ -14,13 +14,22 @@ from app.core.database import get_db, SyncSessionLocal
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
 from app.models.user import User
-from app.schemas.message import ChatRequest, ChatResponse, MessageResponse, ReActStepResponse
+from app.schemas.message import ChatRequest, ChatResponse, MessageResponse, ReActStepResponse, MultiAgentResult
 from app.services.llm_service import llm_service
 from app.services.document_service import document_service
 from app.services.safety_filter_service import SafetyFilterService
 from app.services.react_agent_service import ReActAgentService
+from app.services.orchestrator_service import MultiAgentOrchestrator
 
 router = APIRouter()
+
+# Initialize Multi-Agent Orchestrator (singleton)
+try:
+    orchestrator = MultiAgentOrchestrator()
+    print("[Chat API] Multi-Agent Orchestrator initialized")
+except Exception as e:
+    print(f"[Chat API] Failed to initialize Multi-Agent Orchestrator: {e}")
+    orchestrator = None
 
 
 def run_safety_filter_sync(content: str, user_id: UUID, conversation_id: Optional[UUID], phase: str, bypass_rule_based: bool = False):
@@ -126,6 +135,26 @@ async def send_chat_message(
         # Get existing conversation history
         history = await get_conversation_history(db, conversation_id)
 
+        # T226: Check message limit (FR-041: 1000 messages per conversation)
+        message_count = len(history)
+        MAX_MESSAGES = 1000
+
+        if message_count >= MAX_MESSAGES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "message_limit_exceeded",
+                    "message": f"이 대화는 최대 메시지 수({MAX_MESSAGES}개)에 도달했습니다. 새 대화를 시작해주세요.",
+                    "current_count": message_count,
+                    "max_count": MAX_MESSAGES
+                }
+            )
+        elif message_count >= MAX_MESSAGES * 0.9:  # 90% warning
+            # Add warning to response (will be included in ChatResponse)
+            warning_msg = f"⚠️ 이 대화는 {message_count}/{MAX_MESSAGES}개 메시지를 사용 중입니다. 곧 제한에 도달합니다."
+            # Store warning in request context for later use
+            request.warning = warning_msg
+
     # ======== PHASE 1: INPUT FILTERING ========
     # Run safety filter on user input
     loop = asyncio.get_event_loop()
@@ -182,11 +211,45 @@ async def send_chat_message(
     db.add(user_message)
     await db.commit()
 
-    # ======== REACT AGENT OR STANDARD LLM ========
+    # ======== MULTI-AGENT OR REACT AGENT OR STANDARD LLM ========
     react_steps = None
     tools_used = None
+    multi_agent_result = None
 
-    if request.use_react_agent:
+    if request.use_multi_agent:
+        # Use Multi-Agent Orchestrator (Phase 10)
+        if orchestrator:
+            ma_result = await orchestrator.route_and_execute(
+                user_query=filtered_input,
+                context={"conversation_history": history}
+            )
+
+            # Combine agent outputs for response
+            if ma_result["agent_outputs"]:
+                # Combine all agent responses
+                agent_responses = []
+                for agent_name, output in ma_result["agent_outputs"].items():
+                    agent_responses.append(f"[{agent_name}]\n{output}")
+
+                response_text = "\n\n---\n\n".join(agent_responses)
+            else:
+                response_text = "죄송합니다. Multi-Agent 처리 중 오류가 발생했습니다."
+
+            processing_time_ms = ma_result["execution_time_ms"]
+
+            # Store multi-agent result
+            multi_agent_result = MultiAgentResult(
+                workflow_type=ma_result["workflow_type"],
+                agent_outputs=ma_result["agent_outputs"],
+                execution_log=ma_result["execution_log"],
+                errors=ma_result["errors"],
+                execution_time_ms=ma_result["execution_time_ms"]
+            )
+        else:
+            response_text = "죄송합니다. Multi-Agent 시스템이 초기화되지 않았습니다."
+            processing_time_ms = 0
+
+    elif request.use_react_agent:
         # Use ReAct Agent with tools
         react_result = await loop.run_in_executor(
             None,
@@ -255,7 +318,8 @@ async def send_chat_message(
         conversation_id=conversation_id,
         message=MessageResponse.from_orm(assistant_message),
         react_steps=react_steps,
-        tools_used=tools_used
+        tools_used=tools_used,
+        multi_agent_result=multi_agent_result
     )
 
 
@@ -284,6 +348,21 @@ async def stream_chat_message(
         history = []
     else:
         history = await get_conversation_history(db, conversation_id)
+
+        # T226: Check message limit (FR-041: 1000 messages per conversation)
+        message_count = len(history)
+        MAX_MESSAGES = 1000
+
+        if message_count >= MAX_MESSAGES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "message_limit_exceeded",
+                    "message": f"이 대화는 최대 메시지 수({MAX_MESSAGES}개)에 도달했습니다. 새 대화를 시작해주세요.",
+                    "current_count": message_count,
+                    "max_count": MAX_MESSAGES
+                }
+            )
 
     # ======== INPUT FILTERING (Before Streaming) ========
     loop = asyncio.get_event_loop()

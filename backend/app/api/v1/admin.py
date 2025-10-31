@@ -22,6 +22,10 @@ from app.services.admin_service import admin_service
 
 router = APIRouter()
 
+# Include sub-routers for Phase 10 Multi-Agent management
+from app.api.v1.admin import agents
+router.include_router(agents.router, prefix="/agents", tags=["Multi-Agent Management"])
+
 
 # User Management Endpoints
 

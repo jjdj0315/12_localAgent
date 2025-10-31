@@ -5,6 +5,10 @@ import argparse
 import sys
 from pathlib import Path
 
+# Load .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -39,13 +43,13 @@ def create_admin(username: str, password: str) -> None:
         db.add(admin_user)
         db.commit()
 
-        print(f"✅ Admin user '{username}' created successfully!")
+        print(f"[OK] Admin user '{username}' created successfully!")
         print(f"   Username: {username}")
         print(f"   Is Admin: True")
 
     except Exception as e:
         db.rollback()
-        print(f"❌ Error creating admin user: {e}")
+        print(f"[ERROR] Error creating admin user: {e}")
         raise
     finally:
         db.close()

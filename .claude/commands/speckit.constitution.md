@@ -5,7 +5,8 @@ description: Create or update the project constitution from interactive or provi
 ## User Input
 
 ```text
-$ARGUMENTS
+개발환경은 윈도우운영체제이고 한글로 알려줘
+
 ```
 
 You **MUST** consider the user input before proceeding (if not empty).

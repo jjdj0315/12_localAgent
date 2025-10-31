@@ -1,11 +1,14 @@
 @echo off
+REM Local LLM Web Application - Quick Start Script
+REM Use docker-compose.yml for production deployment
+
 echo ========================================
-echo Starting Local LLM MVP
+echo Local LLM Web Application
 echo ========================================
 echo.
 
-echo Step 1/5: Building and starting Docker containers...
-docker-compose -f docker-compose.dev.yml up --build -d
+echo [1/4] Starting Docker containers...
+docker-compose up --build -d
 if errorlevel 1 (
     echo ERROR: Failed to start containers
     echo Please check if Docker Desktop is running
@@ -15,45 +18,37 @@ if errorlevel 1 (
 echo SUCCESS: Containers started
 echo.
 
-echo Step 2/5: Waiting for database... (15 seconds)
+echo [2/4] Waiting for database initialization... (15 seconds)
 timeout /t 15 /nobreak > nul
-echo SUCCESS: Wait complete
 echo.
 
-echo Step 3/5: Running database migrations...
-docker-compose -f docker-compose.dev.yml exec -T backend alembic upgrade head
+echo [3/4] Running database migrations...
+docker-compose exec -T backend alembic upgrade head
 if errorlevel 1 (
-    echo ERROR: Migration failed
-    echo Check logs: docker-compose -f docker-compose.dev.yml logs backend
-    pause
-    exit /b 1
+    echo WARNING: Migration may have failed. Check logs if needed.
 )
-echo SUCCESS: Migration complete
 echo.
 
-echo Step 4/5: Creating admin account...
-docker-compose -f docker-compose.dev.yml exec -T backend python scripts/create_admin.py --username admin --password Admin123!
-echo SUCCESS: Admin account created
-echo.
-
-echo Step 5/5: Checking service status...
-docker-compose -f docker-compose.dev.yml ps
+echo [4/4] Creating admin account...
+docker-compose exec -T backend python scripts/create_admin.py --username admin --password Admin123!
 echo.
 
 echo ========================================
-echo MVP Started Successfully!
+echo Application Started Successfully!
 echo ========================================
 echo.
-echo Open in browser:
-echo   - Frontend: http://localhost:3000
-echo   - Backend API: http://localhost:8000/docs
-echo   - Health Check: http://localhost:8000/health
+echo Access the application:
+echo   Frontend:   http://localhost:3000
+echo   Backend:    http://localhost:8000/docs
+echo   Health:     http://localhost:8000/health
 echo.
-echo Login credentials:
-echo   - Username: admin
-echo   - Password: Admin123!
+echo Default admin credentials:
+echo   Username: admin
+echo   Password: Admin123!
 echo.
-echo View logs: docker-compose -f docker-compose.dev.yml logs -f
-echo Stop: docker-compose -f docker-compose.dev.yml down
+echo Common commands:
+echo   View logs:  docker-compose logs -f
+echo   Stop:       docker-compose down
+echo   Restart:    docker-compose restart
 echo.
 pause

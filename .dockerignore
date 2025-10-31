@@ -1,91 +1,16 @@
-# Git
 .git/
 .gitignore
-.gitattributes
-
-# CI/CD
-.github/
-.gitlab-ci.yml
-.travis.yml
-
-# Documentation
-README.md
-CONTRIBUTING.md
-LICENSE
+*.md
 docs/
 specs/
-*.md
-
-# Development files
+node_modules/
+__pycache__/
+.venv/
+.env*
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
-
-# Environment files
-.env
-.env.*
-!.env.example
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.venv/
-venv/
-ENV/
-env/
-*.egg-info/
-.pytest_cache/
-.coverage
-htmlcov/
-.mypy_cache/
-.ruff_cache/
-
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-.next/
-out/
-.cache/
-
-# Build artifacts
-build/
-dist/
-target/
-*.egg
-wheels/
-
-# Testing
-coverage/
-.hypothesis/
-.tox/
-
-# Logs
 *.log
-logs/
-
-# Database
+tests/
+docker-compose.dev.yml
+models/*.gguf
 *.db
-*.sqlite
-*.sqlite3
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Application specific
-uploads/
-models/
-alembic/versions/__pycache__/
-
-# Docker
-docker-compose.override.yml
-Dockerfile*
-.dockerignore

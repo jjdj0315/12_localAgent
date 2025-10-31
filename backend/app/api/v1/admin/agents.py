@@ -12,6 +12,8 @@ from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+import json
+from pathlib import Path
 
 from app.api.deps import get_current_admin_user
 from app.core.database import get_db
@@ -29,6 +31,49 @@ try:
     orchestrator = MultiAgentOrchestrator()
 except Exception as e:
     print(f"[Admin API] Failed to initialize orchestrator: {e}")
+
+
+# ========== Keyword Configuration (T210, FR-084) ==========
+
+# Agent keyword configuration file
+AGENT_CONFIG_FILE = Path("backend/config/agent_keywords.json")
+AGENT_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+# Default keywords (FR-073)
+DEFAULT_KEYWORDS = {
+    "research_agent": [
+        "조사", "연구", "분석", "데이터", "통계", "정보 수집"
+    ],
+    "document_agent": [
+        "문서 작성", "초안", "공문", "보고서", "양식", "템플릿"
+    ],
+    "code_agent": [
+        "코드", "프로그래밍", "스크립트", "SQL", "쿼리", "개발"
+    ],
+    "policy_agent": [
+        "정책", "법령", "규정", "조례", "규칙", "지침"
+    ],
+    "general_agent": [
+        # General agent is fallback, no specific keywords
+    ]
+}
+
+
+def load_agent_keywords() -> Dict[str, List[str]]:
+    """Load agent keywords from config file"""
+    if not AGENT_CONFIG_FILE.exists():
+        # Create default config
+        save_agent_keywords(DEFAULT_KEYWORDS)
+        return DEFAULT_KEYWORDS
+
+    with open(AGENT_CONFIG_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_agent_keywords(keywords: Dict[str, List[str]]):
+    """Save agent keywords to config file"""
+    with open(AGENT_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(keywords, f, ensure_ascii=False, indent=2)
 
 
 # ========== Request/Response Schemas ==========
@@ -64,6 +109,17 @@ class OrchestratorConfig(BaseModel):
     """Orchestrator configuration"""
     routing_mode: str  # "llm" or "keyword"
     enabled_agents: List[str]
+
+
+class AgentKeywordConfig(BaseModel):
+    """Agent keyword configuration (T210)"""
+    agent_name: str
+    keywords: List[str]
+
+
+class AgentKeywordBulkUpdate(BaseModel):
+    """Bulk update for agent keywords (T210)"""
+    configs: Dict[str, List[str]]
 
 
 # ========== Admin Endpoints ==========
@@ -272,4 +328,149 @@ async def update_orchestrator_config(
         "status": "success",
         "message": "Orchestrator configuration updated",
         "config": config.dict()
+    }
+
+
+# ========== Keyword Management Endpoints (T210, FR-084) ==========
+
+@router.get("/keywords")
+async def get_agent_keywords(
+    current_admin: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get current agent routing keywords (FR-084)
+
+    Admin only access required
+    """
+    keywords = load_agent_keywords()
+
+    return {
+        "keywords": keywords,
+        "available_agents": list(DEFAULT_KEYWORDS.keys())
+    }
+
+
+@router.put("/keywords/{agent_name}")
+async def update_agent_keywords(
+    agent_name: str,
+    config: AgentKeywordConfig,
+    current_admin: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update keywords for specific agent (FR-084)
+
+    Admin only access required
+    Changes take effect within 5 seconds (in-memory cache)
+    """
+    if agent_name not in DEFAULT_KEYWORDS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"알 수 없는 에이전트입니다: {agent_name}"
+        )
+
+    # Load current keywords
+    all_keywords = load_agent_keywords()
+
+    # Update specific agent
+    all_keywords[agent_name] = config.keywords
+
+    # Save
+    save_agent_keywords(all_keywords)
+
+    return {
+        "message": f"'{agent_name}' 키워드가 업데이트되었습니다.",
+        "keywords": config.keywords,
+        "effect_time": "5초 이내 (메모리 캐시)"
+    }
+
+
+@router.post("/keywords/bulk")
+async def bulk_update_keywords(
+    update: AgentKeywordBulkUpdate,
+    current_admin: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Bulk update all agent keywords (FR-084)
+
+    Admin only access required
+    Changes take effect within 5 seconds
+    """
+    # Validate all agent names
+    for agent_name in update.configs.keys():
+        if agent_name not in DEFAULT_KEYWORDS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"알 수 없는 에이전트입니다: {agent_name}"
+            )
+
+    # Save all configs
+    save_agent_keywords(update.configs)
+
+    return {
+        "message": "모든 에이전트 키워드가 업데이트되었습니다.",
+        "updated_agents": list(update.configs.keys()),
+        "effect_time": "5초 이내 (메모리 캐시)"
+    }
+
+
+@router.post("/keywords/reset")
+async def reset_keywords_to_default(
+    current_admin: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Reset all keywords to default values (FR-084)
+
+    Admin only access required
+    """
+    save_agent_keywords(DEFAULT_KEYWORDS)
+
+    return {
+        "message": "모든 키워드가 기본값으로 초기화되었습니다.",
+        "keywords": DEFAULT_KEYWORDS
+    }
+
+
+@router.get("/test-routing")
+async def test_agent_routing(
+    query: str,
+    current_admin: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Test which agent would be selected for a query (FR-084)
+
+    Admin only - for testing keyword configuration
+    """
+    keywords = load_agent_keywords()
+
+    # Simple keyword matching (same logic as orchestrator)
+    query_lower = query.lower()
+    matched_agents = []
+
+    for agent_name, agent_keywords in keywords.items():
+        for keyword in agent_keywords:
+            if keyword in query_lower:
+                matched_agents.append({
+                    "agent": agent_name,
+                    "matched_keyword": keyword
+                })
+                break
+
+    if not matched_agents:
+        selected_agent = "general_agent"
+        reason = "키워드 매칭 없음 (기본값)"
+    else:
+        # First match wins (can be customized)
+        selected_agent = matched_agents[0]["agent"]
+        reason = f"키워드 '{matched_agents[0]['matched_keyword']}' 매칭"
+
+    return {
+        "query": query,
+        "selected_agent": selected_agent,
+        "reason": reason,
+        "all_matches": matched_agents
     }

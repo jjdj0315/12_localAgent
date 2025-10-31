@@ -26,8 +26,12 @@ Build an air-gapped Local LLM web application for small local government employe
 - SQLAlchemy ORM with Alembic migrations
 
 **LLM Infrastructure**:
-- Model: Qwen/Qwen2.5-1.5B-Instruct (primary, CPU-optimized) or meta-llama/Meta-Llama-3-8B (optional, GPU-accelerated)
-- Inference Engine: HuggingFace Transformers with BitsAndBytes 4-bit quantization (NF4) for CPU compatibility
+- **Model Format Strategy**:
+  - **Phase 10 (Test Environment)**: GGUF format (Qwen2.5-1.5B-Instruct Q4_K_M) via llama.cpp for CPU-optimized local testing
+  - **Phase 13 (Production, Optional)**: HuggingFace safetensors (Qwen/Qwen2.5-1.5B-Instruct or meta-llama/Meta-Llama-3-8B) via vLLM for GPU-accelerated multi-user deployment
+- **Inference Engine**: Dual backend via factory pattern (BaseLLMService):
+  - llama.cpp (CPU-optimized, single user, test environment)
+  - vLLM (GPU-accelerated, 10-16 concurrent users, production - optional migration per Phase 13)
 - Streaming: Server-Sent Events (SSE) for real-time response streaming
 - Context Management: 10-message window (5 user + 5 AI), 2,048 token limit, FIFO removal when exceeded (FR-036)
 - Response Limits: Default 4,000 characters / Document generation mode 10,000 characters (FR-017)
@@ -73,18 +77,25 @@ Build an air-gapped Local LLM web application for small local government employe
 
 **Multi-Agent System** (FR-070 series):
 - **Orchestrator**: LLM-based intent classification (default, few-shot prompt with 2-3 examples per agent) OR keyword-based routing (admin-configurable alternative)
-- **Five Specialized Agents** (FR-071):
-  1. Citizen Support Agent: Empathetic citizen inquiry responses (존댓말, completeness check)
-  2. Document Writing Agent: Government document generation (formal language, standard sections)
-  3. Legal Research Agent: Regulation search + plain-language interpretation
-  4. Data Analysis Agent: Statistical analysis with Korean formatting (천 단위 쉼표)
-  5. Review Agent: Content review for errors (factual, grammatical, policy compliance)
+- **Five Specialized Agents** (FR-071, FR-071A):
+  1. Citizen Support Agent: Empathetic citizen inquiry responses (존댓말, completeness check) + LoRA adapter
+  2. Document Writing Agent: Government document generation (formal language, standard sections) + LoRA adapter
+  3. Legal Research Agent: Regulation search + plain-language interpretation + LoRA adapter
+  4. Data Analysis Agent: Statistical analysis with Korean formatting (천 단위 쉼표) + LoRA adapter
+  5. Review Agent: Content review for errors (factual, grammatical, policy compliance) + LoRA adapter
+- **LoRA Adapter Architecture** (FR-071A):
+  - Base model: Qwen2.5-1.5B-Instruct or Meta-Llama-3-8B (loaded once on startup)
+  - Dynamic adapter loading: Each agent loads task-specific LoRA adapter on first invocation
+  - Adapter caching: Loaded adapters cached in memory to minimize switching overhead
+  - Switching latency: <3 seconds per agent invocation (adapter load + inference)
+  - Implementation: HuggingFace PEFT library for CPU-compatible adapter management
+  - Storage: LoRA weights in `/models/lora_adapters/{agent_name}/` directories (~100-500MB per adapter)
 - **Workflow Support** (FR-072-079):
-  - Sequential workflows: Multi-step tasks with agent chaining
-  - Parallel execution: Independent sub-tasks dispatched simultaneously (max 3 parallel)
-  - Complexity limits: Max 5 agents per chain, 5-minute total timeout
+  - Sequential workflows: Multi-step tasks with agent chaining (adapter switches between agents)
+  - Parallel execution: Independent sub-tasks dispatched simultaneously (max 3 parallel, multiple adapters loaded concurrently)
+  - Complexity limits: Max 5 agents per chain, 5-minute total timeout (includes adapter switching time)
 - **Context Sharing** (FR-077): Agents in same workflow share conversation context and previous outputs
-- **Admin Management** (FR-076): Enable/disable agents, configure routing mode, edit keyword patterns, view performance metrics
+- **Admin Management** (FR-076): Enable/disable agents, configure routing mode, edit keyword patterns, view performance metrics (includes adapter loading times)
 
 **Deployment & Infrastructure**:
 - Architecture: Monolithic (single deployable unit for simplicity)
@@ -150,6 +161,13 @@ Build an air-gapped Local LLM web application for small local government employe
 
 **Project Type**: Web application (frontend + backend + LLM service)
 
+**Terminology**:
+- **LLM Service** = Inference engine (llama.cpp or vLLM) + service wrapper layer (backend/app/services/*_llm_service.py)
+  - Includes: Model loading, prompt formatting, streaming response generation, adapter management (optional)
+  - Does NOT include: Safety filtering, context management (those are separate services)
+- **Inference Engine** = Underlying ML runtime (llama.cpp for CPU, vLLM for GPU)
+- **LLM Infrastructure** = Complete stack (model + inference engine + service wrapper + deployment config)
+
 **Performance Goals**:
 - Response time: 5 seconds maximum (10 seconds target from spec)
 - Streaming latency: <500ms first token
@@ -161,6 +179,7 @@ Build an air-gapped Local LLM web application for small local government employe
 - **CRITICAL**: No internet connectivity (air-gapped/closed network)
 - Hardware: CPU-first deployment (CPU 8-core minimum, 16-core recommended), RAM 32GB+ (64GB recommended), GPU optional for acceleration
 - Response limits: Default 4,000 characters / Document generation mode 10,000 characters (FR-017)
+  - **Document generation mode**: Transparent to user (not a manual toggle), automatically activated by keyword detection in user queries ("문서 작성", "초안 생성", "공문", "보고서 작성"), internal system mode only
 - File upload: 50MB maximum per file
 - Conversation limit: 1,000 messages per conversation (FR-041)
 - Context window: 10 messages (5 user + 5 AI), 2,048 tokens (FR-036)
@@ -213,7 +232,11 @@ Build an air-gapped Local LLM web application for small local government employe
 - Structured logging for all components
 - Health check endpoints for monitoring
 - **Audit logs**: All tool executions, agent invocations, filter events logged (FR-066, FR-075, FR-083)
-- Manual testing via acceptance scenarios (constitution allows this for MVP)
+- **Testing Strategy** (aligned with Constitution):
+  - **Manual acceptance testing**: Required for MVP - functional validation via user story acceptance scenarios (spec.md)
+  - **Automated load testing**: Recommended for production (SC-002: 10 concurrent users), NOT required for MVP
+  - **Unit/integration tests**: Optional - constitution prioritizes deployment speed over test coverage for small-scale government use
+  - **Rationale**: Small IT team, limited resources, air-gapped deployment challenges favor manual validation over automated test infrastructure
 
 ### Potential Complexity Concerns
 
@@ -237,7 +260,7 @@ Build an air-gapped Local LLM web application for small local government employe
 - **Mitigation**:
   - Resource limits prevent system overload (FR-086)
   - Queueing for ReAct/Multi-Agent sessions
-  - Performance testing with 10 concurrent users (SC-002)
+  - Performance validation with 10 concurrent users (SC-002, recommended for production deployment, not MVP-blocking)
 
 **GATE STATUS**: ✅ PASS - All core principles satisfied, complexity justified for government requirements
 
@@ -380,6 +403,16 @@ local-llm-webapp/
 │   ├── backend.Dockerfile
 │   ├── llm-service.Dockerfile
 │   └── nginx.conf              # Nginx reverse proxy config
+│
+├── models/                     # AI model storage (air-gapped deployment)
+│   ├── base/                   # Base LLM models
+│   │   └── Qwen2.5-1.5B-Instruct/  # or Meta-Llama-3-8B
+│   └── lora_adapters/          # Agent-specific LoRA adapters (FR-071A)
+│       ├── citizen_support/    # Citizen Support Agent adapter (~100-500MB)
+│       ├── document_writing/   # Document Writing Agent adapter
+│       ├── legal_research/     # Legal Research Agent adapter
+│       ├── data_analysis/      # Data Analysis Agent adapter
+│       └── review/             # Review Agent adapter
 │
 ├── docker-compose.yml          # Full stack orchestration
 ├── docker-compose.dev.yml      # Development override
@@ -802,4 +835,744 @@ function TagManagement() {
 - If embedding quality insufficient for Korean: Use LLM-based classification
 - Prompt: "다음 대화 내용을 분석하여 가장 관련성 높은 태그를 선택하세요: [태그 목록]. 대화 내용: [내용]"
 - Return top 3 tags with confidence scores
+
+### Multi-Agent LLM Service Architecture (FR-071A)
+
+**Dual Strategy**: Test environment (llama.cpp) → Production environment (vLLM)
+
+**Design Goals**:
+1. Local testing with CPU-optimized llama.cpp (Phase 10)
+2. Production deployment with GPU-optimized vLLM (later)
+3. Unified interface - agent code remains unchanged between environments
+4. LoRA infrastructure testing with dummy adapters (actual fine-tuning later)
+
+---
+
+### Phase 10: Local Test Environment (llama.cpp + GGUF)
+
+**Purpose**: Validate Multi-Agent functionality with minimal setup
+
+**Technology Stack**:
+- **Library**: llama-cpp-python
+- **Model Format**: GGUF (Q4_K_M quantization)
+- **Runtime**: CPU-optimized (8-16 threads)
+- **LoRA Support**: GGUF LoRA adapters (infrastructure testing only)
+- **Concurrency**: Single user (developer testing)
+
+**Architecture Overview**:
+```python
+# backend/app/services/base_llm_service.py (Abstract Interface)
+from abc import ABC, abstractmethod
+from typing import Optional
+
+class BaseLLMService(ABC):
+    """
+    Abstract LLM service interface
+
+    Allows swapping between llama.cpp (test) and vLLM (production)
+    without changing agent code
+    """
+
+    @abstractmethod
+    async def generate(
+        self,
+        prompt: str,
+        max_tokens: int = 4000,
+        temperature: float = 0.7
+    ) -> str:
+        """Generate text response"""
+        pass
+
+    @abstractmethod
+    async def generate_with_agent(
+        self,
+        agent_name: str,
+        prompt: str,
+        max_tokens: int = 4000
+    ) -> str:
+        """Generate using agent-specific prompt/LoRA"""
+        pass
+
+    @abstractmethod
+    def get_agent_prompt(self, agent_name: str) -> str:
+        """Get agent system prompt"""
+        pass
+
+
+# backend/app/services/llama_cpp_llm_service.py (Test Implementation)
+from llama_cpp import Llama
+from .base_llm_service import BaseLLMService
+
+class LlamaCppLLMService(BaseLLMService):
+    """
+    Local test LLM service (CPU-optimized)
+
+    - GGUF model with Q4_K_M quantization
+    - CPU inference (8-16 threads)
+    - Optional LoRA adapter loading (infrastructure test)
+    - Single user, fast iteration
+    """
+
+    def __init__(self):
+        # Load GGUF base model
+        self.model = Llama(
+            model_path="/models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+            n_ctx=2048,
+            n_threads=8,  # CPU threads
+            n_gpu_layers=0,  # CPU only
+            verbose=False
+        )
+
+        # LoRA adapter paths (optional, for infrastructure testing)
+        # Dummy adapters for now, actual fine-tuned adapters later
+        self.lora_adapters = {
+            "citizen_support": "/models/lora/citizen_support_dummy.gguf",
+            "document_writing": "/models/lora/document_writing_dummy.gguf",
+            "legal_research": "/models/lora/legal_research_dummy.gguf",
+            "data_analysis": "/models/lora/data_analysis_dummy.gguf",
+            "review": "/models/lora/review_dummy.gguf",
+        }
+
+        self.current_lora = None
+
+        # Load agent prompts from files
+        self.agent_prompts = self._load_agent_prompts()
+
+    def _load_agent_prompts(self) -> dict:
+        """Load agent system prompts from text files"""
+        import os
+        prompts = {}
+        prompt_dir = "/backend/prompts"
+
+        for agent_name in ["citizen_support", "document_writing",
+                          "legal_research", "data_analysis", "review"]:
+            prompt_file = os.path.join(prompt_dir, f"{agent_name}.txt")
+            if os.path.exists(prompt_file):
+                with open(prompt_file, 'r', encoding='utf-8') as f:
+                    prompts[agent_name] = f.read().strip()
+
+        return prompts
+
+    async def generate(
+        self,
+        prompt: str,
+        max_tokens: int = 4000,
+        temperature: float = 0.7
+    ) -> str:
+        """Generate text using base model"""
+        output = self.model(
+            prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            echo=False,
+            stop=["사용자:", "User:"]
+        )
+
+        return output["choices"][0]["text"].strip()
+
+    async def generate_with_agent(
+        self,
+        agent_name: str,
+        prompt: str,
+        max_tokens: int = 4000
+    ) -> str:
+        """Generate using agent-specific prompt and optional LoRA"""
+        # Get agent system prompt
+        system_prompt = self.get_agent_prompt(agent_name)
+        full_prompt = f"{system_prompt}\n\n사용자: {prompt}\n\n답변:"
+
+        # Load LoRA adapter if available (optional)
+        self._switch_lora_adapter(agent_name)
+
+        return await self.generate(full_prompt, max_tokens)
+
+    def _switch_lora_adapter(self, agent_name: str):
+        """
+        Switch LoRA adapter for agent (optional)
+
+        Note: This is for infrastructure testing only.
+        Dummy adapters used initially, replaced with fine-tuned adapters later.
+        """
+        # Check if LoRA adapter exists for this agent
+        if agent_name not in self.lora_adapters:
+            return
+
+        lora_path = self.lora_adapters[agent_name]
+
+        # Skip if file doesn't exist (LoRA is optional)
+        import os
+        if not os.path.exists(lora_path):
+            return
+
+        # Unload previous LoRA if any
+        if self.current_lora:
+            # llama.cpp LoRA unloading (if supported)
+            pass
+
+        # Load new LoRA adapter
+        try:
+            # Note: llama-cpp-python LoRA support may vary by version
+            # Check documentation for exact API
+            # self.model.load_lora(lora_path)
+            self.current_lora = agent_name
+            print(f"✓ Loaded LoRA adapter for {agent_name}")
+        except Exception as e:
+            print(f"⚠ LoRA loading skipped for {agent_name}: {e}")
+
+    def get_agent_prompt(self, agent_name: str) -> str:
+        """Get agent system prompt"""
+        return self.agent_prompts.get(agent_name, "")
+
+
+# backend/app/services/llm_service_factory.py (Environment Selector)
+import os
+from .base_llm_service import BaseLLMService
+from .llama_cpp_llm_service import LlamaCppLLMService
+
+def get_llm_service() -> BaseLLMService:
+    """
+    Get LLM service based on environment variable
+
+    .env:
+      LLM_BACKEND=llama_cpp  # Local testing (Phase 10)
+      LLM_BACKEND=vllm       # Production (later)
+    """
+    backend = os.getenv("LLM_BACKEND", "llama_cpp")
+
+    if backend == "vllm":
+        # Import here to avoid dependency in test environment
+        from .vllm_llm_service import VLLMLLMService
+        print("🚀 Using vLLM (Production mode)")
+        return VLLMLLMService()
+    else:
+        print("🧪 Using llama.cpp (Test mode)")
+        return LlamaCppLLMService()
+```
+
+**Agent Implementation (Environment-agnostic)**:
+```python
+# backend/app/services/agents/citizen_support.py
+from ..llm_service_factory import get_llm_service
+
+class CitizenSupportAgent:
+    """
+    Citizen Support Agent
+
+    Works with both llama.cpp (test) and vLLM (production)
+    via unified BaseLLMService interface
+    """
+
+    def __init__(self):
+        # Automatically uses correct LLM backend (llama.cpp or vLLM)
+        self.llm = get_llm_service()
+        self.agent_name = "citizen_support"
+
+    async def process(self, user_query: str, context: dict) -> str:
+        """Process citizen inquiry"""
+        # LLM service handles agent-specific prompt and LoRA (if configured)
+        response = await self.llm.generate_with_agent(
+            agent_name=self.agent_name,
+            prompt=user_query,
+            max_tokens=4000
+        )
+
+        return response
+```
+
+**Orchestrator Integration with LangGraph**:
+
+LangGraph를 사용하여 멀티 에이전트 워크플로우를 구현합니다. LangGraph는 상태 머신 기반 워크플로우 관리를 제공하여 순차/병렬 실행, 에러 핸들링, 상태 공유를 간편하게 처리합니다.
+
+```python
+# backend/app/services/orchestrator_service.py
+from typing import TypedDict, Annotated, Sequence
+from langgraph.graph import StateGraph, END
+from langchain_core.messages import BaseMessage
+import operator
+
+from .llm_service_factory import get_llm_service
+from .agents.citizen_support import CitizenSupportAgent
+from .agents.document_writing import DocumentWritingAgent
+from .agents.legal_research import LegalResearchAgent
+from .agents.data_analysis import DataAnalysisAgent
+from .agents.review import ReviewAgent
+
+
+class AgentState(TypedDict):
+    """Multi-Agent workflow state"""
+    user_query: str
+    conversation_history: list
+    current_agent: str
+    agent_outputs: dict  # {agent_name: response}
+    workflow_type: str  # "single", "sequential", "parallel"
+    errors: list
+    execution_log: list
+
+
+class MultiAgentOrchestrator:
+    """LangGraph-based Multi-Agent Orchestrator"""
+
+    def __init__(self):
+        # Initialize all agents (auto-detect LLM backend)
+        self.agents = {
+            "citizen_support": CitizenSupportAgent(),
+            "document_writing": DocumentWritingAgent(),
+            "legal_research": LegalResearchAgent(),
+            "data_analysis": DataAnalysisAgent(),
+            "review": ReviewAgent(),
+        }
+
+        # LLM service for intent classification
+        self.llm = get_llm_service()
+
+        # Build LangGraph workflow
+        self.workflow = self._build_workflow()
+
+    def _build_workflow(self) -> StateGraph:
+        """Build LangGraph state machine for multi-agent workflows"""
+        workflow = StateGraph(AgentState)
+
+        # Add nodes
+        workflow.add_node("classify_intent", self._classify_intent_node)
+        workflow.add_node("execute_single_agent", self._execute_single_agent)
+        workflow.add_node("execute_sequential", self._execute_sequential)
+        workflow.add_node("execute_parallel", self._execute_parallel)
+        workflow.add_node("handle_error", self._handle_error)
+
+        # Define edges (routing logic)
+        workflow.set_entry_point("classify_intent")
+
+        workflow.add_conditional_edges(
+            "classify_intent",
+            self._route_workflow_type,
+            {
+                "single": "execute_single_agent",
+                "sequential": "execute_sequential",
+                "parallel": "execute_parallel",
+            }
+        )
+
+        workflow.add_edge("execute_single_agent", END)
+        workflow.add_edge("execute_sequential", END)
+        workflow.add_edge("execute_parallel", END)
+        workflow.add_edge("handle_error", END)
+
+        return workflow.compile()
+
+    async def _classify_intent_node(self, state: AgentState) -> AgentState:
+        """Classify user intent and determine workflow type"""
+        user_query = state["user_query"]
+
+        # Use LLM to classify intent
+        classification_prompt = self._build_classification_prompt(user_query)
+        response = await self.llm.generate(classification_prompt, max_tokens=100)
+
+        # Parse response (expected format: "agent_name|workflow_type")
+        try:
+            agent_name, workflow_type = response.strip().split("|")
+            state["current_agent"] = agent_name.strip()
+            state["workflow_type"] = workflow_type.strip()
+        except:
+            # Fallback to citizen_support
+            state["current_agent"] = "citizen_support"
+            state["workflow_type"] = "single"
+
+        return state
+
+    def _route_workflow_type(self, state: AgentState) -> str:
+        """Route to appropriate workflow executor"""
+        return state["workflow_type"]
+
+    async def _execute_single_agent(self, state: AgentState) -> AgentState:
+        """Execute single agent"""
+        agent_name = state["current_agent"]
+        agent = self.agents.get(agent_name)
+
+        try:
+            response = await agent.process(
+                state["user_query"],
+                {"conversation_history": state["conversation_history"]}
+            )
+            state["agent_outputs"][agent_name] = response
+            state["execution_log"].append({
+                "agent": agent_name,
+                "status": "success",
+                "timestamp": time.time()
+            })
+        except Exception as e:
+            state["errors"].append({"agent": agent_name, "error": str(e)})
+            state["execution_log"].append({
+                "agent": agent_name,
+                "status": "error",
+                "timestamp": time.time()
+            })
+
+        return state
+
+    async def _execute_sequential(self, state: AgentState) -> AgentState:
+        """Execute agents sequentially (FR-072)"""
+        # Determine agent sequence from query
+        agent_sequence = self._determine_agent_sequence(state["user_query"])
+
+        for agent_name in agent_sequence:
+            agent = self.agents.get(agent_name)
+
+            try:
+                # Share context from previous agents (FR-077)
+                context = {
+                    "conversation_history": state["conversation_history"],
+                    "previous_outputs": state["agent_outputs"]
+                }
+
+                response = await agent.process(state["user_query"], context)
+                state["agent_outputs"][agent_name] = response
+                state["execution_log"].append({
+                    "agent": agent_name,
+                    "status": "success",
+                    "timestamp": time.time()
+                })
+            except Exception as e:
+                # Failure handling (FR-073)
+                state["errors"].append({"agent": agent_name, "error": str(e)})
+                state["execution_log"].append({
+                    "agent": agent_name,
+                    "status": "error",
+                    "timestamp": time.time()
+                })
+                break  # Stop workflow on failure
+
+        return state
+
+    async def _execute_parallel(self, state: AgentState) -> AgentState:
+        """Execute agents in parallel (max 3, FR-078)"""
+        # Determine parallel agents from query
+        agent_names = self._determine_parallel_agents(state["user_query"])
+        agent_names = agent_names[:3]  # Max 3 parallel agents
+
+        # Execute in parallel
+        tasks = []
+        for agent_name in agent_names:
+            agent = self.agents.get(agent_name)
+            context = {"conversation_history": state["conversation_history"]}
+            tasks.append(agent.process(state["user_query"], context))
+
+        # Gather results
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for agent_name, result in zip(agent_names, results):
+            if isinstance(result, Exception):
+                state["errors"].append({"agent": agent_name, "error": str(result)})
+                state["execution_log"].append({
+                    "agent": agent_name,
+                    "status": "error",
+                    "timestamp": time.time()
+                })
+            else:
+                state["agent_outputs"][agent_name] = result
+                state["execution_log"].append({
+                    "agent": agent_name,
+                    "status": "success",
+                    "timestamp": time.time()
+                })
+
+        return state
+
+    async def route_and_execute(self, user_query: str, context: dict) -> dict:
+        """Route query to appropriate workflow and execute"""
+        # Initialize state
+        initial_state: AgentState = {
+            "user_query": user_query,
+            "conversation_history": context.get("conversation_history", []),
+            "current_agent": "",
+            "agent_outputs": {},
+            "workflow_type": "single",
+            "errors": [],
+            "execution_log": []
+        }
+
+        # Execute LangGraph workflow with timeout (5 minutes, FR-079)
+        start_time = time.time()
+        try:
+            final_state = await asyncio.wait_for(
+                self.workflow.ainvoke(initial_state),
+                timeout=300  # 5 minutes
+            )
+        except asyncio.TimeoutError:
+            return {
+                "status": "timeout",
+                "message": "워크플로우 실행 시간 초과 (5분)",
+                "execution_time_ms": 300000
+            }
+
+        execution_time = time.time() - start_time
+
+        return {
+            "status": "success" if not final_state["errors"] else "partial",
+            "agent_outputs": final_state["agent_outputs"],
+            "workflow_type": final_state["workflow_type"],
+            "execution_log": final_state["execution_log"],
+            "errors": final_state["errors"],
+            "execution_time_ms": int(execution_time * 1000)
+        }
+```
+
+---
+
+### Later: Production Environment (vLLM + GPU)
+
+**Purpose**: Production deployment with multi-user support
+
+**Technology Stack**:
+- **Library**: vLLM
+- **Model Format**: HuggingFace (safetensors)
+- **Runtime**: GPU-optimized (PagedAttention)
+- **LoRA Support**: vLLM LoRA (optional, after validation)
+- **Concurrency**: 10-50 users simultaneously
+
+**Implementation**:
+```python
+# backend/app/services/vllm_llm_service.py (Production Implementation)
+from vllm import LLM, SamplingParams
+from .base_llm_service import BaseLLMService
+
+class VLLMLLMService(BaseLLMService):
+    """
+    Production LLM service (GPU-optimized)
+
+    - Multi-user support (10-50 concurrent)
+    - PagedAttention for memory efficiency
+    - Optional LoRA adapter support
+    """
+
+    def __init__(self):
+        # Load vLLM model
+        self.llm = LLM(
+            model="Qwen/Qwen2.5-1.5B-Instruct",
+            tensor_parallel_size=1,
+            gpu_memory_utilization=0.9,
+            max_num_seqs=16,  # 16 concurrent users
+            # enable_lora=True  # Enable after LoRA validation
+        )
+
+        # Load agent prompts (same as llama.cpp)
+        self.agent_prompts = self._load_agent_prompts()
+
+    async def generate(
+        self,
+        prompt: str,
+        max_tokens: int = 4000,
+        temperature: float = 0.7
+    ) -> str:
+        """Generate text using vLLM"""
+        sampling_params = SamplingParams(
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stop=["사용자:", "User:"]
+        )
+
+        outputs = self.llm.generate([prompt], sampling_params)
+        return outputs[0].outputs[0].text.strip()
+
+    async def generate_with_agent(
+        self,
+        agent_name: str,
+        prompt: str,
+        max_tokens: int = 4000
+    ) -> str:
+        """Generate using agent-specific prompt"""
+        # Get agent system prompt
+        system_prompt = self.get_agent_prompt(agent_name)
+        full_prompt = f"{system_prompt}\n\n사용자: {prompt}\n\n답변:"
+
+        # TODO: Add LoRA support after validation
+        # lora_request = LoRARequest(...)
+
+        return await self.generate(full_prompt, max_tokens)
+
+    def get_agent_prompt(self, agent_name: str) -> str:
+        """Get agent system prompt (same as llama.cpp)"""
+        return self.agent_prompts.get(agent_name, "")
+
+    def _load_agent_prompts(self) -> dict:
+        """Load agent prompts from files (same as llama.cpp)"""
+        # ... same implementation ...
+        pass
+```
+
+**Switching to vLLM**:
+```bash
+# .env file change only
+LLM_BACKEND=llama_cpp  → LLM_BACKEND=vllm
+
+# No code changes required!
+# Agents automatically use vLLM via factory pattern
+```
+
+---
+
+### Performance Comparison
+
+| Metric | llama.cpp (Test) | vLLM (Production) |
+|--------|------------------|-------------------|
+| **Concurrency** | 1 user | 10-50 users |
+| **Hardware** | CPU (8-16 threads) | GPU (CUDA) |
+| **Memory** | 2-3GB (GGUF Q4) | 4-6GB (FP16 + PagedAttention) |
+| **Latency** | 2-5 sec/response | 0.5-2 sec/response |
+| **Throughput** | 1 req/sec | 10-20 req/sec |
+| **LoRA** | Optional (dummy test) | Optional (after validation) |
+| **Deployment** | Local dev | EC2 GPU instance |
+
+---
+
+### LoRA Strategy
+
+**Phase 10 (Infrastructure Test)**:
+1. Create dummy LoRA adapters (random weights)
+2. Test loading/switching mechanism
+3. Measure overhead (<1 second per switch)
+4. Validate infrastructure works
+
+**Later (Actual Fine-tuning)**:
+1. Collect training data (100-1000 examples per agent)
+2. Fine-tune LoRA adapters (LoRA rank 16-32)
+3. Convert to GGUF format (for llama.cpp)
+4. Replace dummy adapters with real ones
+5. A/B test: Prompt-only vs Prompt+LoRA
+6. Keep LoRA if improvement >10%, else remove
+
+**LoRA File Structure**:
+```
+models/
+├── qwen2.5-1.5b-instruct-q4_k_m.gguf          # Base model (GGUF)
+└── lora/
+    ├── citizen_support_dummy.gguf              # Phase 10: Dummy
+    ├── citizen_support_v1.gguf                 # Later: Fine-tuned
+    ├── document_writing_dummy.gguf
+    ├── document_writing_v1.gguf
+    └── ...
+```
+
+**LoRA is Optional**: If fine-tuning doesn't improve performance significantly, we can skip it and rely on prompt engineering alone
+
+---
+
+### LoRA Transition Decision Tree
+
+**When to transition from dummy to actual LoRA adapters**:
+
+```
+Phase 10 완료 (Multi-Agent with dummy LoRA)
+    ↓
+SC-021/SC-022 검증 (Routing accuracy ≥85%, Workflow time ≤90s)
+    ↓
+    ├─ FAIL → Fix orchestrator/agent logic first (LoRA 전환 연기)
+    └─ PASS → LoRA 전환 평가 시작
+            ↓
+        Training data 수집 가능 여부 확인
+            ↓
+            ├─ NO (100 examples/agent 미달) → Prompt engineering으로 진행, LoRA 제거
+            └─ YES → Fine-tuning 진행
+                    ↓
+                Fine-tune 5 agents (LoRA rank 16-32, 100-1000 examples each)
+                    ↓
+                A/B Test: Prompt-only vs Prompt+LoRA (50 queries per agent)
+                    ↓
+                    ├─ Improvement <10% → LoRA 제거, Prompt-only 유지
+                    ├─ Improvement 10-20% → Cost-benefit 분석 (LoRA 유지 고려)
+                    └─ Improvement >20% → LoRA 유지, production 배포
+```
+
+**Performance Measurement Criteria**:
+- **Response Quality**: 3-person blind evaluation (0-10 scale)
+- **Response Time**: P50/P95 latency comparison
+- **Accuracy**: Domain-specific accuracy (e.g., legal citation correctness for Legal Agent)
+
+**Fallback Strategy**:
+- If Phase 10 completes successfully with dummy LoRA, **immediately remove dummy LoRA loading code** (T175F) before Phase 11
+- If actual fine-tuning is attempted but fails A/B test (<10% improvement), revert to prompt-only implementation
+- Document decision in `specs/001-local-llm-webapp/lora-decision-log.md`
+
+**Timeline**:
+- Phase 10: Weeks 1-4 (dummy LoRA infrastructure test)
+- LoRA Decision Point: Week 5 (after SC-021/SC-022 validation)
+- Fine-tuning (if pursued): Weeks 6-8
+- A/B Testing: Week 9
+- Production LoRA (if approved): Week 10+
+
+---
+
+### Air-Gapped Deployment
+
+**Phase 10 (llama.cpp)**:
+```bash
+# Download GGUF model (on internet-connected machine)
+huggingface-cli download \
+  TheBloke/Qwen2.5-1.5B-Instruct-GGUF \
+  qwen2.5-1.5b-instruct.Q4_K_M.gguf \
+  --local-dir ./models/
+
+# Install llama-cpp-python offline
+pip download llama-cpp-python -d ./offline_packages/
+# Transfer to air-gapped server
+pip install --no-index --find-links=./offline_packages/ llama-cpp-python
+```
+
+**Later (vLLM)**:
+```bash
+# Download HuggingFace model
+huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct --local-dir ./models/
+
+# Install vLLM offline
+pip download vllm -d ./offline_packages/
+pip install --no-index --find-links=./offline_packages/ vllm
+```
+
+---
+
+### Creating Dummy LoRA Adapters (Phase 10 Testing)
+
+**Purpose**: Test LoRA infrastructure without actual fine-tuning
+
+```python
+# scripts/create_dummy_lora.py
+"""
+Create dummy LoRA adapters for infrastructure testing
+
+These are NOT fine-tuned - just random weights to test loading mechanism
+Replace with actual fine-tuned adapters later
+"""
+
+from llama_cpp import Llama
+import numpy as np
+
+def create_dummy_gguf_lora(output_path: str, rank: int = 16):
+    """Create dummy GGUF LoRA with random weights"""
+    # This is a placeholder - actual implementation depends on llama.cpp API
+    # For now, just create empty file to test file detection
+    import os
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, 'wb') as f:
+        f.write(b'DUMMY_LORA')  # Placeholder
+    print(f"Created dummy LoRA: {output_path}")
+
+# Create dummy adapters for all 5 agents
+for agent in ["citizen_support", "document_writing", "legal_research",
+              "data_analysis", "review"]:
+    create_dummy_gguf_lora(f"/models/lora/{agent}_dummy.gguf")
+```
+
+**Note**: Actual LoRA fine-tuning guide will be added later if needed
+
+---
+
+### Success Criteria Update
+
+**Phase 10 (Multi-Agent with llama.cpp)**:
+- **SC-021**: Agent routing accuracy ≥85% on test dataset of 50 queries
+- **SC-022**: Sequential 3-agent workflow completes within 90 seconds
+- **SC-023** (Optional): LoRA dummy adapters load successfully without errors
+
+**Later (After vLLM deployment)**:
+- **SC-024**: Multi-user concurrent access (10-16 users) with <5 second response time
+- **SC-025**: vLLM PagedAttention reduces memory usage by 30% vs naive implementation
 

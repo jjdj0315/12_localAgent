@@ -27,6 +27,7 @@ transformers>=4.40.0
 torch>=2.2.0
 accelerate>=0.27.0
 sentencepiece>=0.2.0
+sentence-transformers>=2.3.0
 bitsandbytes>=0.42.0
 
 # File Processing
@@ -38,3 +39,13 @@ python-magic-bin>=0.4.14; sys_platform == 'win32'
 
 # Logging
 structlog>=24.1.0
+
+# LLM Service - llama.cpp (Phase 10 local testing)
+llama-cpp-python>=0.2.0
+
+# Multi-Agent Orchestration - LangGraph
+langgraph>=0.0.40
+langchain-core>=0.1.30
+
+# vLLM (Production, optional for Phase 10)
+# vllm>=0.3.0
