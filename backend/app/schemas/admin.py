@@ -21,7 +21,12 @@ class UserResponse(BaseModel):
 
     id: UUID
     username: str
+    email: Optional[str] = None
     is_admin: bool
+    is_active: bool = True
+    is_locked: bool = False
+    locked_until: Optional[datetime] = None
+    failed_login_attempts: int = 0
     created_at: datetime
     last_login_at: Optional[datetime] = None
 
@@ -94,3 +99,29 @@ class StorageStatsResponse(BaseModel):
     user_storage: list[StorageUsageResponse]
     warning_threshold_exceeded: bool  # True if > 80%
     critical_threshold_exceeded: bool  # True if > 95%
+
+
+class BackupInfo(BaseModel):
+    """Schema for backup information."""
+
+    id: str
+    type: str  # "daily" or "weekly"
+    timestamp: str
+    size: str
+    status: str  # "success" or "failed"
+    file_path: Optional[str] = None
+
+
+class BackupTriggerResponse(BaseModel):
+    """Schema for backup trigger response."""
+
+    message: str
+    backup_id: Optional[str] = None
+    started_at: str
+
+
+class BackupListResponse(BaseModel):
+    """Schema for backup list response."""
+
+    backups: list[BackupInfo]
+    total: int
