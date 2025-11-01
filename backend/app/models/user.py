@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, DateTime, String
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -23,7 +23,12 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     username = Column(String(100), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=True)  # Optional email address
     is_admin = Column(Boolean, default=False, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)  # Account active/inactive status
+    is_locked = Column(Boolean, default=False, nullable=False)  # FR-031: Account lockout
+    locked_until = Column(DateTime(timezone=True), nullable=True)  # FR-031: Lockout expiry time
+    failed_login_attempts = Column(Integer, default=0, nullable=False)  # FR-031: Failed login counter
     created_at = Column(DateTime(timezone=True), default=get_current_utc, nullable=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
 

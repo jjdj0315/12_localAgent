@@ -1,6 +1,6 @@
 """Authentication service"""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -16,6 +16,10 @@ from app.core.security import (
 from app.models.session import Session
 from app.models.user import User
 
+# FR-031: Account lockout constants
+MAX_FAILED_LOGIN_ATTEMPTS = 5
+LOCKOUT_DURATION_MINUTES = 30
+
 
 class AuthService:
     """Service for authentication operations"""
@@ -26,6 +30,8 @@ class AuthService:
     ) -> Optional[User]:
         """
         Authenticate user with username and password.
+
+        FR-031: Implements account lockout after 5 failed attempts (30 minute lockout).
 
         Args:
             db: Database session
@@ -42,9 +48,41 @@ class AuthService:
         if not user:
             return None
 
+        # FR-031: Check if account is locked
+        now = datetime.now(timezone.utc)
+        if user.is_locked:
+            # Check if lockout has expired
+            if user.locked_until and user.locked_until <= now:
+                # Auto-unlock account
+                user.is_locked = False
+                user.locked_until = None
+                user.failed_login_attempts = 0
+                await db.commit()
+            else:
+                # Account still locked
+                return None
+
+        # Check if account is inactive
+        if not user.is_active:
+            return None
+
         # Verify password
         if not verify_password(password, user.password_hash):
+            # FR-031: Increment failed login attempts
+            user.failed_login_attempts += 1
+
+            # Lock account if max attempts reached
+            if user.failed_login_attempts >= MAX_FAILED_LOGIN_ATTEMPTS:
+                user.is_locked = True
+                user.locked_until = now + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+
+            await db.commit()
             return None
+
+        # Successful login - reset failed attempts
+        user.failed_login_attempts = 0
+        user.last_login_at = now
+        await db.commit()
 
         return user
 
@@ -222,6 +260,35 @@ class AuthService:
         await db.commit()
 
         return result.rowcount
+
+    @staticmethod
+    async def unlock_account(db: AsyncSession, user_id: UUID) -> Optional[User]:
+        """
+        Manually unlock a user account (FR-031).
+
+        Administrators can unlock accounts before the 30-minute lockout expires.
+
+        Args:
+            db: Database session
+            user_id: User ID to unlock
+
+        Returns:
+            User if found and unlocked, None otherwise
+        """
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return None
+
+        # Unlock account and reset failed attempts
+        user.is_locked = False
+        user.locked_until = None
+        user.failed_login_attempts = 0
+        await db.commit()
+        await db.refresh(user)
+
+        return user
 
 
 # Singleton instance

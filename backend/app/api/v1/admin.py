@@ -58,12 +58,12 @@ async def list_users(
         UserResponse(
             id=user.id,
             username=user.username,
-            email=None,  # TODO: Add email field to User model
+            email=user.email,
             is_admin=user.is_admin,
-            is_active=True,  # TODO: Add is_active field to User model
-            is_locked=False,  # TODO: Implement lockout logic
-            locked_until=None,  # TODO: Add locked_until field to User model
-            failed_login_attempts=0,  # TODO: Track failed attempts
+            is_active=user.is_active,
+            is_locked=user.is_locked,
+            locked_until=user.locked_until,
+            failed_login_attempts=user.failed_login_attempts,
             created_at=user.created_at,
             last_login_at=user.last_login_at,
         )
@@ -104,12 +104,12 @@ async def create_user(
         return UserResponse(
             id=new_user.id,
             username=new_user.username,
-            email=None,
+            email=new_user.email,
             is_admin=new_user.is_admin,
-            is_active=True,
-            is_locked=False,
-            locked_until=None,
-            failed_login_attempts=0,
+            is_active=new_user.is_active,
+            is_locked=new_user.is_locked,
+            locked_until=new_user.locked_until,
+            failed_login_attempts=new_user.failed_login_attempts,
             created_at=new_user.created_at,
             last_login_at=new_user.last_login_at,
         )
@@ -260,10 +260,10 @@ async def unlock_user_account(
     - **user_id**: UUID of the user to unlock
     """
     from datetime import datetime, timezone
+    from app.services.auth_service import auth_service
 
-    # Get user
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
+    # Unlock account using auth service
+    user = await auth_service.unlock_account(db, user_id)
 
     if not user:
         raise HTTPException(
@@ -271,8 +271,6 @@ async def unlock_user_account(
             detail="사용자를 찾을 수 없습니다.",
         )
 
-    # TODO: Implement actual unlock logic when User model has is_locked field
-    # For now, return success to allow frontend to function
     return {
         "message": f"사용자 '{user.username}'의 계정 잠금이 해제되었습니다.",
         "user_id": str(user_id),
