@@ -5,6 +5,8 @@
 **Status**: Draft
 **Input**: User description: "소규모 지방자치단체 공무원 대상, 폐쇄망 환경에서 이용 가능한 Local LLM 웹 애플리케이션 서비스를 구축한다. 이는 ChatGPT, Gemini와 같은 외부 에이전트의 사용이 제한되는 환경에서 업무 지원용 LLM 기반 도구를 제공하기 위함이다."
 
+**Overview**: Air-gapped Local LLM web application for small local government employees using Qwen3-4B-Instruct (April 2025 release, ~2.5GB Q4_K_M quantization, Qwen2.5-72B-level performance) to provide AI assistance for administrative tasks without internet connectivity.
+
 ## Clarifications
 
 ### Session 2025-10-28
@@ -22,13 +24,15 @@
 
 ### Session 2025-10-29
 
-- Q: GPU 하드웨어 요구사항 모순 - Assumption #2는 GPU 필수라고 했지만 Dependencies는 CPU 우선/GPU 선택적이라고 명시. 실제 배포 요구사항은? → A: CPU 우선, GPU 선택 - CPU로 기본 동작 보장, GPU 있으면 가속 활용. 지자체 환경에서 GPU 서버 조달 어려움과 경량 모델(Qwen2.5-1.5B)의 CPU 작동 가능성 고려 (Assumption #2, Dependencies)
+- Q: GPU 하드웨어 요구사항 모순 - Assumption #2는 GPU 필수라고 했지만 Dependencies는 CPU 우선/GPU 선택적이라고 명시. 실제 배포 요구사항은? → A: CPU 우선, GPU 선택 - CPU로 기본 동작 보장, GPU 있으면 가속 활용. 지자체 환경에서 GPU 서버 조달 어려움과 경량 모델(Qwen3-4B)의 CPU 작동 가능성 고려 (Assumption #2, Dependencies)
 - Q: Safety Filter 모델 구체화 - "toxic-bert or similar"는 모호함. 폐쇄망 사전 다운로드를 위해 정확한 모델 이름 필요. 어떤 모델 사용? → A: unitary/toxic-bert - 다국어 지원(한국어 포함), ~400MB, CPU 호환, HuggingFace에서 다운로드 가능, 검증된 toxic content 분류 모델 (FR-050, FR-057, Dependencies)
 - Q: ReAct 도구 실패 시 사용자 경험 - FR-065는 "우아하게 처리"라고만 명시. 도구 실패 시 사용자에게 어떻게 보여줄지? → A: Transparent failure - Observation에 실패 내용 표시(예: "문서를 찾을 수 없습니다"), AI가 대안 시도 또는 명확한 안내 제공. ReAct의 추론 가시성 유지하면서 실패를 숨기지 않음 (FR-065, User Story 7 Acceptance Scenario 6)
 - Q: Multi-Agent Orchestrator 기본 라우팅 모드 - FR-076은 "keyword-based OR LLM-based (admin-configurable)"이라고만 명시. 시스템 기본 모드는? → A: LLM-based 기본 - 더 정확한 의도 파악, 새로운 질문 패턴에 유연 대응, 추가 LLM 호출 비용 허용. Keyword-based는 fallback 또는 관리자가 성능 최적화 시 전환 가능 (FR-070, FR-076)
 - Q: LLM-based Orchestrator 프롬프트 전략 - LLM이 5개 에이전트 중 선택하도록 하는 구체적 방법은? → A: Few-shot 예시 기반 - 각 에이전트별 2-3개 대표 질문 예시를 프롬프트에 포함, 간결한 에이전트 설명과 함께 제공. 토큰 효율적이면서 높은 정확도 유지 (FR-070, FR-076, Dependencies)
 
 ## User Scenarios & Testing *(mandatory)*
+
+**Testing Approach**: Manual acceptance testing per user story acceptance scenarios is MANDATORY per constitution. Automated unit/integration tests are NOT required for MVP but may be added later for regression testing.
 
 ### User Story 1 - Basic Text Generation and Q&A (Priority: P1)
 
@@ -338,7 +342,7 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FR-039**: System MUST display zero-state UI: for new users show "아직 대화가 없습니다" with highlighted "새 대화 시작하기" button and optional usage examples; for empty document uploads show "업로드된 문서가 없습니다" with drag-drop area and supported formats; for empty search results show "검색 결과가 없습니다" with keyword suggestion
 - **FR-040**: System MUST support browsers Chrome 90+, Edge 90+, Firefox 88+ (not Internet Explorer), require minimum 1280x720 resolution and JavaScript enabled
 - **FR-041**: System MUST limit conversations to 1,000 messages per conversation, display warning "대화가 너무 깁니다. 새 대화를 시작해주세요." when limit reached while allowing continued use with performance warning, and exempt administrators from limit for debugging
-- **FR-042**: System MUST implement automated backup strategy: daily incremental backups of database and uploaded documents at 2 AM, weekly full backups every Sunday, minimum 30-day backup retention, backups stored on separate storage volume (not system disk), and provide documented restore procedures accessible to IT staff through admin panel
+- **FR-042**: System MUST implement automated backup strategy: daily incremental backups of database and uploaded documents at 2 AM, weekly full backups every Sunday, minimum 30-day backup retention, backups stored on separate storage volume (not system disk), and provide documented restore procedures in docs/admin/backup-restore-guide.md accessible to IT staff via link in admin panel
 - **FR-043**: System MUST provide tag management interface for administrators to create, edit, and delete organization-wide tags (tag attributes: name, optional keywords for matching, color/icon for visual distinction, creation date), automatically assign tags to conversations when the first message is sent by analyzing first message content and matching to tag names/keywords using semantic similarity (embedding-based with sentence-transformers; if user has manually set a custom conversation title before sending first message, title is also included in analysis), prevent deletion of tags currently in use by displaying usage count and requiring confirmation, allow users to filter conversations by single or multiple tags, and enable users to manually adjust auto-assigned tags at any time (tags not automatically updated after initial assignment)
 
 #### Safety Filter Requirements (FR-050 series)
@@ -383,7 +387,7 @@ Government employees need complex tasks (like responding to citizen inquiries re
   3. Legal Research Agent (법규 검색 에이전트): searches uploaded regulations/ordinances, cites relevant articles with source references, provides plain-language interpretation (쉬운 설명) alongside legal text
   4. Data Analysis Agent (데이터 분석 에이전트): analyzes uploaded CSV/Excel data, provides summary statistics with Korean formatting (천 단위 쉼표), identifies trends, suggests visualization types suitable for government reports
   5. Review Agent (검토 에이전트): reviews drafted content for errors (factual, grammatical, policy compliance), highlights potential issues with explanations, suggests specific improvements with examples
-- **FR-071A** *(Separated from FR-071 as optional performance optimization - LoRA adapters may be removed if fine-tuning shows <10% improvement measured by 3-person blind quality evaluation (0-10 scale) on 50 test queries per agent, per plan.md LoRA Transition Decision Tree)*: System MUST implement dynamic LoRA adapter loading for multi-agent system: base model (Qwen2.5-1.5B-Instruct or Meta-Llama-3-8B) loaded once on startup, each agent loads its specific LoRA adapter on first invocation with adapter caching to minimize overhead, adapter switching latency must be <3 seconds per agent invocation, LLM service uses HuggingFace PEFT library for adapter management, all LoRA adapter weights bundled locally for air-gapped deployment
+- **FR-071A** *(Separated from FR-071 as optional performance optimization - LoRA adapters may be removed if fine-tuning shows <10% improvement measured by 3-person blind quality evaluation (0-10 scale) on 50 test queries per agent, per plan.md LoRA Transition Decision Tree)*: System MUST implement dynamic LoRA adapter loading for multi-agent system: base model (Qwen3-4B-Instruct) loaded once on startup, each agent loads its specific LoRA adapter on first invocation with adapter caching to minimize overhead, adapter switching latency must be <3 seconds per agent invocation, LLM service uses HuggingFace PEFT library for adapter management, all LoRA adapter weights bundled locally for air-gapped deployment. **Note**: This requirement may be removed if actual fine-tuning shows <10% improvement per plan.md LoRA Transition Decision Tree
 - **FR-072**: System MUST support sequential multi-agent workflows: orchestrator detects multi-step requests using keyword patterns (e.g., "검색하고... 작성하고... 검토"), creates workflow chain with agent sequence, passes each agent's output as input to next agent, displays progress indicator showing current agent and workflow stage to user
 - **FR-073**: System MUST handle agent failures in workflows: if agent fails, subsequent agents receive failure notification, failed agent displays error "이전 단계가 실패하여 작업을 완료할 수 없습니다." with explanation of what was attempted, user can retry entire workflow or individual failed step
 - **FR-074**: System MUST display multi-agent outputs with clear attribution: each agent's contribution labeled with agent name (e.g., "📋 문서 작성 에이전트:", "⚖️ 법규 검색 에이전트:"), visual separators between agent outputs (horizontal lines), final combined result shown at end for multi-agent workflows
@@ -506,7 +510,7 @@ This specification is based on the following assumptions:
 ## Dependencies
 
 - Local server infrastructure with sufficient compute resources (CPU-based deployment supported, GPU optional for acceleration)
-- Qwen3-4B-Instruct model files (Qwen/Qwen3-4B-Instruct) supporting Korean language and running on local hardware with HuggingFace Transformers + BitsAndBytes 4-bit quantization or llama.cpp GGUF format (~2.5GB Q4_K_M)
+- Qwen3-4B-Instruct model files (Qwen/Qwen3-4B-Instruct, April 2025 release) supporting Korean language and running on local hardware with HuggingFace Transformers + BitsAndBytes 4-bit quantization or llama.cpp GGUF format (~2.5GB Q4_K_M quantization, Qwen2.5-72B-level performance with 20-40% improvement in math/coding tasks)
 - Vector database (ChromaDB or FAISS) with embedding model for document semantic search
 - Embedding model files compatible with ChromaDB/FAISS (e.g., sentence-transformers paraphrase-multilingual-MiniLM-L12-v2) pre-downloaded for offline installation
 - **Safety Filter Dependencies**:

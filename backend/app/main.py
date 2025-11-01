@@ -40,9 +40,10 @@ async def root():
 
 
 # Import API routers
-from app.api.v1 import admin, auth, chat, conversations, documents, health
+from app.api.v1 import admin, auth, chat, conversations, documents, health, setup
 
 # Register routers
+app.include_router(setup.router, prefix="/api/v1", tags=["Setup"])  # No auth required for setup
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
 app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["Conversations"])

@@ -258,7 +258,7 @@ Build an air-gapped Local LLM web application for small local government employe
   - 4-bit quantization reduces memory footprint to ~2.5GB
   - Government priority: availability > performance
   - GPU optional for acceleration if available
-  - Target 8-12 seconds response time on 16-core CPU (acceptable for administrative tasks)
+  - Target 8 seconds (maximum acceptable 12 seconds) response time on 16-core CPU per SC-001 (acceptable for administrative tasks)
 - **Mitigation**:
   - Resource limits prevent system overload (FR-086)
   - Queueing for ReAct/Multi-Agent sessions
@@ -1484,10 +1484,11 @@ SC-021/SC-022 검증 (Routing accuracy ≥85%, Workflow time ≤90s)
                     └─ Improvement >20% → LoRA 유지, production 배포
 ```
 
-**Performance Measurement Criteria**:
-- **Response Quality**: 3-person blind evaluation (0-10 scale)
-- **Response Time**: P50/P95 latency comparison
+**Performance Measurement Criteria** (referenced in Decision Tree "Improvement <10%" condition):
+- **Response Quality**: 3-person blind evaluation (0-10 scale) - PRIMARY metric
+- **Response Time**: P50/P95 latency comparison (adapter switching overhead)
 - **Accuracy**: Domain-specific accuracy (e.g., legal citation correctness for Legal Agent)
+- **Overall Improvement**: Average across 3 metrics weighted as Quality 50%, Time 30%, Accuracy 20%
 
 **Fallback Strategy**:
 - If Phase 10 completes successfully with dummy LoRA, **immediately remove dummy LoRA loading code** (T175F) before Phase 11

@@ -55,3 +55,6 @@ archive/
 
 # Development scripts (use scripts/dev/ instead)
 scripts/dev/
+
+# Setup lock file (created after initial setup wizard)
+setup.lock

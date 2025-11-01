@@ -247,7 +247,7 @@
 - [X] T103 [US5] Implement system health endpoint GET /api/v1/admin/health in backend/app/api/v1/admin.py (uptime, storage, LLM status per FR-028)
 - [X] T104 [US5] Implement storage metrics endpoint GET /api/v1/admin/storage in backend/app/api/v1/admin.py (per-user usage, warnings at 80%)
 - [X] T105 [US5] Implement initial setup wizard endpoint POST /api/v1/setup in backend/app/api/v1/setup.py (first admin creation, setup.lock file per FR-034)
-- [ ] T105A [US5] Implement setup.lock file mechanism in backend/app/services/setup_service.py (create file on wizard completion in project root, check file existence in setup endpoint to return 403 Forbidden if already configured, document lock file location in .gitignore per FR-034)
+- [X] T105A [US5] Implement setup.lock file mechanism in backend/app/services/setup_service.py (create file on wizard completion in project root, check file existence in setup endpoint to return 403 Forbidden if already configured, document lock file location in .gitignore per FR-034) ✅ **2025-11-01**
 - [X] T106 [US5] Implement backup management endpoints in backend/app/api/v1/admin.py (trigger backup, view backup history per FR-042)
 - [X] T106A [P] [US5] Create backup automation scripts in scripts/:
   - backup-daily.sh: Incremental backup using pg_dump + rsync for documents (scheduled daily at 2 AM via cron)
@@ -261,14 +261,14 @@
 - [X] T107 [P] [US5] Create admin login page in frontend/src/app/(admin)/login/page.tsx
 - [X] T108 [P] [US5] Create admin dashboard layout in frontend/src/app/(admin)/dashboard/layout.tsx
 - [X] T109 [P] [US5] Implement UserManagement component in frontend/src/components/admin/UserManagement.tsx
-- [ ] T109A [P] [US5] Add account unlock functionality to UserManagement component (display locked status indicator, unlock button calls DELETE /api/v1/admin/users/{id}/lockout endpoint, refresh user list on success per FR-031)
+- [X] T109A [P] [US5] Add account unlock functionality to UserManagement component (display locked status indicator, unlock button calls DELETE /api/v1/admin/users/{id}/lockout endpoint, refresh user list on success per FR-031) ✅ **2025-11-01**
 - [X] T110 [P] [US5] Implement StatsDashboard component in frontend/src/components/admin/StatsDashboard.tsx
 - [X] T111 [P] [US5] Implement SystemHealth component in frontend/src/components/admin/SystemHealth.tsx
 - [X] T112 [P] [US5] Implement StorageMetrics component in frontend/src/components/admin/StorageMetrics.tsx
 - [X] T113 [P] [US5] Implement TagManagement component in frontend/src/components/admin/TagManagement.tsx
 - [X] T114 [P] [US5] Implement BackupManagement component in frontend/src/components/admin/BackupManagement.tsx
 - [X] T114A [P] [US5] Add backup/restore documentation viewer in BackupManagement component (link to docs/admin/backup-restore-guide.md and scripts/restore-from-backup.sh accessible from admin panel per FR-042)
-- [ ] T114B [P] [US5] Integrate backup/restore UI controls into BackupManagement component (trigger backup button calling POST /api/v1/admin/backup, view backup history table, restore interface with file selection accessible from admin panel per FR-042)
+- [X] T114B [P] [US5] Integrate backup/restore UI controls into BackupManagement component (trigger backup button calling POST /api/v1/admin/backup, view backup history table, restore interface with file selection accessible from admin panel per FR-042) ✅ **2025-11-01**
 - [X] T115 [US5] Create initial setup wizard page in frontend/src/app/setup/page.tsx
 
 ### Manual Testing
@@ -462,7 +462,7 @@
 
 - [X] T197A [US8] Test LLM service factory (verify llama.cpp loads correctly with LLM_BACKEND=llama_cpp environment variable) ✅ **2025-10-31**
 - [ ] T197B [US8] Test GGUF model loading (Qwen3-4B-Instruct Q4_K_M, ~2.5GB, expected load time <1 second, CPU AVX2/FMA/F16C optimizations)
-  - **UPDATE 2025-10-31**: Upgraded from Qwen2.5-1.5B to Qwen3-4B for superior performance (Qwen2.5-72B-level quality, 20-40% improvement in math/coding, April 2025 release, ~50% efficiency gain)
+  - **UPDATE 2025-11-01**: Using Qwen3-4B-Instruct (April 2025 release) for superior performance (Qwen2.5-72B-level quality, 20-40% improvement in math/coding over Qwen2.5-1.5B, ~50% efficiency gain)
 - [ ] T197C [US8] Test dummy LoRA adapter detection (optional, verify dummy files detected without errors if present)
 - [ ] T198 [US8] Test orchestrator routing accuracy (85%+ correct per SC-021) on test dataset of 50 queries
 - [ ] T199 [US8] Test sequential 3-agent workflow completes within 90 seconds (per SC-022)
