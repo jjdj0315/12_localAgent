@@ -305,7 +305,7 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FR-002**: System MUST provide a web-based interface accessible through standard web browsers on the internal network
 - **FR-003**: Users MUST be able to submit text queries and receive LLM-generated responses
 - **FR-004**: System MUST display a visual indicator when processing user queries
-- **FR-005** *(High-level functional requirement)*: System MUST support conversational context, allowing follow-up questions within the same session *(Note: FR-036 provides technical implementation details for this requirement - intentional overlap for clarity)*
+- **FR-005**: System MUST support conversational context, allowing follow-up questions within the same session *(See FR-036 for technical implementation details: 10-message window, 2048 token limit)*
 - **FR-006**: System MUST allow users to create, view, and delete their saved conversations
 - **FR-007**: System MUST support searching or filtering through saved conversations
 - **FR-008**: System MUST accept document uploads in common formats (PDF, TXT, DOCX)
@@ -447,6 +447,7 @@ Government employees need complex tasks (like responding to citizen inquiries re
   - **Inter-rater reliability**: 동일 응답에 대한 채점자 간 점수 차이가 3점 이상인 경우 재협의 후 평균 점수 사용
   - **합격 기준**: 90% 이상의 쿼리가 총 30점 만점에 24점 이상 (80% 점수)
   - **테스트 도구**: `scripts/test-korean-quality.py` (채점 인터페이스 제공, 점수 수집 및 통계 계산)
+  - **데이터셋 생성**: Phase 12 (T238 실행 전), 2-3명의 공무원 또는 한국어 원어민이 50개 다양한 업무 시나리오 쿼리 작성 (민원 처리, 문서 작성, 정책 질문, 일정 계산 등), `backend/tests/data/korean_quality_test_dataset.json`에 저장
 - **SC-005**: Conversation history retrieval completes within 2 seconds regardless of the number of saved conversations
 - **SC-006**: System maintains 99% uptime during business hours (weekdays 9 AM - 6 PM)
 - **SC-007**: 사용자가 24시간 후 저장된 대화를 재개할 때 컨텍스트를 95% 정확도로 유지
@@ -496,7 +497,12 @@ Government employees need complex tasks (like responding to citizen inquiries re
 This specification is based on the following assumptions:
 
 1. **Network Environment**: The local government has an internal network infrastructure that supports web applications, even though it's isolated from the internet
-2. **Hardware Resources**: Server hardware meeting minimum specifications is available: CPU (8-core Intel Xeon or equivalent for CPU-only deployment, 16-core recommended for production), RAM (32GB minimum, 64GB recommended), GPU (optional: NVIDIA RTX 3090 or A100 with 16GB+ VRAM and CUDA support for acceleration; CPU-only deployment supported with acceptable performance for lightweight models like Qwen3-4B), Storage (500GB+ SSD for OS/app/data, NVMe SSD 1TB recommended), Network (internal Gigabit Ethernet)
+2. **Hardware Resources**: Server hardware meeting minimum specifications is available:
+   - **CPU** (Required): 8-core Intel Xeon or equivalent minimum, 16-core recommended for production. CPU-only deployment is the baseline configuration with acceptable performance (8-12 seconds response time per SC-001) using Qwen3-4B-Instruct (~2.5GB Q4_K_M quantization)
+   - **RAM** (Required): 32GB minimum, 64GB recommended for production
+   - **GPU** (Optional): NVIDIA RTX 3090 or A100 with 16GB+ VRAM and CUDA support for acceleration. GPU improves response time (3-8 seconds) and concurrent user capacity (10-16 users vs. 1-3 on CPU), but is NOT required for initial deployment
+   - **Storage** (Required): 500GB+ SSD for OS/app/data, NVMe SSD 1TB recommended
+   - **Network** (Required): Internal Gigabit Ethernet
 3. **User Devices**: Government employees have access to computers with supported browsers (Chrome 90+, Edge 90+, Firefox 88+, minimum 1280x720 resolution, JavaScript enabled). Internet Explorer is not supported.
 4. **Data Sensitivity**: While the environment is air-gapped for security, the specific classification level of data that can be processed is not defined
 5. **LLM Capabilities**: Qwen3-4B-Instruct will be used as the local LLM model, providing high-quality Korean language support with Qwen2.5-72B-level performance when deployed via HuggingFace Transformers or llama.cpp with 4-bit quantization (CPU-compatible, ~2.5GB memory footprint); Qwen3-4B prioritized for optimal balance of quality and efficiency in CPU-only deployments (April 2025 release, 20-40% improvement in math/coding over Qwen2.5)
@@ -509,12 +515,12 @@ This specification is based on the following assumptions:
 
 ## Dependencies
 
-- Local server infrastructure with sufficient compute resources (CPU-based deployment supported, GPU optional for acceleration)
+- Local server infrastructure with CPU-based deployment as baseline (8-core minimum, 16-core recommended), GPU optional for acceleration (NVIDIA RTX 3090/A100 for improved performance)
 - Qwen3-4B-Instruct model files (Qwen/Qwen3-4B-Instruct, April 2025 release) supporting Korean language and running on local hardware with HuggingFace Transformers + BitsAndBytes 4-bit quantization or llama.cpp GGUF format (~2.5GB Q4_K_M quantization, Qwen2.5-72B-level performance with 20-40% improvement in math/coding tasks)
 - Vector database (ChromaDB or FAISS) with embedding model for document semantic search
-- Embedding model files compatible with ChromaDB/FAISS (e.g., sentence-transformers paraphrase-multilingual-MiniLM-L12-v2) pre-downloaded for offline installation
+- **Embedding model**: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (HuggingFace: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, ~420MB, supports Korean, CPU-compatible) pre-downloaded for offline installation, used for both document Q&A (FR-009) and tag auto-matching (FR-043)
 - **Safety Filter Dependencies**:
-  - Lightweight toxic content classification model (unitary/toxic-bert, ~400MB) with CPU support, pre-downloaded from HuggingFace for offline installation
+  - Lightweight toxic content classification model (HuggingFace: `unitary/toxic-bert`, ~400MB, multilingual including Korean, CPU-compatible) pre-downloaded from HuggingFace for offline installation
   - Regex pattern library for PII detection (주민등록번호, phone, email patterns)
   - Optional: sentence-transformers for advanced PII entity recognition if rule-based insufficient
 - **ReAct Agent Dependencies**:

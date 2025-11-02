@@ -45,15 +45,20 @@ Build an air-gapped Local LLM web application for small local government employe
 - Vector storage: In-memory or lightweight (ChromaDB/FAISS) for document embeddings
   - Note: All dependencies (ChromaDB/FAISS pip packages) included in requirements.txt for offline installation in air-gapped environment
 - **Semantic Tag Matching** (FR-043):
-  - Embedding model: sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2 or similar) for Korean support
+  - Embedding model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (~420MB, Korean support, CPU-compatible)
   - Strategy: Embed conversation content + tag keywords, calculate cosine similarity
   - Threshold: Auto-assign tags with similarity > 0.7
   - Fallback: LLM-based classification if embedding quality insufficient
 
 **Safety Filter System** (FR-050 series):
-- **Two-Phase Filtering**:
+- **Two-Phase Filtering** (Sequential execution for performance optimization):
   - Phase 1 (Rule-based): Keyword matching + regex patterns for 5 categories (violence, sexual, dangerous, hate, PII)
+    - If clean → Pass directly to LLM (skip Phase 2 for efficiency)
+    - If flagged → Proceed to Phase 2 for ML verification
   - Phase 2 (ML-based): unitary/toxic-bert (~400MB, multilingual, CPU-compatible) for toxic content classification
+    - Only executed if Phase 1 flagged content (performance optimization)
+    - Final decision: Block if either phase fails
+  - **Performance**: Typical clean message <100ms (Phase 1 only), flagged message <2s (both phases)
 - **PII Detection & Masking** (FR-052):
   - 주민등록번호: 6 digits + dash + 7 digits → 123456-*******
   - Phone: 010-XXXX-XXXX or 01XXXXXXXXX → 010-****-****
@@ -97,6 +102,49 @@ Build an air-gapped Local LLM web application for small local government employe
   - Complexity limits: Max 5 agents per chain, 5-minute total timeout (includes adapter switching time)
 - **Context Sharing** (FR-077): Agents in same workflow share conversation context and previous outputs
 - **Admin Management** (FR-076): Enable/disable agents, configure routing mode, edit keyword patterns, view performance metrics (includes adapter loading times)
+
+**LoRA Adapter Evaluation Protocol** (FR-071A Removal Criteria):
+
+**Goal**: Determine if agent-specific LoRA adapters provide meaningful quality improvement (≥10%) over base Qwen3-4B model.
+
+**Evaluation Setup**:
+1. **Evaluators**: 3명의 공무원 (또는 한국어 원어민, 업무 맥락 이해 필수)
+2. **Test Queries**: 각 에이전트당 50개 (총 250개)
+   - Citizen Support Agent: 민원 문의 50개
+   - Document Writing Agent: 공문서 작성 요청 50개
+   - Legal Research Agent: 법규 검색 질문 50개
+   - Data Analysis Agent: 데이터 분석 요청 50개
+   - Review Agent: 검토 대상 문서 50개
+3. **Blind Comparison**:
+   - Response A: Base model (Qwen3-4B, no adapter)
+   - Response B: Agent-specific LoRA adapter
+   - Evaluator는 A/B 구분 모름 (랜덤 순서)
+
+**Evaluation Criteria** (0-10 scale, 각 응답에 대해):
+1. **Task Completion** (0-10): 요청한 작업을 완료했는가?
+2. **Quality** (0-10): 문법, 형식, 전문성
+3. **Government Context** (0-10): 공무원 업무 맥락 적합성
+
+**Total Score**: 3개 차원 합계 (최대 30점)
+
+**Statistical Analysis**:
+- **Mean Score Difference**: `mean(LoRA) - mean(Base)`
+- **Improvement %**: `(mean(LoRA) - mean(Base)) / mean(Base) * 100`
+- **Significance Test**: Paired t-test (p < 0.05 required)
+- **Inter-rater Reliability**: Krippendorff's alpha > 0.7 required
+
+**Decision Criteria**:
+| Condition | Action |
+|-----------|--------|
+| Improvement < 5% | **Remove LoRA** - Not worth complexity |
+| Improvement 5-10% AND p > 0.05 | **Remove LoRA** - Not statistically significant |
+| Improvement ≥10% AND p < 0.05 | **Keep LoRA** - Meaningful benefit |
+
+**Implementation**:
+- **When**: After Phase 11 (Multi-Agent System) implementation complete
+- **Tool**: `scripts/evaluate-lora-agents.py` (evaluation interface)
+- **Duration**: 2-3 days (evaluator availability)
+- **Fallback**: If LoRA removed, use base model with **agent-specific system prompts only** (simpler architecture, easier maintenance per Constitution Principle IV)
 
 **Deployment & Infrastructure**:
 - Architecture: Monolithic (single deployable unit for simplicity)
@@ -149,10 +197,19 @@ Build an air-gapped Local LLM web application for small local government employe
 - E2E: Playwright or Cypress
 
 **Target Platform**:
-- Server: Linux (Ubuntu 22.04 LTS recommended) with CPU-first deployment, optional GPU acceleration
+- **Development Environment**: Windows 10/11 workstations (per Constitution Principle VI)
+  - IDE: VSCode (Windows native) or PyCharm
+  - Python: 3.11+ via Windows Installer
+  - Docker: Docker Desktop for Windows (WSL2 backend recommended)
+  - Terminal: PowerShell 7+ or Windows Terminal
+  - Git: Git for Windows with CRLF handling configured
+- **Deployment Environment**: Linux (Ubuntu 22.04 LTS recommended)
+  - Deployed via Docker containers (abstracts OS differences between dev and production)
+  - All path operations use `os.path.join()` or `pathlib.Path` for cross-platform compatibility (Constitution VI)
+  - No OS-specific commands in application code (PowerShell scripts only for Windows dev tooling)
   - Minimum hardware (CPU-only): CPU 8-core Intel Xeon (16-core recommended for production), RAM 32GB (64GB recommended), SSD 500GB+ (NVMe 1TB recommended)
-  - Optional GPU acceleration: NVIDIA RTX 3090/A100 16GB+ VRAM with CUDA support (for larger models like Meta-Llama-3-8B)
-- Client: Supported browsers on Windows workstations (FR-040)
+  - Optional GPU acceleration: NVIDIA RTX 3090/A100 16GB+ VRAM with CUDA support (improves Qwen3-4B response time to 3-8 seconds and concurrent user capacity to 10-16 users)
+- **Client**: Supported browsers on Windows workstations (FR-040)
   - Chrome 90+
   - Edge 90+
   - Firefox 88+
@@ -168,6 +225,21 @@ Build an air-gapped Local LLM web application for small local government employe
   - Does NOT include: Safety filtering, context management (those are separate services)
 - **Inference Engine** = Underlying ML runtime (llama.cpp for CPU, vLLM for GPU)
 - **LLM Infrastructure** = Complete stack (model + inference engine + service wrapper + deployment config)
+
+**Model Naming Conventions**:
+LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
+
+| 맥락 | 표기법 | 예시 | 사용처 |
+|------|-------|------|--------|
+| 일반 참조 | `Qwen3-4B-Instruct` | "We use Qwen3-4B-Instruct" | spec.md, 문서, 대화 |
+| HuggingFace 저장소 | `Qwen/Qwen3-4B-Instruct` | `from_pretrained("Qwen/Qwen3-4B-Instruct")` | Python 코드 (vLLM), Dependencies |
+| GGUF 파일명 | `qwen3-4b-instruct-q4_k_m.gguf` | `llama_cpp.Llama(model_path="...")` | llama.cpp 로딩, 파일 시스템 |
+| 환경변수/설정 | `MODEL_NAME=qwen3-4b-instruct` | `.env` 파일, config.py | 설정 파일 |
+
+**통일 원칙**:
+- 코드에서는 **설정 파일에서 읽은 값 사용** (하드코딩 금지)
+- 문서에서는 **"Qwen3-4B-Instruct"** 형식 우선 사용
+- 기술 문서에서 경로 필요 시: **"Qwen3-4B-Instruct (HuggingFace: `Qwen/Qwen3-4B-Instruct`, GGUF: `qwen3-4b-instruct-q4_k_m.gguf`)"** 형식
 
 **Performance Goals**:
 - Response time: 5 seconds maximum (10 seconds target from spec)
@@ -918,7 +990,7 @@ class LlamaCppLLMService(BaseLLMService):
     def __init__(self):
         # Load GGUF base model
         self.model = Llama(
-            model_path="/models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+            model_path="/models/qwen3-4b-instruct-q4_k_m.gguf",
             n_ctx=2048,
             n_threads=8,  # CPU threads
             n_gpu_layers=0,  # CPU only
@@ -1349,7 +1421,7 @@ class VLLMLLMService(BaseLLMService):
     def __init__(self):
         # Load vLLM model
         self.llm = LLM(
-            model="Qwen/Qwen2.5-1.5B-Instruct",
+            model="Qwen/Qwen3-4B-Instruct",
             tensor_parallel_size=1,
             gpu_memory_utilization=0.9,
             max_num_seqs=16,  # 16 concurrent users
@@ -1445,7 +1517,7 @@ LLM_BACKEND=llama_cpp  → LLM_BACKEND=vllm
 **LoRA File Structure**:
 ```
 models/
-├── qwen2.5-1.5b-instruct-q4_k_m.gguf          # Base model (GGUF)
+├── qwen3-4b-instruct-q4_k_m.gguf              # Base model (GGUF)
 └── lora/
     ├── citizen_support_dummy.gguf              # Phase 10: Dummy
     ├── citizen_support_v1.gguf                 # Later: Fine-tuned
@@ -1468,7 +1540,7 @@ Phase 10 완료 (Multi-Agent with dummy LoRA)
 SC-021/SC-022 검증 (Routing accuracy ≥85%, Workflow time ≤90s)
     ↓
     ├─ FAIL → Fix orchestrator/agent logic first (LoRA 전환 연기)
-    └─ PASS → LoRA 전환 평가 시작
+    └─ PASS → LoRA 전환 평가 시작GIL
             ↓
         Training data 수집 가능 여부 확인
             ↓

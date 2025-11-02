@@ -39,7 +39,7 @@ async def health_check() -> Dict[str, Any]:
 
 
 @router.get("/health/detailed", tags=["health"])
-async def detailed_health_check(db: AsyncSession = None) -> Dict[str, Any]:
+async def detailed_health_check() -> Dict[str, Any]:
     """
     Detailed health check with all components
 
@@ -59,7 +59,7 @@ async def detailed_health_check(db: AsyncSession = None) -> Dict[str, Any]:
     }
 
     # 1. Database check
-    db_healthy = await check_database_health(db)
+    db_healthy = await check_database_health()
     health_status["components"]["database"] = db_healthy
 
     # 2. LLM service check
@@ -85,7 +85,7 @@ async def detailed_health_check(db: AsyncSession = None) -> Dict[str, Any]:
 
 
 @router.get("/health/ready", tags=["health"])
-async def readiness_check(db: AsyncSession = None) -> Dict[str, str]:
+async def readiness_check() -> Dict[str, str]:
     """
     Readiness probe for Kubernetes/Docker
 
@@ -93,7 +93,7 @@ async def readiness_check(db: AsyncSession = None) -> Dict[str, str]:
     """
     try:
         # Check critical components
-        db_ok = await check_database_health(db)
+        db_ok = await check_database_health()
         llm_ok = check_llm_service_health()
 
         if db_ok["status"] == "healthy" and llm_ok["status"] == "healthy":
@@ -122,17 +122,13 @@ async def liveness_check() -> Dict[str, str]:
 
 # Helper functions
 
-async def check_database_health(db: AsyncSession = None) -> Dict[str, Any]:
+async def check_database_health() -> Dict[str, Any]:
     """Check PostgreSQL database connectivity"""
     try:
-        if db is None:
-            # Get new session if not provided
-            from app.core.database import SessionLocal
-            async with SessionLocal() as session:
-                result = await session.execute(text("SELECT 1"))
-                result.fetchone()
-        else:
-            result = await db.execute(text("SELECT 1"))
+        # Get new session
+        from app.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(text("SELECT 1"))
             result.fetchone()
 
         return {

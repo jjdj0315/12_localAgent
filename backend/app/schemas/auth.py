@@ -31,6 +31,7 @@ class LoginResponse(BaseModel):
     user_id: UUID
     username: str
     is_admin: bool
+    session_token: str
     message: str = "Login successful"
 
 

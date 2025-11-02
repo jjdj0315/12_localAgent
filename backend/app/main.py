@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 
 # Create FastAPI app
+# Note: Model loading happens on first request (lazy loading) to avoid blocking server startup
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,

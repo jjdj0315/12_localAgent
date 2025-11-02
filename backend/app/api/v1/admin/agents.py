@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import json
 from pathlib import Path
 
-from app.api.deps import get_current_admin_user
+from app.api.deps import get_current_admin
 from app.core.database import get_db
 from app.models.user import User
 from app.services.orchestrator_service import MultiAgentOrchestrator
@@ -126,7 +126,7 @@ class AgentKeywordBulkUpdate(BaseModel):
 
 @router.get("/agents", response_model=List[AgentInfo])
 async def list_agents(
-    current_admin: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -161,7 +161,7 @@ async def list_agents(
 @router.get("/agents/{agent_name}", response_model=AgentInfo)
 async def get_agent_info(
     agent_name: str,
-    current_admin: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -198,7 +198,7 @@ async def get_agent_info(
 async def update_agent_config(
     agent_name: str,
     config: AgentConfigUpdate,
-    current_admin: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -236,7 +236,7 @@ async def update_agent_config(
 
 @router.get("/agents/stats", response_model=List[AgentStats])
 async def get_agent_statistics(
-    current_admin: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -279,7 +279,7 @@ async def get_agent_statistics(
 
 @router.get("/config", response_model=OrchestratorConfig)
 async def get_orchestrator_config(
-    current_admin: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -303,7 +303,7 @@ async def get_orchestrator_config(
 @router.patch("/config")
 async def update_orchestrator_config(
     config: OrchestratorConfig,
-    current_admin: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -335,7 +335,7 @@ async def update_orchestrator_config(
 
 @router.get("/keywords")
 async def get_agent_keywords(
-    current_admin: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -355,7 +355,7 @@ async def get_agent_keywords(
 async def update_agent_keywords(
     agent_name: str,
     config: AgentKeywordConfig,
-    current_admin: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -389,7 +389,7 @@ async def update_agent_keywords(
 @router.post("/keywords/bulk")
 async def bulk_update_keywords(
     update: AgentKeywordBulkUpdate,
-    current_admin: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -418,7 +418,7 @@ async def bulk_update_keywords(
 
 @router.post("/keywords/reset")
 async def reset_keywords_to_default(
-    current_admin: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -437,7 +437,7 @@ async def reset_keywords_to_default(
 @router.get("/test-routing")
 async def test_agent_routing(
     query: str,
-    current_admin: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """

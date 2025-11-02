@@ -31,7 +31,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       SESSION_TIMEOUT_MINUTES: ${SESSION_TIMEOUT_MINUTES:-30}
       LLM_BACKEND: llama_cpp
-      GGUF_MODEL_PATH: /models/qwen2.5-3b-instruct-q4_k_m.gguf
+      GGUF_MODEL_PATH: /models/qwen3-4b-instruct-q4_k_m.gguf
       LLAMA_N_THREADS: 8
       LLAMA_N_CTX: 2048
       LLAMA_N_GPU_LAYERS: 0
@@ -64,9 +64,9 @@ services:
         echo 'Creating initial admin user...' &&
         python scripts/create_admin.py --username admin --password admin123! 2>/dev/null || true &&
         echo 'Verifying GGUF model...' &&
-        ls -lh /models/qwen2.5-3b-instruct-q4_k_m.gguf &&
-        echo 'Starting backend server with llama.cpp...' &&
-        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+        ls -lh /models/qwen3-4b-instruct-q4_k_m.gguf &&
+        echo 'Starting backend server with llama.cpp (Qwen3-4B)...' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
       "
 
   frontend:

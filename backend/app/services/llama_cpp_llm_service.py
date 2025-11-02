@@ -71,21 +71,11 @@ class LlamaCppLLMService(BaseLLMService):
                 f"Download with: python scripts/download_gguf_model.py"
             )
 
-        # Load GGUF model
-        try:
-            print(f"[LlamaCpp] Loading model... (this may take 30-60 seconds)")
-            self.model = Llama(
-                model_path=self.model_path,
-                n_ctx=self.n_ctx,
-                n_threads=self.n_threads,
-                n_gpu_layers=self.n_gpu_layers,
-                verbose=False,  # Reduce logging noise
-            )
-            print(f"[LlamaCpp] [OK] Model loaded successfully!")
-            import sys
-            sys.stdout.flush()  # Force output to appear immediately
-        except Exception as e:
-            raise RuntimeError(f"Failed to load GGUF model: {e}")
+        # Defer model loading to async method (prevents blocking FastAPI startup)
+        self.model = None
+        self.model_loaded = False
+        self.model_loading = False
+        self.model_load_error = None
 
         # LoRA adapter configuration (optional, for infrastructure testing)
         self.lora_enabled = os.getenv("ENABLE_LORA", "false").lower() == "true"
@@ -98,6 +88,50 @@ class LlamaCppLLMService(BaseLLMService):
         # Load agent prompts from files
         self.agent_prompts = self._load_agent_prompts()
         print(f"[LlamaCpp] Loaded {len(self.agent_prompts)} agent prompts")
+        print(f"[LlamaCpp] Model will be loaded asynchronously on first request")
+
+    async def load_model(self):
+        """
+        Load GGUF model asynchronously with LM Studio optimizations
+
+        This prevents blocking FastAPI startup and applies performance optimizations
+        matching LM Studio's configuration for faster inference.
+        """
+        if self.model_loaded or self.model_loading:
+            return
+
+        self.model_loading = True
+        print(f"[LlamaCpp] Starting async model loading...")
+
+        try:
+            loop = asyncio.get_event_loop()
+
+            # Load model in thread pool to avoid blocking
+            def _load_model_sync():
+                print(f"[LlamaCpp] Loading model with LM Studio optimizations...")
+                return Llama(
+                    model_path=self.model_path,
+                    n_ctx=self.n_ctx,
+                    n_threads=self.n_threads,
+                    n_gpu_layers=self.n_gpu_layers,
+                    n_batch=512,           # LM Studio optimization: batch processing
+                    use_mlock=True,        # LM Studio optimization: lock model in RAM
+                    use_mmap=True,         # LM Studio optimization: memory-mapped file access
+                    verbose=False,
+                )
+
+            self.model = await loop.run_in_executor(None, _load_model_sync)
+            self.model_loaded = True
+            self.model_loading = False
+            print(f"[LlamaCpp] [OK] Model loaded successfully with LM Studio optimizations!")
+            import sys
+            sys.stdout.flush()
+
+        except Exception as e:
+            self.model_load_error = str(e)
+            self.model_loading = False
+            print(f"[LlamaCpp] [ERROR] Failed to load model: {e}")
+            raise RuntimeError(f"Failed to load GGUF model: {e}")
 
     def _initialize_lora_adapters(self):
         """Initialize LoRA adapter paths (optional)"""
@@ -188,6 +222,10 @@ class LlamaCppLLMService(BaseLLMService):
     ) -> str:
         """Generate text using llama.cpp (CPU inference)"""
 
+        # Ensure model is loaded before generating
+        if not self.model_loaded:
+            await self.load_model()
+
         # Default stop sequences for Korean
         if stop_sequences is None:
             stop_sequences = ["사용자:", "User:", "\n\n\n"]
@@ -239,6 +277,17 @@ class LlamaCppLLMService(BaseLLMService):
     ) -> AsyncGenerator[str, None]:
         """Generate text with streaming (SSE)"""
 
+        # Ensure model is loaded before generating
+        if not self.model_loaded:
+            await self.load_model()
+
+        # Verify model is actually loaded after await
+        if self.model is None:
+            error_msg = self.model_load_error or "Model failed to load"
+            print(f"[LlamaCpp] Error: Model is None after load_model(): {error_msg}")
+            yield f"[Error] 모델 로딩 실패: {error_msg}"
+            return
+
         if stop_sequences is None:
             stop_sequences = ["사용자:", "User:", "\n\n\n"]
 
@@ -259,6 +308,8 @@ class LlamaCppLLMService(BaseLLMService):
 
         except Exception as e:
             print(f"[LlamaCpp] Streaming error: {e}")
+            import traceback
+            traceback.print_exc()
             yield f"[Error] {str(e)}"
 
     async def generate_with_agent(
@@ -344,6 +395,35 @@ class LlamaCppLLMService(BaseLLMService):
 
     def health_check(self) -> Dict[str, any]:
         """Check if llama.cpp service is ready"""
+        # Check loading state
+        if self.model_loading:
+            return {
+                "status": "loading",
+                "backend": "llama_cpp",
+                "model": self.model_path,
+                "device": f"cpu ({self.n_threads} threads)",
+                "lora_enabled": self.lora_enabled,
+                "message": "Model is currently loading (async initialization)"
+            }
+
+        if self.model_load_error:
+            return {
+                "status": "error",
+                "backend": "llama_cpp",
+                "model": self.model_path,
+                "device": "cpu",
+                "message": f"Model loading failed: {self.model_load_error}"
+            }
+
+        if not self.model_loaded or self.model is None:
+            return {
+                "status": "not_loaded",
+                "backend": "llama_cpp",
+                "model": self.model_path,
+                "device": f"cpu ({self.n_threads} threads)",
+                "message": "Model not yet loaded (will load on first request)"
+            }
+
         try:
             # Quick test generation
             test_output = self.model(
@@ -358,6 +438,7 @@ class LlamaCppLLMService(BaseLLMService):
                 "model": self.model_path,
                 "device": f"cpu ({self.n_threads} threads)",
                 "lora_enabled": self.lora_enabled,
+                "optimizations": "LM Studio (n_batch=512, use_mlock, use_mmap)",
                 "message": "LlamaCpp service ready"
             }
 

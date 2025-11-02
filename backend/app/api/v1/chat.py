@@ -79,9 +79,21 @@ def run_react_agent_sync(query: str, user_id: UUID, conversation_id: UUID):
         # Initialize ReAct agent
         agent = ReActAgentService(sync_db, user_id, conversation_id)
 
-        # LLM generate function
+        # LLM generate function (async wrapper for sync context)
         def llm_generate(prompt: str) -> str:
-            return llm_service.generate(prompt)
+            import asyncio
+            # Run async generate in sync context (ThreadPoolExecutor thread)
+            # Always create a new event loop for this thread
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                result = new_loop.run_until_complete(llm_service.generate(prompt))
+                return result
+            except Exception as e:
+                print(f"[ReAct] LLM generation error: {e}")
+                return f"Error: {str(e)}"
+            finally:
+                new_loop.close()
 
         # Execute ReAct loop
         result = agent.execute_react_loop(query, llm_generate, max_iterations=5)
@@ -279,9 +291,12 @@ async def send_chat_message(
 
     else:
         # Standard LLM response with document context
-        response_text, processing_time_ms = await llm_service.generate(
-            filtered_input, history, document_context
+        import time
+        start_time = time.time()
+        response_text = await llm_service.generate(
+            filtered_input, max_tokens=4000
         )
+        processing_time_ms = int((time.time() - start_time) * 1000)
 
     # ======== PHASE 2: OUTPUT FILTERING ========
     # Run safety filter on LLM output
@@ -429,10 +444,31 @@ async def stream_chat_message(
         message_id = uuid4()
 
         try:
-            # Stream tokens with document context (use filtered input)
-            async for token in llm_service.generate_stream(
-                filtered_input, history, document_context
-            ):
+            # Build prompt with history and document context
+            prompt_parts = []
+
+            # Add document context if provided
+            if document_context:
+                prompt_parts.append(f"[참고 문서]\n{document_context}\n")
+
+            # Add conversation history
+            if history:
+                for msg in history[-10:]:  # Last 10 messages
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    if role == "user":
+                        prompt_parts.append(f"사용자: {content}")
+                    elif role == "assistant":
+                        prompt_parts.append(f"답변: {content}")
+
+            # Add current query
+            prompt_parts.append(f"사용자: {filtered_input}")
+            prompt_parts.append("답변:")
+
+            full_prompt = "\n".join(prompt_parts)
+
+            # Stream tokens
+            async for token in llm_service.generate_stream(full_prompt):
                 full_response.append(token)
                 data = json.dumps({"token": token})
                 yield f"event: token\ndata: {data}\n\n"

@@ -90,3 +90,6 @@ verify_password = SecurityUtil.verify_password
 generate_session_token = SecurityUtil.generate_session_token
 generate_temp_password = SecurityUtil.generate_temp_password
 get_session_expiry = SecurityUtil.get_session_expiry
+
+# Alias for compatibility
+get_password_hash = hash_password

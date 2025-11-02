@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, Optional
 from sqlalchemy.orm import Session
 
-from ..core.database import SessionLocal
+from ..core.database import SyncSessionLocal
 from ..models.admin import Admin
 from ..models.user import User
 from ..core.security import get_password_hash
@@ -64,7 +64,7 @@ class SetupService:
         # Use provided session or create new one
         close_session = False
         if db is None:
-            db = SessionLocal()
+            db = SyncSessionLocal()
             close_session = True
 
         try:
@@ -76,7 +76,7 @@ class SetupService:
             # Create user account
             user = User(
                 username=username,
-                hashed_password=get_password_hash(password),
+                password_hash=get_password_hash(password),
                 is_active=True
             )
             db.add(user)

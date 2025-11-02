@@ -55,7 +55,10 @@ async def login(
     )
 
     return LoginResponse(
-        user_id=user.id, username=user.username, is_admin=user.is_admin
+        user_id=user.id,
+        username=user.username,
+        is_admin=user.is_admin,
+        session_token=session.session_token
     )
 
 

@@ -1,19 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(docker-compose down:*)",
-      "Bash(docker-compose up:*)",
-      "Bash(docker exec:*)",
-      "Bash(docker logs:*)",
-      "Bash(powershell -Command \"Get-Content ''C:\\02_practice\\12_localAgent\\backend\\app\\core\\validators.py'' -Encoding Byte | Select-Object -First 100\")",
-      "Bash(powershell:*)",
-      "Bash(timeout 30 cmd:*)",
-      "Bash(timeout 60 cmd:*)",
-      "Bash(docker ps:*)",
-      "Bash(timeout 90 cmd:*)",
-      "Bash(curl:*)",
-      "Bash(docker-compose build:*)",
-      "Bash(timeout 120 cmd:*)",
+      "Bash(pip install:*)",
+      "Bash(iconv:*)",
       "Bash(git add:*)"
     ],
     "deny": [],

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Performance Test Suite (T236)
 
@@ -70,7 +71,7 @@ class PerformanceTest:
             elapsed_ms = (time.time() - start_time) * 1000
 
             if status >= 400:
-                print(f"     {endpoint}: HTTP {status}")
+                print(f"  ï¿½  {endpoint}: HTTP {status}")
                 return -1
 
             return elapsed_ms
