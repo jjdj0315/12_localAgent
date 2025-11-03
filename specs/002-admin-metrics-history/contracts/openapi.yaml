@@ -1,0 +1,619 @@
+openapi: 3.0.3
+info:
+  title: Admin Metrics History API
+  description: API endpoints for retrieving and exporting historical metrics data
+  version: 1.0.0
+  contact:
+    name: Feature 002 - Admin Dashboard Metrics History
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+
+tags:
+  - name: metrics
+    description: Historical metrics operations
+
+paths:
+  /metrics/timeseries:
+    get:
+      tags:
+        - metrics
+      summary: Get time-series data for a single metric
+      description: |
+        Returns historical data points for specified metric within date range.
+        Response is automatically downsampled to ≤1000 points if necessary (FR-022).
+      operationId: getMetricsTimeSeries
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: metric_type
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/MetricType'
+          description: Type of metric to retrieve
+
+        - name: granularity
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [hourly, daily]
+          description: Data granularity (hourly limited to 30 days, daily to 90 days)
+
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Start of time range (ISO 8601 format, UTC)
+          example: "2025-10-03T00:00:00Z"
+
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: End of time range (ISO 8601 format, UTC)
+          example: "2025-11-02T23:59:59Z"
+
+      responses:
+        '200':
+          description: Successful response with time-series data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsTimeSeriesResponse'
+              example:
+                metric_type: "active_users"
+                granularity: "hourly"
+                data:
+                  - timestamp: "2025-11-01T00:00:00+00:00"
+                    value: 42
+                  - timestamp: "2025-11-01T01:00:00+00:00"
+                    value: 38
+                  - timestamp: "2025-11-01T02:00:00+00:00"
+                    value: 25
+                start_date: "2025-11-01T00:00:00+00:00"
+                end_date: "2025-11-02T23:59:59+00:00"
+                total_points: 48
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /metrics/comparison:
+    get:
+      tags:
+        - metrics
+      summary: Compare two time periods for a metric
+      description: |
+        Returns data for two time periods side-by-side with calculated percentage change.
+        Used for week-over-week or custom period comparisons (FR-012, FR-013).
+      operationId: compareMetricPeriods
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: metric_type
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/MetricType'
+
+        - name: granularity
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [hourly, daily]
+
+        - name: period1_start
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Start of first period (ISO 8601, UTC)
+
+        - name: period1_end
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: End of first period
+
+        - name: period2_start
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Start of second period
+
+        - name: period2_end
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: End of second period
+
+        - name: period1_label
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "이번 주"
+          description: Korean label for first period
+
+        - name: period2_label
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "지난 주"
+          description: Korean label for second period
+
+      responses:
+        '200':
+          description: Successful comparison response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsComparisonResponse'
+              example:
+                metric_type: "active_users"
+                period_1:
+                  label: "이번 주"
+                  data:
+                    - timestamp: "2025-10-27T00:00:00+00:00"
+                      value: 50
+                    - timestamp: "2025-10-28T00:00:00+00:00"
+                      value: 52
+                  start_date: "2025-10-27T00:00:00+00:00"
+                  end_date: "2025-11-02T23:59:59+00:00"
+                period_2:
+                  label: "지난 주"
+                  data:
+                    - timestamp: "2025-10-20T00:00:00+00:00"
+                      value: 42
+                    - timestamp: "2025-10-21T00:00:00+00:00"
+                      value: 45
+                  start_date: "2025-10-20T00:00:00+00:00"
+                  end_date: "2025-10-26T23:59:59+00:00"
+                change_percentage: 19.0
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /metrics/export:
+    post:
+      tags:
+        - metrics
+      summary: Export metrics data to CSV or PDF
+      description: |
+        Generates downloadable export file (CSV or PDF) for specified metrics and date range.
+        Files are automatically downsampled if they would exceed 10MB (FR-014, FR-015).
+        Export files expire after 1 hour.
+      operationId: exportMetrics
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportRequest'
+            example:
+              metric_types:
+                - "active_users"
+                - "storage_bytes"
+              start_date: "2025-10-01T00:00:00Z"
+              end_date: "2025-10-31T23:59:59Z"
+              granularity: "daily"
+              format: "csv"
+
+      responses:
+        '200':
+          description: Export file ready for download
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportResponse'
+              example:
+                download_url: "/api/v1/exports/metrics_20251102_143052.csv"
+                file_size_bytes: 8421
+                expires_at: "2025-11-02T15:30:52+00:00"
+                downsampled: false
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '413':
+          description: Export too large even after downsampling
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "내보내기 파일이 너무 큽니다. 더 짧은 기간을 선택하세요."
+                code: "EXPORT_TOO_LARGE"
+
+  /metrics/status:
+    get:
+      tags:
+        - metrics
+      summary: Get metrics collection status
+      description: |
+        Returns current status of background metric collection tasks.
+        Shows last collection timestamp, next scheduled collection, and recent failures (FR-019).
+      operationId: getCollectionStatus
+      security:
+        - BearerAuth: []
+
+      responses:
+        '200':
+          description: Collection status information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollectionStatus'
+              example:
+                is_collecting: true
+                last_collection: "2025-11-02T14:00:00+00:00"
+                next_collection: "2025-11-02T15:00:00+00:00"
+                recent_failures:
+                  - metric_type: "storage_bytes"
+                    attempted_at: "2025-11-01T10:00:00+00:00"
+                    error_message: "데이터베이스 연결 시간 초과"
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /metrics/current:
+    get:
+      tags:
+        - metrics
+      summary: Get current (latest) values for all metrics
+      description: |
+        Returns the most recent snapshot for all tracked metrics.
+        Used to display current state alongside historical trends (FR-007).
+      operationId: getCurrentMetrics
+      security:
+        - BearerAuth: []
+
+      responses:
+        '200':
+          description: Current metric values
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                    description: When these values were last collected
+                  metrics:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                      format: int64
+                example:
+                  timestamp: "2025-11-02T14:00:00+00:00"
+                  metrics:
+                    active_users: 47
+                    storage_bytes: 5368709120
+                    active_sessions: 12
+                    conversation_count: 358
+                    document_count: 1247
+                    tag_count: 89
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Admin JWT token from existing auth system
+
+  schemas:
+    MetricType:
+      type: string
+      enum:
+        - active_users
+        - storage_bytes
+        - active_sessions
+        - conversation_count
+        - document_count
+        - tag_count
+      description: |
+        Types of metrics tracked:
+        - active_users: Number of users with active sessions
+        - storage_bytes: Total storage used by all conversations/documents
+        - active_sessions: Number of active user sessions
+        - conversation_count: Total conversations in system
+        - document_count: Total documents uploaded
+        - tag_count: Total unique tags
+
+    MetricDataPoint:
+      type: object
+      required:
+        - timestamp
+        - value
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp (UTC)
+        value:
+          type: integer
+          format: int64
+          description: Metric value at this timestamp
+
+    MetricsTimeSeriesResponse:
+      type: object
+      required:
+        - metric_type
+        - granularity
+        - data
+        - start_date
+        - end_date
+        - total_points
+      properties:
+        metric_type:
+          $ref: '#/components/schemas/MetricType'
+        granularity:
+          type: string
+          enum: [hourly, daily]
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricDataPoint'
+          description: Time-series data points (may be downsampled to ≤1000 points)
+        start_date:
+          type: string
+          format: date-time
+          description: Actual start of returned data
+        end_date:
+          type: string
+          format: date-time
+          description: Actual end of returned data
+        total_points:
+          type: integer
+          description: Number of data points returned
+        downsampled:
+          type: boolean
+          default: false
+          description: Whether data was downsampled for performance
+
+    MetricsPeriod:
+      type: object
+      required:
+        - label
+        - data
+        - start_date
+        - end_date
+      properties:
+        label:
+          type: string
+          description: Korean label for this period
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricDataPoint'
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+
+    MetricsComparisonResponse:
+      type: object
+      required:
+        - metric_type
+        - period_1
+        - period_2
+        - change_percentage
+      properties:
+        metric_type:
+          $ref: '#/components/schemas/MetricType'
+        period_1:
+          $ref: '#/components/schemas/MetricsPeriod'
+        period_2:
+          $ref: '#/components/schemas/MetricsPeriod'
+        change_percentage:
+          type: number
+          format: float
+          description: Percentage change from period 2 to period 1 ((p1-p2)/p2 * 100)
+          example: 19.0
+
+    ExportRequest:
+      type: object
+      required:
+        - metric_types
+        - start_date
+        - end_date
+        - granularity
+        - format
+      properties:
+        metric_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricType'
+          minItems: 1
+          maxItems: 6
+          description: Metrics to include in export
+        start_date:
+          type: string
+          format: date-time
+          description: Start of export range (ISO 8601, UTC)
+        end_date:
+          type: string
+          format: date-time
+          description: End of export range (max 90 days from start)
+        granularity:
+          type: string
+          enum: [hourly, daily]
+        format:
+          type: string
+          enum: [csv, pdf]
+
+    ExportResponse:
+      type: object
+      required:
+        - download_url
+        - file_size_bytes
+        - expires_at
+      properties:
+        download_url:
+          type: string
+          description: Relative URL to download exported file
+        file_size_bytes:
+          type: integer
+          description: Size of generated file in bytes
+        expires_at:
+          type: string
+          format: date-time
+          description: When download link expires (1 hour from generation)
+        downsampled:
+          type: boolean
+          default: false
+          description: Whether data was downsampled to fit 10MB limit
+
+    CollectionFailure:
+      type: object
+      required:
+        - metric_type
+        - attempted_at
+        - error_message
+      properties:
+        metric_type:
+          $ref: '#/components/schemas/MetricType'
+        attempted_at:
+          type: string
+          format: date-time
+          description: When final retry attempt failed
+        error_message:
+          type: string
+          description: Korean error message
+
+    CollectionStatus:
+      type: object
+      required:
+        - is_collecting
+        - last_collection
+        - next_collection
+        - recent_failures
+      properties:
+        is_collecting:
+          type: boolean
+          description: Whether collection tasks are currently running
+        last_collection:
+          type: string
+          format: date-time
+          description: Timestamp of most recent successful collection
+        next_collection:
+          type: string
+          format: date-time
+          description: Scheduled timestamp of next collection
+        recent_failures:
+          type: array
+          items:
+            $ref: '#/components/schemas/CollectionFailure'
+          description: Last 10 collection failures
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          description: Korean error message for display
+        code:
+          type: string
+          description: Machine-readable error code
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error context
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "잘못된 날짜 범위입니다."
+            code: "INVALID_DATE_RANGE"
+            details:
+              field: "end_date"
+              reason: "end_date must be after start_date"
+
+    Unauthorized:
+      description: Missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "인증이 필요합니다."
+            code: "UNAUTHORIZED"
+
+    Forbidden:
+      description: Admin privileges required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "관리자 권한이 필요합니다."
+            code: "FORBIDDEN"
+
+    InternalServerError:
+      description: Server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "서버 오류가 발생했습니다."
+            code: "INTERNAL_SERVER_ERROR"
