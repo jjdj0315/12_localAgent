@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
+    # Metrics (Feature 002)
+    METRICS_HOURLY_RETENTION_DAYS: int = int(os.getenv("METRICS_HOURLY_RETENTION_DAYS", "30"))
+    METRICS_DAILY_RETENTION_DAYS: int = int(os.getenv("METRICS_DAILY_RETENTION_DAYS", "90"))
+    METRICS_FAILURES_RETENTION_DAYS: int = int(os.getenv("METRICS_FAILURES_RETENTION_DAYS", "30"))
+    METRICS_EXPORT_RETENTION_HOURS: int = int(os.getenv("METRICS_EXPORT_RETENTION_HOURS", "1"))
+
     class Config:
         case_sensitive = True
 

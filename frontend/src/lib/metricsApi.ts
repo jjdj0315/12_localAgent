@@ -52,10 +52,15 @@ interface MetricsCollectionStatusResponse {
 
 /**
  * Get authentication token from localStorage
+ * Metrics endpoints require admin authentication only
  */
 function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('admin_token') || localStorage.getItem('user_token');
+  const token = localStorage.getItem('admin_token');
+  if (!token) {
+    throw new Error('관리자 권한이 필요합니다. 관리자로 로그인해주세요.');
+  }
+  return token;
 }
 
 /**
@@ -68,9 +73,6 @@ export async function getMetricsTimeSeries(
   endTime: Date
 ): Promise<MetricSnapshot[]> {
   const token = getAuthToken();
-  if (!token) {
-    throw new Error('인증 토큰이 없습니다');
-  }
 
   const params = new URLSearchParams({
     metric_type: metricType,
@@ -101,9 +103,6 @@ export async function getMetricsTimeSeries(
  */
 export async function getCurrentMetrics(): Promise<CurrentMetricsResponse> {
   const token = getAuthToken();
-  if (!token) {
-    throw new Error('인증 토큰이 없습니다');
-  }
 
   const response = await fetch(`${API_BASE_URL}/api/v1/metrics/current`, {
     method: 'GET',
@@ -126,9 +125,6 @@ export async function getCurrentMetrics(): Promise<CurrentMetricsResponse> {
  */
 export async function getCollectionStatus(): Promise<MetricsCollectionStatusResponse> {
   const token = getAuthToken();
-  if (!token) {
-    throw new Error('인증 토큰이 없습니다');
-  }
 
   const response = await fetch(`${API_BASE_URL}/api/v1/metrics/status`, {
     method: 'GET',
@@ -164,9 +160,6 @@ export async function getMetricSummary(
   data_points: number;
 }> {
   const token = getAuthToken();
-  if (!token) {
-    throw new Error('인증 토큰이 없습니다');
-  }
 
   const params = new URLSearchParams({
     metric_type: metricType,
@@ -224,9 +217,6 @@ export async function compareMetricPeriods(
   change_direction: 'up' | 'down' | 'unchanged' | null;
 }> {
   const token = getAuthToken();
-  if (!token) {
-    throw new Error('인증 토큰이 없습니다');
-  }
 
   const params = new URLSearchParams({
     metric_type: metricType,
@@ -267,9 +257,6 @@ export async function exportMetrics(request: ExportRequest): Promise<{
   downsampled: boolean;
 }> {
   const token = getAuthToken();
-  if (!token) {
-    throw new Error('인증 토큰이 없습니다');
-  }
 
   const response = await fetch(`${API_BASE_URL}/api/v1/metrics/export`, {
     method: 'POST',

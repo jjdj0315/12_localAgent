@@ -5,10 +5,12 @@ This module defines the background tasks that run on APScheduler
 """
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
+from app.core.config import settings
 from app.services.metrics_collector import MetricsCollector
 from app.models.metric_snapshot import MetricSnapshot
 from app.models.metric_collection_failures import MetricCollectionFailure
@@ -108,9 +110,10 @@ async def cleanup_old_metrics():
     """Delete old metric snapshots and failures (FR-021)
 
     Scheduled to run once per day at 02:00
-    - Deletes hourly snapshots older than 30 days
-    - Deletes daily snapshots older than 90 days
-    - Deletes collection failures older than 30 days
+    Retention periods are configurable via environment variables:
+    - METRICS_HOURLY_RETENTION_DAYS (default: 30)
+    - METRICS_DAILY_RETENTION_DAYS (default: 90)
+    - METRICS_FAILURES_RETENTION_DAYS (default: 30)
     """
     logger.info("오래된 메트릭 정리 작업 시작")
 
@@ -118,8 +121,8 @@ async def cleanup_old_metrics():
         try:
             now = datetime.now(timezone.utc)
 
-            # Delete hourly snapshots older than 30 days
-            hourly_cutoff = now - timedelta(days=30)
+            # Delete hourly snapshots older than retention period
+            hourly_cutoff = now - timedelta(days=settings.METRICS_HOURLY_RETENTION_DAYS)
             hourly_stmt = delete(MetricSnapshot).where(
                 MetricSnapshot.granularity == "hourly",
                 MetricSnapshot.collected_at < hourly_cutoff
@@ -127,8 +130,8 @@ async def cleanup_old_metrics():
             hourly_result = await db.execute(hourly_stmt)
             hourly_deleted = hourly_result.rowcount
 
-            # Delete daily snapshots older than 90 days
-            daily_cutoff = now - timedelta(days=90)
+            # Delete daily snapshots older than retention period
+            daily_cutoff = now - timedelta(days=settings.METRICS_DAILY_RETENTION_DAYS)
             daily_stmt = delete(MetricSnapshot).where(
                 MetricSnapshot.granularity == "daily",
                 MetricSnapshot.collected_at < daily_cutoff
@@ -137,7 +140,7 @@ async def cleanup_old_metrics():
             daily_deleted = daily_result.rowcount
 
             # Delete old collection failures
-            failures_cutoff = now - timedelta(days=30)
+            failures_cutoff = now - timedelta(days=settings.METRICS_FAILURES_RETENTION_DAYS)
             failures_stmt = delete(MetricCollectionFailure).where(
                 MetricCollectionFailure.created_at < failures_cutoff
             )
@@ -154,6 +157,60 @@ async def cleanup_old_metrics():
         except Exception as e:
             logger.error(f"메트릭 정리 작업 오류: {str(e)}")
             await db.rollback()
+
+
+async def cleanup_expired_exports():
+    """Delete expired export files (FR-024, FR-025)
+
+    Scheduled to run every hour at :30
+    Retention period is configurable via METRICS_EXPORT_RETENTION_HOURS (default: 1)
+    """
+    logger.info("만료된 내보내기 파일 정리 작업 시작")
+
+    try:
+        export_dir = Path("backend/exports")
+
+        # Create export directory if it doesn't exist
+        if not export_dir.exists():
+            export_dir.mkdir(parents=True, exist_ok=True)
+            logger.info("내보내기 디렉토리 생성됨")
+            return
+
+        now = datetime.now(timezone.utc)
+        cutoff_timestamp = (now - timedelta(hours=settings.METRICS_EXPORT_RETENTION_HOURS)).timestamp()
+        deleted_count = 0
+        freed_bytes = 0
+
+        # Iterate through all files in export directory
+        for file_path in export_dir.glob("*"):
+            if not file_path.is_file():
+                continue
+
+            try:
+                file_mtime = file_path.stat().st_mtime
+
+                # Delete if older than 1 hour
+                if file_mtime < cutoff_timestamp:
+                    file_size = file_path.stat().st_size
+                    file_path.unlink()
+                    deleted_count += 1
+                    freed_bytes += file_size
+                    logger.debug(f"만료된 파일 삭제: {file_path.name}")
+
+            except Exception as e:
+                logger.warning(f"파일 삭제 실패 ({file_path.name}): {str(e)}")
+
+        if deleted_count > 0:
+            freed_mb = freed_bytes / (1024 * 1024)
+            logger.info(
+                f"만료된 내보내기 파일 정리 완료 - "
+                f"{deleted_count}개 파일 삭제, {freed_mb:.2f}MB 확보"
+            )
+        else:
+            logger.info("정리할 만료된 내보내기 파일 없음")
+
+    except Exception as e:
+        logger.error(f"내보내기 파일 정리 작업 오류: {str(e)}")
 
 
 def register_scheduled_tasks(scheduler):
@@ -194,3 +251,14 @@ def register_scheduled_tasks(scheduler):
         replace_existing=True
     )
     logger.info("등록됨: 메트릭 정리 (매일 02:00)")
+
+    # Cleanup expired export files (every hour at :30)
+    scheduler.add_job(
+        cleanup_expired_exports,
+        'cron',
+        hour='*',
+        minute=30,
+        id='cleanup_expired_exports',
+        replace_existing=True
+    )
+    logger.info("등록됨: 만료된 내보내기 파일 정리 (매시 30분)")

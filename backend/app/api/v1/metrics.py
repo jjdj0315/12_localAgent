@@ -57,10 +57,30 @@ async def get_metrics_timeseries(
     **Admin only** - Requires admin authentication
 
     **Time Range Limits:**
-    - Hourly data: Retained for 30 days
-    - Daily data: Retained for 90 days
+    - Hourly data: Retained for 30 days (max query range: 90 days)
+    - Daily data: Retained for 90 days (max query range: 365 days)
     """
     try:
+        # Validate time range length
+        time_delta = end_time - start_time
+        if granularity == "hourly" and time_delta.days > 90:
+            raise HTTPException(
+                status_code=400,
+                detail=METRICS_TIME_RANGE_TOO_LARGE.format(max_days=90)
+            )
+        elif granularity == "daily" and time_delta.days > 365:
+            raise HTTPException(
+                status_code=400,
+                detail=METRICS_TIME_RANGE_TOO_LARGE.format(max_days=365)
+            )
+
+        # Validate end_time is not in the future
+        now = datetime.now(timezone.utc)
+        if end_time > now:
+            raise HTTPException(
+                status_code=400,
+                detail="종료 시간은 현재 시간보다 늦을 수 없습니다."
+            )
         service = MetricsService(db)
         snapshots = await service.get_time_series(
             metric_type=metric_type,
@@ -202,6 +222,26 @@ async def get_metric_summary(
     within the given time range.
     """
     try:
+        # Validate time range length
+        time_delta = end_time - start_time
+        if granularity == "hourly" and time_delta.days > 90:
+            raise HTTPException(
+                status_code=400,
+                detail=METRICS_TIME_RANGE_TOO_LARGE.format(max_days=90)
+            )
+        elif granularity == "daily" and time_delta.days > 365:
+            raise HTTPException(
+                status_code=400,
+                detail=METRICS_TIME_RANGE_TOO_LARGE.format(max_days=365)
+            )
+
+        # Validate end_time is not in the future
+        now = datetime.now(timezone.utc)
+        if end_time > now:
+            raise HTTPException(
+                status_code=400,
+                detail="종료 시간은 현재 시간보다 늦을 수 없습니다."
+            )
         service = MetricsService(db)
         summary = await service.get_metric_summary(
             metric_type=metric_type,
@@ -253,6 +293,25 @@ async def compare_metric_periods(
     - Custom date range comparisons
     """
     try:
+        # Validate time ranges
+        period1_delta = period1_end - period1_start
+        period2_delta = period2_end - period2_start
+
+        # Validate max range
+        max_days = 90 if granularity == "hourly" else 365
+        if period1_delta.days > max_days or period2_delta.days > max_days:
+            raise HTTPException(
+                status_code=400,
+                detail=METRICS_TIME_RANGE_TOO_LARGE.format(max_days=max_days)
+            )
+
+        # Validate periods are not in the future
+        now = datetime.now(timezone.utc)
+        if period1_end > now or period2_end > now:
+            raise HTTPException(
+                status_code=400,
+                detail="종료 시간은 현재 시간보다 늦을 수 없습니다."
+            )
         service = MetricsService(db)
         comparison = await service.compare_periods(
             metric_type=metric_type,
