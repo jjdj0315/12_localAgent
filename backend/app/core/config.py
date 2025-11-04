@@ -26,7 +26,37 @@ class Settings(BaseSettings):
         "SECRET_KEY", "your-secret-key-change-in-production-please"
     )
     SESSION_TIMEOUT_MINUTES: int = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
+    MAX_CONCURRENT_SESSIONS: int = int(os.getenv("MAX_CONCURRENT_SESSIONS", "3"))  # T316
     BCRYPT_ROUNDS: int = int(os.getenv("BCRYPT_ROUNDS", "12"))
+
+    # Environment-based cookie security (FR-112)
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")  # development, production
+
+    @property
+    def cookie_secure(self) -> bool:
+        """Enable secure flag only in production (HTTPS required)"""
+        return self.ENVIRONMENT == "production"
+
+    @property
+    def cookie_samesite(self) -> str:
+        """Use strict SameSite in production, lax in development"""
+        return "strict" if self.ENVIRONMENT == "production" else "lax"
+
+    def is_default_secret_key(self) -> bool:
+        """Check if using default/weak SECRET_KEY (T315)"""
+        weak_keys = [
+            "your-secret-key-change-in-production-please",
+            "changeme",
+            "secret",
+            "password",
+            "12345",
+        ]
+        return (
+            self.SECRET_KEY in weak_keys
+            or len(self.SECRET_KEY) < 32
+            or self.SECRET_KEY.lower() == self.SECRET_KEY  # All lowercase
+            or self.SECRET_KEY.upper() == self.SECRET_KEY  # All uppercase
+        )
 
     # CORS
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:80,http://localhost")

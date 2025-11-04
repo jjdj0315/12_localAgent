@@ -27,12 +27,11 @@ class LoginRequest(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    """Login response schema"""
+    """Login response schema (FR-112: session_token only in httpOnly cookie)"""
     user_id: UUID
     username: str
     is_admin: bool
-    session_token: str
-    message: str = "Login successful"
+    message: str = "로그인 성공"  # T314: Korean message
 
 
 class UserProfile(BaseModel):

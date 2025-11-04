@@ -740,6 +740,326 @@
 
 ---
 
+## Phase 11.6: Security Hardening (Feature 002 Patch)
+
+**Priority**: P0 (BLOCKING) - Must complete before production deployment
+**Requirements**: FR-110, FR-111, FR-112, FR-113, FR-114
+**Success Criteria**: SC-028, SC-029, SC-030, SC-031, SC-032
+
+**Purpose**: Address 5 critical security and operational issues discovered during Feature 002 code review (2025-11-04)
+
+### FR-110: CSRF Protection (CRITICAL)
+
+- [ ] T283 Create CSRF middleware in backend/app/middleware/csrf_middleware.py:
+  - Generate unique CSRF token per session using secrets.token_urlsafe(32)
+  - Set csrf_token cookie (httponly=False, secure=True, samesite=strict, max_age=1800)
+  - Validate CSRF token from cookie matches X-CSRF-Token header on POST/PUT/DELETE/PATCH
+  - Return 403 with Korean message "CSRF 토큰이 유효하지 않습니다. 페이지를 새로고침 후 다시 시도해주세요."
+  - Exempt paths: /api/v1/auth/login, /api/v1/setup, /health, /api/v1/health
+
+- [ ] T284 [P] Update frontend API client in frontend/src/lib/api.ts:
+  - Add axios interceptor to include X-CSRF-Token header from cookies
+  - Import js-cookie library for cookie reading
+  - Apply to all POST/PUT/DELETE/PATCH requests
+  - Add error handler for 403 CSRF errors to prompt page refresh
+
+- [ ] T285 Add CSRF tests in backend/tests/test_csrf.py:
+  - Test POST without X-CSRF-Token → 403
+  - Test POST with mismatched token → 403
+  - Test login endpoint without CSRF → 200 (exempt)
+  - Test setup endpoint without CSRF → 200 (exempt)
+  - Test authenticated GET → csrf_token cookie set
+
+### FR-111: Middleware Registration (CRITICAL)
+
+- [ ] T286 Register all security middleware in backend/app/main.py in correct order:
+  - Import CSRFMiddleware, RateLimitMiddleware, ResourceLimitMiddleware, PerformanceMiddleware
+  - Apply in order: CORS → CSRF → RateLimit → ResourceLimit → Performance → Metrics
+  - Configure RateLimitMiddleware(requests_per_minute=60)
+  - Configure ResourceLimitMiddleware(max_react_sessions=10, max_agent_workflows=5)
+  - Add comments explaining middleware order importance
+
+- [ ] T287 Create rate limit test script in scripts/test_rate_limit.sh:
+  - Send 61 requests in 1 minute using curl
+  - Verify 61st request returns 429 Too Many Requests
+  - Check X-RateLimit-Limit and X-RateLimit-Remaining headers
+  - Document expected output
+
+- [ ] T288 [P] Create resource limit test in backend/tests/test_resource_limits.py:
+  - Test 11th concurrent ReAct session → 503
+  - Test 6th concurrent Multi-Agent workflow → 503
+  - Verify error messages in Korean
+
+### FR-112: Session Token Security (HIGH)
+
+- [ ] T289 Add environment-based cookie security in backend/app/core/config.py:
+  - Add ENVIRONMENT field (development|production)
+  - Add cookie_secure property (True in production)
+  - Add cookie_samesite property ("strict" in production, "lax" in development)
+  - Update Settings class with @property decorators
+
+- [ ] T290 Update cookie settings in backend/app/api/v1/auth.py:
+  - Replace hardcoded secure=False with settings.cookie_secure
+  - Replace hardcoded samesite="lax" with settings.cookie_samesite
+  - Add max_age=1800 to all session cookies
+  - Update both login and session refresh endpoints
+
+- [ ] T291 [P] Implement sensitive data filter in backend/app/core/logging.py:
+  - Create SensitiveDataFilter(logging.Filter) class
+  - Define regex patterns for session tokens, Bearer tokens, passwords
+  - Mask matched patterns with "***REDACTED***"
+  - Apply filter to all logging handlers in root logger
+  - Test with various log formats
+
+- [ ] T292 [P] Add cookie security tests in backend/tests/test_cookie_security.py:
+  - Test production environment → secure=True, samesite=strict
+  - Test development environment → secure=False, samesite=lax
+  - Test max_age=1800 present in all session cookies
+  - Test log masking for session tokens, Bearer tokens, passwords
+
+### FR-113: DB Metric Consistency (MEDIUM)
+
+- [ ] T293 Refactor metrics collection in backend/app/services/metrics_collector.py:
+  - Wrap all metric collection in single async transaction (async with self.db.begin())
+  - Use identical collected_at timestamp for all metrics in same cycle
+  - Add transaction logging (debug level) for start/commit
+  - Handle individual metric failures without rollback
+  - Record failures in metric_collection_failures table
+
+- [ ] T294 Set database isolation level in backend/app/core/database.py:
+  - Add isolation_level="READ COMMITTED" to create_engine()
+  - Add pool_pre_ping=True for connection health checks
+  - Add pool_recycle=3600 for connection refresh
+  - Document isolation level choice in comments
+
+- [ ] T295 [P] Add metric consistency tests in backend/tests/test_metric_consistency.py:
+  - Test all 6 metrics have identical collected_at timestamp (microsecond precision)
+  - Verify transaction isolation level is READ COMMITTED
+  - Test metric relationships (active_sessions ≤ active_users × 3)
+  - Test <5ms variance between first and last metric in cycle
+
+### FR-114: Korean Encoding Compatibility (MEDIUM)
+
+- [ ] T296 Add OS detection to export endpoint in backend/app/api/v1/metrics.py:
+  - Add user_agent: str = Header(None) parameter
+  - Detect Windows client: is_windows = "Windows" in user_agent
+  - Pass use_bom=is_windows to export_service.export_to_csv()
+  - Document User-Agent detection logic
+
+- [ ] T297 Update CSV export in backend/app/services/export_service.py:
+  - Add use_bom: bool = False parameter to export_to_csv()
+  - Choose encoding: 'utf-8-sig' if use_bom else 'utf-8'
+  - Apply encoding to df.to_csv() and buffer.encode()
+  - Document BOM purpose for Windows Excel compatibility
+
+- [ ] T298 [P] Add client-side BOM injection in frontend/src/components/admin/MetricsExport.tsx:
+  - Create downloadCSV() helper function
+  - Detect Windows: navigator.platform.includes('Win')
+  - Prepend BOM (0xEF, 0xBB, 0xBF) for Windows clients
+  - Trigger download with createObjectURL()
+  - Document fallback strategy
+
+- [ ] T299 [P] Add encoding tests in backend/tests/test_encoding.py:
+  - Test Windows User-Agent → is_windows = True
+  - Test Linux User-Agent → is_windows = False
+  - Test Mac User-Agent → is_windows = False
+  - Manual test: CSV opens in Windows Excel without encoding dialog
+  - Manual test: pandas.read_csv() has no BOM artifacts in column names
+
+### Production Readiness Validation
+
+- [ ] T300 Create deployment checklist in docs/deployment/security-hardening-checklist.md:
+  - Set ENVIRONMENT=production in .env
+  - Verify HTTPS certificate installed
+  - Test CSRF on all admin endpoints
+  - Run load test for rate limiting
+  - Verify tokens masked in logs
+  - Test metric collection consistency
+  - Test CSV export on Windows/Linux
+
+- [ ] T301 Create monitoring guide in docs/deployment/security-monitoring.md:
+  - Monitor 403 errors (CSRF issues)
+  - Monitor 429 errors (rate limiting)
+  - Monitor 503 errors (resource limiting)
+  - Monitor metric collection failure rate (<1% per SC-022)
+  - Monitor CSV encoding user complaints (should be zero)
+  - Document alerting thresholds and response procedures
+
+---
+
+## Phase 11.7: Quality & Operational Fixes (Post-Implementation Review)
+
+**Priority**: P1 (CRITICAL issues immediate, HIGH before production, MEDIUM maintenance)
+**Requirements**: FR-115, FR-116, FR-117, FR-118, FR-119, FR-120, FR-121, FR-122
+**Success Criteria**: SC-033, SC-034, SC-035, SC-036, SC-037, SC-038, SC-039, SC-040
+
+**Purpose**: Address 8 quality and operational issues discovered during post-implementation code review (2025-11-04)
+
+### FR-115: Korean Encoding Fix (CRITICAL)
+
+- [ ] T302 Fix Korean text encoding in frontend/src/lib/errorMessages.ts:
+  - Rewrite file with correct UTF-8 encoding (no BOM)
+  - Replace all corrupted Korean text (������) with proper characters
+  - Use editor set to UTF-8 encoding
+  - Validate with `file errorMessages.ts` → should show "UTF-8 Unicode text"
+  - Test with `console.log(errorMessages)` in browser DevTools
+
+- [ ] T303 [P] Add pre-commit hook for UTF-8 validation in .git/hooks/pre-commit:
+  - Create bash script to validate all .ts/.tsx files are UTF-8
+  - Use `iconv -f UTF-8 -t UTF-8` for validation
+  - Exit with error if invalid encoding detected
+  - Make hook executable: `chmod +x .git/hooks/pre-commit`
+
+- [ ] T304 [P] Add Korean text validation test in frontend/tests/errorMessages.test.ts:
+  - Import errorMessages object
+  - Validate each value matches Korean Unicode range: /^[\uAC00-\uD7A3\s\w\d.,!?'"()]+$/
+  - Test should fail if any mojibake characters detected
+  - Run test in CI pipeline
+
+### FR-116: Active User Metric Fix (CRITICAL)
+
+- [ ] T305 Fix active users calculation in backend/app/core/business_metrics.py:
+  - Replace `datetime.utcnow()` with `datetime.now(timezone.utc)`
+  - Change query from `Session.created_at >= cutoff` to `Session.expires_at > now`
+  - Add timezone debug logging: `logger.debug(f"Active users: {count} (time: {now.isoformat()})")`
+  - Verify all datetime comparisons use timezone-aware objects
+
+- [ ] T306 [P] Add metric accuracy integration test in backend/tests/test_metrics_accuracy.py:
+  - Create 2 non-expired sessions (expires_at in future)
+  - Create 1 expired session (expires_at in past)
+  - Call get_active_users_count()
+  - Assert result == 2 (only non-expired counted)
+  - Assert timestamp has tzinfo (not None)
+
+### FR-117: Async Query Metrics (HIGH)
+
+- [ ] T307 Update database event listeners in backend/app/core/database.py:
+  - Change `@event.listens_for(sync_engine, ...)` to `@event.listens_for(Engine, ...)`
+  - Import `Engine` from sqlalchemy
+  - Keep existing before/after_cursor_execute functions unchanged
+  - Update update_pool_metrics() to use `async_engine.sync_engine.pool`
+  - Test with `curl /metrics | grep db_queries_total` after API requests
+
+- [ ] T308 [P] Add Prometheus metrics validation test in backend/tests/test_prometheus_metrics.py:
+  - Start test server
+  - Make 10 API requests (GET /conversations, POST /chat/send, etc.)
+  - Fetch /metrics endpoint
+  - Assert db_queries_total{query_type="select"} > 0
+  - Assert db_query_duration histogram has samples
+
+### FR-118: Admin Privilege Model (HIGH)
+
+- [ ] T309 Create Admin table removal migration in backend/alembic/versions/20251104_remove_admin_table.py:
+  - Upgrade: Sync User.is_admin from Admin table, then DROP admins table
+  - Downgrade: Recreate Admin table and populate from User.is_admin
+  - Test migration up/down on dev database
+  - Verify existing admins retain privileges after migration
+
+- [ ] T310 Document admin management in docs/admin/user-management.md:
+  - Explain is_admin flag is single source of truth
+  - Document SQL command to grant admin: `UPDATE users SET is_admin=TRUE WHERE username='...'`
+  - Document SQL command to revoke admin: `UPDATE users SET is_admin=FALSE WHERE username='...'`
+  - Note setup wizard exception (FR-034)
+  - Add warning about self-privilege removal protection
+
+- [ ] T311 [P] Add admin privilege consistency test in backend/tests/test_admin_auth.py:
+  - Test all admin endpoints use get_current_admin() dependency
+  - Test non-admin user accessing /admin/users → 403
+  - Test admin user accessing /admin/users → 200
+  - Verify error message in Korean: "관리자 권한이 필요합니다."
+
+### FR-119: CSRF Token Optimization (MEDIUM)
+
+- [ ] T312 Optimize CSRF token generation in backend/app/middleware/csrf_middleware.py:
+  - Add check: `existing_token = request.cookies.get("csrf_token")`
+  - Only generate token if `not existing_token`
+  - Add debug log: "CSRF token generated" vs "CSRF token reused"
+  - Test with 10 sequential GET requests → should see only 1 generation log
+
+- [ ] T313 [P] Add CSRF token stability test in backend/tests/test_csrf_stability.py:
+  - Login to get session
+  - Make 10 GET requests
+  - Verify same csrf_token value in all responses
+  - Verify <5 token generation events in logs
+  - Test token expires after 30 minutes
+
+### FR-120: CSRF Exemption Patterns (MEDIUM)
+
+- [ ] T314 Add prefix matching to CSRF middleware in backend/app/middleware/csrf_middleware.py:
+  - Replace CSRF_EXEMPT_PATHS list with CSRF_EXEMPT_PATTERNS (path, match_type) tuples
+  - Add _is_exempt(path) helper method with exact/prefix logic
+  - Add patterns: ("/api/v1/setup", "prefix"), ("/docs", "exact"), ("/openapi.json", "exact"), ("/metrics", "exact")
+  - Document pattern format in code comments
+
+- [ ] T315 [P] Add exemption pattern tests in backend/tests/test_csrf_exemptions.py:
+  - Test /api/v1/setup/init works without CSRF token (prefix match)
+  - Test /api/v1/setup/complete works without CSRF token (prefix match)
+  - Test /docs works without CSRF token (exact match)
+  - Test /metrics works without CSRF token (Prometheus)
+  - Test /api/v1/admin/users requires CSRF token (not exempt)
+
+### FR-121: Security Test Alignment (MEDIUM)
+
+- [ ] T316 Update password hashing test in tests/security_audit.py:
+  - Remove passlib imports (not used in implementation)
+  - Import bcrypt directly
+  - Test bcrypt.hashpw() with rounds=12
+  - Verify hash starts with b'$2b$12$' (correct rounds)
+  - Test bcrypt.checkpw() for correct/incorrect passwords
+
+- [ ] T317 [P] Add login endpoint integration test in tests/security_audit.py:
+  - Create user with bcrypt-hashed password
+  - POST to /api/v1/auth/login with correct password → 200
+  - POST to /api/v1/auth/login with wrong password → 401
+  - Verify backend uses same bcrypt implementation
+  - Document security implementation in tests/README.md
+
+### FR-122: Data Isolation Documentation (MEDIUM)
+
+- [ ] T318 Add data isolation documentation to backend/app/api/deps.py:
+  - Add comprehensive docstring to get_current_user() explaining FR-032 enforcement
+  - Document example routes that enforce user_id filtering
+  - Note that middleware is not required (dependency-level isolation)
+  - Reference FR-032 and FR-122 Option B decision
+
+- [ ] T319 [P] Update data isolation test in tests/security_audit.py:
+  - Create two test users
+  - User 1 creates conversation
+  - User 2 attempts to GET /conversations/{user1_conv_id} → 403
+  - User 2 attempts to DELETE /conversations/{user1_conv_id} → 403
+  - Verify error message: "권한이 없습니다" or "이 리소스에 접근할 권한이 없습니다."
+  - Document that isolation is at API route level, not middleware
+
+### Integration & Validation
+
+- [ ] T320 Run full test suite for Phase 11.7:
+  ```bash
+  # CRITICAL tests (must pass)
+  pytest backend/tests/test_metrics_accuracy.py -v
+  npm run test:encoding
+
+  # HIGH tests (before production)
+  pytest backend/tests/test_prometheus_metrics.py -v
+  pytest backend/tests/test_admin_auth.py -v
+
+  # MEDIUM tests (recommended)
+  pytest backend/tests/test_csrf_stability.py -v
+  pytest backend/tests/test_csrf_exemptions.py -v
+  pytest backend/tests/test_security_audit.py -v
+  ```
+
+- [ ] T321 Manual validation checklist:
+  - [ ] Korean error messages display correctly in browser (no ������)
+  - [ ] Active users count matches `SELECT COUNT(DISTINCT user_id) FROM sessions WHERE expires_at > NOW()`
+  - [ ] Prometheus /metrics shows db_queries_total > 0 after API requests
+  - [ ] Admin endpoints consistently check User.is_admin flag
+  - [ ] CSRF token remains stable across multiple GET requests
+  - [ ] /docs, /openapi.json, /metrics work without CSRF token
+  - [ ] Password hashing test passes with bcrypt (no passlib)
+  - [ ] User B cannot access User A's conversations (403)
+
+---
+
 ## Phase 12: Polish & Cross-Cutting Concerns
 
 **Purpose**: Final touches, optimization, and production readiness
@@ -997,7 +1317,7 @@
 
 ## Summary
 
-**Total Tasks**: 331 (updated with Feature 002 integration - Phase 11.5)
+**Total Tasks**: 351 (updated with Phase 11.6 Security Hardening + Phase 11.7 Quality Fixes)
 - Setup: 9 tasks
 - Foundational: 37 tasks (includes T037A CPU validation, T042A air-gapped validation - both BLOCKING gates)
 - US1 (P1): 13 tasks
@@ -1009,23 +1329,28 @@
 - US7 (P3): 26 tasks
 - US8 (P4): 45 tasks (**-2**: T175F, T197C removed - LoRA deferred to Phase 14 per FR-071A clarification 2025-11-02)
 - Common Integration (P3-P4): 20 tasks
-- **Feature 002 - Metrics History (Phase 11.5, P3): 22 tasks** (NEW - admin metrics history dashboard with time-series graphs)
+- **Feature 002 - Metrics History (Phase 11.5, P3): 22 tasks** (admin metrics history dashboard with time-series graphs)
+- **Security Hardening (Phase 11.6, P0): 19 tasks** (NEW - CSRF, middleware, cookies, DB transactions, encoding)
+- **Quality & Operational Fixes (Phase 11.7, P1): 20 tasks** (NEW - Korean encoding, metrics accuracy, async queries, admin model, CSRF optimization)
 - Polish: 21 tasks (includes T237A Korean quality test dataset creation)
 - **vLLM Migration (Phase 13, Optional Post-MVP): 16 tasks** (**-1**: T248 removed)
 - **LoRA Fine-Tuning (Phase 14, Optional Post-MVP): 26 tasks** (only if Phase 10 evaluation shows insufficient performance)
 
 **MVP Tasks**: ~155 (Phases 1-7 + Phase 12)
 **Advanced Features**: ~118 (Phases 8-11.5, Safety Filter + ReAct + Multi-Agent + Metrics History)
+**Security & Quality**: 39 (Phase 11.6 + Phase 11.7, production-critical fixes)
 **Production Optimization**: 16 (Phase 13, optional vLLM migration)
 **Performance Enhancement**: 26 (Phase 14, optional LoRA fine-tuning if needed)
 
 **Phase 10 Focus**: Multi-Agent system with llama.cpp + Qwen3-4B-Instruct (CPU-optimized baseline, **prompt engineering only** per FR-071A)
 **Phase 11.5 Focus**: Admin metrics history dashboard with 6 metric types (active_users, storage_bytes, active_sessions, conversation_count, document_count, tag_count), time-series graphs (Chart.js), period comparison, CSV/PDF export
+**Phase 11.6 Focus**: Security hardening (CSRF protection, middleware registration, session token security, DB transaction consistency, Korean CSV encoding)
+**Phase 11.7 Focus**: Quality & operational fixes (Korean UI encoding, active users metric accuracy, async query metrics, admin model consistency, CSRF optimization, test alignment)
 **Phase 13 Focus**: vLLM migration (optional GPU acceleration for >10 concurrent users)
 **Phase 14 Focus**: LoRA fine-tuning (optional if Phase 10 evaluation shows <80% quality score)
 
-**Parallel Opportunities**: ~120 tasks marked with [P] can execute in parallel
+**Parallel Opportunities**: ~130 tasks marked with [P] can execute in parallel
 
 **Independent Testing**: Each user story phase includes manual testing checklist per acceptance scenarios from spec.md
 
-**Next Step**: **Current Status: 263/331 tasks complete (79.5%)**. Phases 1-12 complete. **IMMEDIATE**: Implement Phase 11.5 (Feature 002 - Admin Metrics History, 22 pending tasks: T205A-T205V). After Feature 002, evaluate optional Phase 13 (vLLM migration) and Phase 14 (LoRA fine-tuning) based on performance requirements and resource availability.
+**Next Step**: **Current Status: 283/351 tasks complete (80.6%)**. Phases 1-12 + 11.6 complete. **IMMEDIATE CRITICAL**: Implement Phase 11.7 CRITICAL tasks (T302-T306, FR-115/FR-116 Korean encoding + metrics accuracy). **BEFORE PRODUCTION**: Complete Phase 11.7 HIGH tasks (T307-T311, FR-117/FR-118 async queries + admin model). After Phase 11.7, evaluate optional Phase 13 (vLLM migration) and Phase 14 (LoRA fine-tuning) based on performance requirements and resource availability.

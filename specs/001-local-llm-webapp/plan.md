@@ -1678,3 +1678,988 @@ for agent in ["citizen_support", "document_writing", "legal_research",
 - **SC-024**: Multi-user concurrent access (10-16 users) with <5 second response time
 - **SC-025**: vLLM PagedAttention reduces memory usage by 30% vs naive implementation
 
+---
+
+## Security Hardening (Feature 002 Patch)
+
+**Priority**: P0 (Blocking) - Must be completed before production deployment
+**Requirements**: FR-110, FR-111, FR-112, FR-113, FR-114
+**Success Criteria**: SC-028, SC-029, SC-030, SC-031, SC-032
+
+### Overview
+
+This section addresses 5 critical security and operational issues discovered during Feature 002 code review (2025-11-04):
+
+1. **CSRF Protection Missing (FR-110)** - CRITICAL
+   Cookie-based authentication without CSRF validation allows cross-site attacks on admin functions
+
+2. **Middleware Not Applied (FR-111)** - CRITICAL
+   RateLimitMiddleware, ResourceLimitMiddleware, PerformanceMiddleware exist but not registered in main.py
+
+3. **Session Token Exposure (FR-112)** - HIGH
+   secure=False allows HTTP transmission, no environment-based configuration, tokens may appear in logs
+
+4. **DB Metric Inconsistency (FR-113)** - MEDIUM
+   Metrics collected sequentially cause timestamp drift, no transaction isolation
+
+5. **Korean Encoding Issues (FR-114)** - MEDIUM
+   UTF-8 BOM causes parsing errors on Linux/Mac, no OS detection for encoding
+
+### Architecture Changes
+
+#### 1. CSRF Protection (FR-110)
+
+**New Middleware**: `backend/app/middleware/csrf_middleware.py`
+
+```python
+from fastapi import Request, HTTPException, status
+from starlette.middleware.base import BaseHTTPMiddleware
+import secrets
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    """CSRF protection for state-changing requests"""
+
+    CSRF_EXEMPT_PATHS = [
+        "/api/v1/auth/login",
+        "/api/v1/setup",
+        "/health",
+        "/api/v1/health"
+    ]
+
+    async def dispatch(self, request: Request, call_next):
+        # GET, HEAD, OPTIONS bypass CSRF check
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            response = await call_next(request)
+
+            # Generate and set CSRF token for authenticated users
+            if request.url.path not in self.CSRF_EXEMPT_PATHS:
+                csrf_token = secrets.token_urlsafe(32)
+                response.set_cookie(
+                    key="csrf_token",
+                    value=csrf_token,
+                    httponly=False,  # JS needs to read this
+                    secure=True,     # HTTPS only
+                    samesite="strict",
+                    max_age=1800     # 30 minutes
+                )
+            return response
+
+        # POST, PUT, DELETE, PATCH require CSRF validation
+        if request.url.path in self.CSRF_EXEMPT_PATHS:
+            return await call_next(request)
+
+        csrf_cookie = request.cookies.get("csrf_token")
+        csrf_header = request.headers.get("X-CSRF-Token")
+
+        if not csrf_cookie or csrf_cookie != csrf_header:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="CSRF 토큰이 유효하지 않습니다. 페이지를 새로고침 후 다시 시도해주세요."
+            )
+
+        return await call_next(request)
+```
+
+**Frontend Integration**: `frontend/src/lib/api.ts`
+
+```typescript
+// Axios interceptor to include CSRF token
+import Cookies from 'js-cookie';
+
+api.interceptors.request.use((config) => {
+  // Include CSRF token for state-changing requests
+  if (['post', 'put', 'delete', 'patch'].includes(config.method?.toLowerCase() || '')) {
+    const csrfToken = Cookies.get('csrf_token');
+    if (csrfToken) {
+      config.headers['X-CSRF-Token'] = csrfToken;
+    }
+  }
+  return config;
+});
+```
+
+#### 2. Middleware Registration (FR-111)
+
+**Update**: `backend/app/main.py`
+
+```python
+from app.middleware.csrf_middleware import CSRFMiddleware
+from app.middleware.rate_limit_middleware import RateLimitMiddleware
+from app.middleware.resource_limit_middleware import ResourceLimitMiddleware
+from app.middleware.performance_middleware import PerformanceMiddleware
+from app.middleware.metrics import MetricsMiddleware
+
+# CRITICAL: Middleware order matters!
+# Applied in reverse order (last added = first executed)
+app.add_middleware(CORSMiddleware, ...)           # 6th - outermost
+app.add_middleware(CSRFMiddleware)                 # 5th
+app.add_middleware(RateLimitMiddleware,            # 4th
+                   requests_per_minute=60)
+app.add_middleware(ResourceLimitMiddleware,        # 3rd
+                   max_react_sessions=10,
+                   max_agent_workflows=5)
+app.add_middleware(PerformanceMiddleware)          # 2nd
+app.add_middleware(MetricsMiddleware)              # 1st - innermost
+```
+
+**Execution Order** (request flow):
+1. CORS → 2. CSRF → 3. Rate Limit → 4. Resource Limit → 5. Performance → 6. Metrics → **Route Handler**
+
+#### 3. Session Token Security (FR-112)
+
+**Environment Configuration**: `backend/app/core/config.py`
+
+```python
+class Settings(BaseSettings):
+    ENVIRONMENT: str = Field(default="development", env="ENVIRONMENT")
+
+    @property
+    def cookie_secure(self) -> bool:
+        """HTTPS-only cookies in production"""
+        return self.ENVIRONMENT == "production"
+
+    @property
+    def cookie_samesite(self) -> str:
+        """Strict in production, lax in development"""
+        return "strict" if self.ENVIRONMENT == "production" else "lax"
+
+settings = Settings()
+```
+
+**Updated Cookie Settings**: `backend/app/api/v1/auth.py`
+
+```python
+response.set_cookie(
+    key="session_token",
+    value=session.session_token,
+    httponly=True,
+    secure=settings.cookie_secure,      # ✅ Environment-based
+    samesite=settings.cookie_samesite,  # ✅ Environment-based
+    max_age=1800,                        # ✅ 30 minutes explicit
+)
+```
+
+**Logging Filter**: `backend/app/core/logging.py`
+
+```python
+import logging
+import re
+
+class SensitiveDataFilter(logging.Filter):
+    """Mask sensitive data in logs"""
+
+    PATTERNS = [
+        # Session tokens
+        (re.compile(r'(session_token["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_-]+)'),
+         r'\1***REDACTED***'),
+
+        # Bearer tokens (JWT)
+        (re.compile(r'(Bearer\s+)([A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+)'),
+         r'\1***REDACTED***'),
+
+        # Passwords
+        (re.compile(r'(password["\']?\s*[:=]\s*["\']?)([^"\']+)'),
+         r'\1***REDACTED***'),
+    ]
+
+    def filter(self, record):
+        if isinstance(record.msg, str):
+            for pattern, replacement in self.PATTERNS:
+                record.msg = pattern.sub(replacement, record.msg)
+        return True
+
+# Apply to all handlers
+for handler in logging.root.handlers:
+    handler.addFilter(SensitiveDataFilter())
+```
+
+#### 4. Metric Collection Consistency (FR-113)
+
+**Refactored**: `backend/app/services/metrics_collector.py`
+
+```python
+async def collect_all_metrics(self, granularity: str = "hourly") -> dict:
+    """Collect all metrics in single transaction for consistency"""
+    collected_at = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    results = {}
+
+    # ✅ Single transaction for all metrics
+    async with self.db.begin():
+        logger.debug(f"🔄 Starting metric collection transaction (granularity={granularity})")
+
+        for metric_type in MetricType:
+            try:
+                value = await self._collect_metric(metric_type)
+
+                snapshot = MetricSnapshot(
+                    metric_type=metric_type.value,
+                    value=value,
+                    granularity=granularity,
+                    collected_at=collected_at,  # ✅ Identical timestamp
+                    retry_count=0
+                )
+                self.db.add(snapshot)
+                results[metric_type.value] = value
+
+            except Exception as e:
+                logger.error(f"❌ Metric collection failed: {metric_type.value} - {e}")
+                # Record failure but don't rollback transaction
+                await self._record_collection_failure(
+                    metric_type, collected_at, granularity, str(e)
+                )
+                results[metric_type.value] = None
+
+        # ✅ Commit all successful metrics at once
+        await self.db.commit()
+        logger.debug(f"✅ Metric collection transaction committed")
+
+    return results
+```
+
+**Database Configuration**: `backend/app/core/database.py`
+
+```python
+from sqlalchemy import create_engine
+
+engine = create_engine(
+    DATABASE_URL,
+    isolation_level="READ COMMITTED",  # ✅ Explicit isolation
+    pool_pre_ping=True,
+    pool_recycle=3600
+)
+```
+
+#### 5. Korean Encoding Compatibility (FR-114)
+
+**OS Detection**: `backend/app/api/v1/metrics.py`
+
+```python
+@router.post("/export", ...)
+async def export_metrics(
+    request: ExportRequest,
+    user_agent: str = Header(None),  # ✅ Detect client OS
+    db: AsyncSession = Depends(get_db),
+    ...
+):
+    # Windows clients need BOM for Excel
+    is_windows = user_agent and "Windows" in user_agent
+
+    if request.format == 'csv':
+        file_data, downsampled = export_service.export_to_csv(
+            snapshots=all_snapshots,
+            use_bom=is_windows  # ✅ Conditional BOM
+        )
+```
+
+**Updated Export Service**: `backend/app/services/export_service.py`
+
+```python
+def export_to_csv(
+    self,
+    snapshots: list[MetricSnapshot],
+    metric_type: str,
+    granularity: str,
+    use_bom: bool = False,  # ✅ Conditional BOM parameter
+    include_metadata: bool = True
+) -> tuple[bytes, bool]:
+    """Export with OS-specific encoding"""
+
+    # ... data preparation ...
+
+    # ✅ Choose encoding based on client OS
+    encoding = 'utf-8-sig' if use_bom else 'utf-8'
+
+    csv_buffer = io.StringIO()
+    csv_buffer.write(metadata)
+    df.to_csv(csv_buffer, index=False, encoding=encoding)
+
+    csv_data = csv_buffer.getvalue().encode(encoding)
+
+    return csv_data, downsampled
+```
+
+**Frontend Fallback**: `frontend/src/components/admin/MetricsExport.tsx`
+
+```typescript
+async function downloadCSV(url: string, filename: string) {
+  const response = await fetch(url);
+  let blob = await response.blob();
+
+  // ✅ Client-side BOM injection as fallback
+  if (navigator.platform.includes('Win')) {
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    blob = new Blob([bom, blob], { type: 'text/csv;charset=utf-8;' });
+  }
+
+  // Trigger download
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+}
+```
+
+### Testing Strategy
+
+#### SC-028: CSRF Protection Validation
+
+**Manual Tests**:
+1. POST request without X-CSRF-Token header → expect 403
+2. POST request with mismatched token (cookie ≠ header) → expect 403
+3. Login endpoint without CSRF token → expect 200 (exempt)
+4. Setup endpoint without CSRF token → expect 200 (exempt)
+5. Authenticated GET request → verify csrf_token cookie set
+
+**Automated Test** (`backend/tests/test_csrf.py`):
+```python
+def test_csrf_blocks_invalid_requests(client):
+    # Missing header
+    response = client.post("/api/v1/admin/users", json={...})
+    assert response.status_code == 403
+
+    # Mismatched tokens
+    client.cookies.set("csrf_token", "valid-token")
+    response = client.post(
+        "/api/v1/admin/users",
+        json={...},
+        headers={"X-CSRF-Token": "wrong-token"}
+    )
+    assert response.status_code == 403
+```
+
+#### SC-029: Middleware Enforcement
+
+**Manual Tests**:
+1. Send 61 requests in 1 minute → 61st returns 429
+2. Start 11 concurrent ReAct sessions → 11th returns 503
+3. Check response headers for X-RateLimit-* values
+4. Verify slow endpoints (>1s) logged in performance metrics
+
+**Load Test Script** (`scripts/test_rate_limit.sh`):
+```bash
+#!/bin/bash
+for i in {1..61}; do
+  curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/api/v1/health &
+done
+wait
+# Expected: 60x "200", 1x "429"
+```
+
+#### SC-030: Session Token Security
+
+**Configuration Tests**:
+```python
+def test_production_cookie_security():
+    os.environ['ENVIRONMENT'] = 'production'
+    settings = Settings()
+    assert settings.cookie_secure == True
+    assert settings.cookie_samesite == "strict"
+
+def test_development_cookie_permissive():
+    os.environ['ENVIRONMENT'] = 'development'
+    settings = Settings()
+    assert settings.cookie_secure == False
+    assert settings.cookie_samesite == "lax"
+```
+
+**Log Masking Test**:
+```python
+def test_sensitive_data_masked_in_logs(caplog):
+    logger.info("session_token=abc123xyz")
+    logger.info("Bearer eyJhbGciOiJIUzI1NiIs.payload.signature")
+    logger.info("password='secret123'")
+
+    assert "abc123xyz" not in caplog.text
+    assert "***REDACTED***" in caplog.text
+    assert "secret123" not in caplog.text
+```
+
+#### SC-031: Metric Transaction Consistency
+
+**Database Test**:
+```python
+async def test_metrics_same_timestamp():
+    collector = MetricsCollector(db)
+    await collector.collect_all_metrics("hourly")
+
+    # Query all metrics from last collection
+    snapshots = await db.execute(
+        select(MetricSnapshot)
+        .order_by(MetricSnapshot.collected_at.desc())
+        .limit(6)
+    )
+    snapshots = snapshots.scalars().all()
+
+    # All timestamps must be identical
+    timestamps = [s.collected_at for s in snapshots]
+    assert len(set(timestamps)) == 1, "Timestamps must be identical"
+
+    # Verify isolation level
+    result = await db.execute(text("SHOW transaction_isolation"))
+    assert result.scalar() == "read committed"
+```
+
+#### SC-032: Korean Encoding Compatibility
+
+**Platform Tests**:
+```python
+def test_windows_bom_detection():
+    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    is_windows = "Windows" in user_agent
+    assert is_windows == True
+
+def test_linux_no_bom():
+    user_agent = "Mozilla/5.0 (X11; Linux x86_64)"
+    is_windows = "Windows" in user_agent
+    assert is_windows == False
+```
+
+**CSV Validation** (manual):
+1. Export CSV on Windows → Open in Excel → No encoding dialog
+2. Export CSV on Linux → `pandas.read_csv()` → Check `df.columns[0]` has no '\ufeff'
+3. Export CSV → Open in LibreOffice Calc → Korean displays correctly
+
+### Deployment Checklist
+
+**Before Production**:
+- [ ] Set `ENVIRONMENT=production` in `.env`
+- [ ] Verify HTTPS certificate installed
+- [ ] Test CSRF protection on all admin endpoints
+- [ ] Run load test to confirm rate limiting works
+- [ ] Check logs contain no plaintext tokens/passwords
+- [ ] Verify metric collection transaction consistency
+- [ ] Test CSV export on Windows/Linux clients
+
+**Post-Deployment Monitoring**:
+- [ ] Monitor 403 errors (potential CSRF issues)
+- [ ] Monitor 429 errors (rate limit effectiveness)
+- [ ] Monitor 503 errors (resource limit effectiveness)
+- [ ] Check metric collection failure rate (<1% per SC-022)
+- [ ] Verify CSV encoding complaints from users (should be zero)
+
+### Dependencies
+
+**New Python Packages** (already in requirements.txt):
+- No new dependencies required (uses existing FastAPI, secrets, re, logging)
+
+**Configuration Files**:
+- `.env`: Add `ENVIRONMENT=production` for production deployment
+- `backend/app/middleware/csrf_middleware.py`: New file
+- `backend/app/core/logging.py`: Enhanced with SensitiveDataFilter
+
+### Success Criteria Summary
+
+- **SC-028**: CSRF blocks 100% of unauthorized requests ✅
+- **SC-029**: Rate/resource limits prevent DoS ✅
+- **SC-030**: Tokens masked in logs, secure cookies in prod ✅
+- **SC-031**: Metrics have identical timestamps (<5ms variance) ✅
+- **SC-032**: Korean CSV works on Windows/Linux (>95% UA accuracy) ✅
+
+---
+
+**Implementation Priority**: Complete FR-110 and FR-111 (CRITICAL) before production. FR-112, FR-113, FR-114 can follow in maintenance release.
+
+## Phase 11.7: Quality & Operational Fixes (FR-115 ~ FR-122)
+
+### Overview
+
+This phase addresses critical quality issues and operational inconsistencies discovered during post-implementation review. Issues are prioritized by severity: CRITICAL (immediate user/data impact), HIGH (monitoring/security gaps), MEDIUM (technical debt/test alignment).
+
+**Dependency**: Requires Phase 11.6 (Security Hardening) completion
+
+### Implementation Approach
+
+#### FR-115: Korean Encoding Fix (CRITICAL)
+
+**Problem**: `frontend/src/lib/errorMessages.ts` contains corrupted Korean text (mojibake ������), causing unreadable error messages to users.
+
+**Root Cause**: File saved with incorrect encoding (likely Windows-1252 or ISO-8859-1) instead of UTF-8.
+
+**Solution**:
+1. **Immediate fix**: Rewrite `errorMessages.ts` with correct UTF-8 encoding
+2. **Prevention**: Add pre-commit hook to validate UTF-8 encoding
+3. **Testing**: Regex validation for Korean Unicode range
+
+**Implementation**:
+```typescript
+// frontend/src/lib/errorMessages.ts (CORRECTED VERSION)
+export const errorMessages = {
+  // Authentication errors
+  INVALID_CREDENTIALS: "사용자 이름 또는 비밀번호가 올바르지 않습니다.",
+  SESSION_EXPIRED: "세션이 만료되었습니다. 다시 로그인해주세요.",
+  UNAUTHORIZED: "권한이 없습니다.",
+
+  // Network errors
+  NETWORK_ERROR: "네트워크 연결에 실패했습니다. 인터넷 연결을 확인해주세요.",
+  SERVER_ERROR: "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+
+  // ... (complete all error messages with proper Korean)
+}
+
+// Validation test
+function validateKoreanText(text: string): boolean {
+  const koreanPattern = /^[\uAC00-\uD7A3\s\w\d.,!?'"()]+$/
+  return koreanPattern.test(text)
+}
+```
+
+**Pre-commit Hook** (`.git/hooks/pre-commit`):
+```bash
+#!/bin/bash
+# Validate UTF-8 encoding in TypeScript files
+for file in $(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx)$'); do
+  if ! iconv -f UTF-8 -t UTF-8 "$file" > /dev/null 2>&1; then
+    echo "ERROR: $file is not valid UTF-8"
+    exit 1
+  fi
+done
+```
+
+**Testing**:
+```bash
+# Manual validation
+cd frontend/src/lib
+file errorMessages.ts  # Should show: "UTF-8 Unicode text"
+iconv -f UTF-8 -t UTF-8 errorMessages.ts > /dev/null && echo "Valid UTF-8"
+
+# Automated test (add to tests/korean_quality_test.py)
+def test_error_messages_encoding():
+    import re
+    from frontend.src.lib import errorMessages  # Assuming TS compiled to JS
+    korean_pattern = re.compile(r'^[\uAC00-\uD7A3\s\w\d.,!?\'"()]+$')
+
+    for key, msg in errorMessages.items():
+        assert korean_pattern.match(msg), f"{key} contains non-Korean characters: {msg}"
+```
+
+#### FR-116: Active User Metric Fix (CRITICAL)
+
+**Problem**: `active_users` metric calculated incorrectly using `created_at >= now - 30m` instead of `expires_at > now`, mixing timezone-naive/aware datetimes.
+
+**Location**: `backend/app/core/business_metrics.py:31`
+
+**Solution**:
+```python
+# BEFORE (INCORRECT)
+async def get_active_users_count(db: AsyncSession) -> int:
+    now = datetime.utcnow()  # ❌ Deprecated, timezone-naive
+    cutoff = now - timedelta(minutes=30)
+    stmt = select(func.count(func.distinct(Session.user_id))).where(
+        Session.created_at >= cutoff  # ❌ Wrong logic
+    )
+    ...
+
+# AFTER (CORRECT)
+async def get_active_users_count(db: AsyncSession) -> int:
+    now = datetime.now(timezone.utc)  # ✅ Timezone-aware
+    stmt = select(func.count(func.distinct(Session.user_id))).where(
+        Session.expires_at > now  # ✅ Correct: non-expired sessions
+    )
+    result = await db.execute(stmt)
+    count = result.scalar() or 0
+
+    logger.debug(f"Active users count: {count} (current time: {now.isoformat()})")
+    return count
+```
+
+**Verification**:
+```python
+# Integration test
+async def test_active_users_metric_accuracy():
+    # Create 2 active sessions (expire in future)
+    session1 = create_session(user_id=1, expires_at=now + timedelta(minutes=10))
+    session2 = create_session(user_id=2, expires_at=now + timedelta(minutes=20))
+
+    # Create 1 expired session
+    session3 = create_session(user_id=3, expires_at=now - timedelta(minutes=5))
+
+    # Metric should count only non-expired
+    metric = await get_active_users_count(db)
+    assert metric == 2, f"Expected 2 active users, got {metric}"
+
+    # Verify timezone-aware
+    assert metric.collected_at.tzinfo is not None
+```
+
+#### FR-117: Async Query Metrics (HIGH)
+
+**Problem**: Event listeners bound only to `sync_engine`, missing async queries from application.
+
+**Solution**:
+```python
+# backend/app/core/database.py
+
+# BEFORE: Only sync_engine events captured
+@event.listens_for(sync_engine, "before_cursor_execute")
+def before_cursor_execute(...):
+    ...
+
+# AFTER: Capture both sync and async
+@event.listens_for(Engine, "before_cursor_execute")  # Universal listener
+def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    context._query_start_time = time.time()
+
+@event.listens_for(Engine, "after_cursor_execute")
+def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    duration = time.time() - context._query_start_time
+    query_type = _get_query_type(statement)
+
+    db_query_duration.labels(query_type=query_type).observe(duration)
+    db_queries_total.labels(query_type=query_type, status='success').inc()
+
+# Update pool metrics to use async engine
+def update_pool_metrics():
+    try:
+        # Get pool from async engine's sync_engine
+        pool = async_engine.sync_engine.pool
+        db_connections_active.set(pool.checkedout())
+    except Exception as e:
+        logger.warning(f"Failed to update pool metrics: {e}")
+```
+
+**Validation**:
+```bash
+# Make API requests then check Prometheus
+curl http://localhost:8000/api/v1/auth/me  # Trigger async query
+curl http://localhost:8000/metrics | grep db_queries_total
+
+# Expected output:
+# db_queries_total{query_type="select",status="success"} 42.0
+# (should be non-zero if async queries captured)
+```
+
+#### FR-118: Admin Privilege Model (HIGH)
+
+**Problem**: Dual privilege models (`User.is_admin` + `Admin` table) with inconsistent usage.
+
+**Decision**: Use `User.is_admin` as single source of truth (simpler, already implemented).
+
+**Migration Path**:
+```python
+# Option A: Remove Admin table (RECOMMENDED)
+# backend/alembic/versions/20251104_remove_admin_table.py
+
+def upgrade():
+    # 1. Ensure all users with Admin records have is_admin=True
+    op.execute("""
+        UPDATE users
+        SET is_admin = TRUE
+        WHERE id IN (SELECT user_id FROM admins)
+    """)
+
+    # 2. Drop Admin table
+    op.drop_table('admins')
+
+def downgrade():
+    # Recreate Admin table
+    op.create_table('admins', ...)
+    op.execute("""
+        INSERT INTO admins (user_id, created_at)
+        SELECT id, created_at FROM users WHERE is_admin = TRUE
+    """)
+```
+
+**Update Dependency**:
+```python
+# backend/app/api/deps.py (NO CHANGE NEEDED - already uses is_admin)
+
+async def get_current_admin(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    if not current_user.is_admin:  # ✅ Already correct
+        raise HTTPException(
+            status_code=403,
+            detail="관리자 권한이 필요합니다."
+        )
+    return current_user
+```
+
+**Documentation**:
+```markdown
+# docs/admin/user-management.md
+
+## Administrator Management
+
+Administrators are identified by the `is_admin` flag on the User model.
+
+### Creating Administrators
+1. Via setup wizard (first admin only, FR-034)
+2. Via direct database modification (additional admins, FR-033):
+   ```sql
+   UPDATE users SET is_admin = TRUE WHERE username = 'john.doe';
+   ```
+
+### Removing Admin Privileges
+```sql
+UPDATE users SET is_admin = FALSE WHERE username = 'john.doe';
+```
+
+**Note**: Users cannot remove their own admin privileges (enforced at application level).
+```
+
+#### FR-119: CSRF Token Optimization (MEDIUM)
+
+**Problem**: CSRF token regenerated on every GET request, causing unnecessary rotation.
+
+**Solution**:
+```python
+# backend/app/middleware/csrf_middleware.py
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # GET requests: Only generate token if missing/expired
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            response = await call_next(request)
+
+            if request.url.path not in self.CSRF_EXEMPT_PATHS:
+                # Check if token already exists
+                existing_token = request.cookies.get("csrf_token")
+
+                if not existing_token:  # Only generate if missing
+                    csrf_token = secrets.token_urlsafe(32)
+                    response.set_cookie(
+                        key="csrf_token",
+                        value=csrf_token,
+                        httponly=False,
+                        secure=settings.cookie_secure,
+                        samesite=settings.cookie_samesite,
+                        max_age=settings.SESSION_TIMEOUT_MINUTES * 60
+                    )
+                    logger.debug(f"CSRF token generated for new session")
+
+            return response
+
+        # POST/PUT/DELETE/PATCH: Validate (unchanged)
+        ...
+```
+
+**Alternative Approach** (generate on login only):
+```python
+# backend/app/api/v1/auth.py
+
+@router.post("/login")
+async def login(...):
+    # ... authenticate user ...
+
+    # Generate CSRF token on login
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie("csrf_token", csrf_token, ...)
+
+    # Also set session cookie
+    response.set_cookie("session_token", session.session_token, ...)
+
+    return LoginResponse(...)
+```
+
+#### FR-120: CSRF Exemption Patterns (MEDIUM)
+
+**Solution**:
+```python
+# backend/app/middleware/csrf_middleware.py
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    # Support both exact and prefix matching
+    CSRF_EXEMPT_PATTERNS = [
+        ("/api/v1/auth/login", "exact"),
+        ("/api/v1/setup", "prefix"),  # Matches /api/v1/setup/*
+        ("/health", "exact"),
+        ("/api/v1/health", "exact"),
+        ("/docs", "exact"),
+        ("/openapi.json", "exact"),
+        ("/metrics", "exact"),  # Prometheus
+    ]
+
+    def _is_exempt(self, path: str) -> bool:
+        """Check if path is exempt from CSRF validation"""
+        for pattern, match_type in self.CSRF_EXEMPT_PATTERNS:
+            if match_type == "exact":
+                if path == pattern:
+                    return True
+            elif match_type == "prefix":
+                if path.startswith(pattern):
+                    return True
+        return False
+
+    async def dispatch(self, request: Request, call_next):
+        # Use helper for exemption check
+        if self._is_exempt(request.url.path):
+            logger.debug(f"CSRF exempt path: {request.url.path}")
+            return await call_next(request)
+        ...
+```
+
+#### FR-121: Security Test Alignment (MEDIUM)
+
+**Solution**:
+```python
+# tests/security_audit.py
+
+# BEFORE (INCORRECT - expects passlib)
+def test_password_hashing():
+    from passlib.context import CryptContext  # ❌ Not used
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    ...
+
+# AFTER (CORRECT - matches actual implementation)
+def test_password_hashing():
+    import bcrypt  # ✅ Matches backend/app/core/security.py
+
+    password = "testpassword123"
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))
+
+    # Verify correct password
+    assert bcrypt.checkpw(password.encode(), hashed)
+
+    # Verify wrong password
+    assert not bcrypt.checkpw("wrongpass".encode(), hashed)
+
+    # Verify rounds = 12 (FR-029)
+    assert hashed.startswith(b'$2b$12$')
+
+def test_login_endpoint_uses_bcrypt():
+    """Integration test: actual endpoint uses correct hashing"""
+    # Create user with known password
+    create_user(username="testuser", password="password123")
+
+    # Login should work
+    response = client.post("/api/v1/auth/login", json={
+        "username": "testuser",
+        "password": "password123"
+    })
+    assert response.status_code == 200
+```
+
+#### FR-122: Data Isolation (MEDIUM)
+
+**Decision**: Use Option B (document existing isolation at dependency level).
+
+**Rationale**: Data isolation already enforced via `get_current_user()` dependency in all routes. No middleware needed.
+
+**Documentation**:
+```python
+# backend/app/api/deps.py (existing code, add comments)
+
+async def get_current_user(
+    session_token: str = Cookie(None),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """
+    Extract current user from session token.
+
+    Data Isolation (FR-032):
+    All API routes using this dependency automatically enforce user_id filtering
+    via query filters or ownership validation. Middleware not required.
+
+    Examples:
+    - GET /conversations/{id}: Route validates conversation.user_id == current_user.id
+    - DELETE /documents/{id}: Route validates document.user_id == current_user.id
+    """
+    if not session_token:
+        raise HTTPException(status_code=401, detail="인증이 필요합니다.")
+
+    session = await get_session(db, session_token)
+    if not session or session.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=401, detail="세션이 만료되었습니다.")
+
+    user = await get_user_by_id(db, session.user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="사용자를 찾을 수 없습니다.")
+
+    return user
+```
+
+**Update Test Expectations**:
+```python
+# tests/security_audit.py
+
+def test_data_isolation_via_dependencies():
+    """
+    Verify data isolation at API dependency level (not middleware).
+    FR-032, FR-122 Option B.
+    """
+    # Create two users
+    user1 = create_user("user1")
+    user2 = create_user("user2")
+
+    # User1 creates conversation
+    conv = create_conversation(user1)
+
+    # User2 attempts to access User1's conversation
+    response = client.get(
+        f"/api/v1/conversations/{conv.id}",
+        cookies={"session_token": user2.session_token}
+    )
+
+    # Should return 403 Forbidden
+    assert response.status_code == 403
+    assert "권한이 없습니다" in response.json()["detail"]
+```
+
+### Testing Strategy
+
+#### CRITICAL Tests (must pass before merge)
+
+1. **FR-115**: Korean encoding validation
+   ```bash
+   npm run test:encoding  # Validates errorMessages.ts
+   git diff frontend/src/lib/errorMessages.ts  # Manual review
+   ```
+
+2. **FR-116**: Active users metric accuracy
+   ```bash
+   pytest backend/tests/test_metrics_accuracy.py -v
+   ```
+
+#### HIGH Tests (required for production)
+
+3. **FR-117**: Async query metrics
+   ```bash
+   # Start server, make requests, check metrics
+   curl http://localhost:8000/api/v1/conversations
+   curl http://localhost:8000/metrics | grep db_queries_total
+   ```
+
+4. **FR-118**: Admin privilege consistency
+   ```bash
+   pytest backend/tests/test_admin_auth.py -v
+   ```
+
+#### MEDIUM Tests (recommended)
+
+5-8. **FR-119 ~ FR-122**:
+   ```bash
+   pytest backend/tests/test_security_enhancements.py -v
+   ```
+
+### Deployment Checklist
+
+**Pre-merge**:
+- [ ] All CRITICAL tests passing
+- [ ] Korean error messages display correctly in browser
+- [ ] Active users metric matches database query
+- [ ] Prometheus shows non-zero async query counts
+- [ ] Admin model documented in user-management.md
+
+**Post-merge monitoring**:
+- [ ] No mojibake reports from users
+- [ ] Metrics dashboard shows accurate counts
+- [ ] Prometheus query metrics increasing
+- [ ] No 403 errors on exempt paths
+
+### Success Criteria
+
+- **SC-033**: Korean text displays correctly ✅
+- **SC-034**: Active users = non-expired sessions ✅
+- **SC-035**: Async queries in Prometheus ✅
+- **SC-036**: Admin privilege checks consistent ✅
+- **SC-037**: CSRF tokens stable within session ✅
+- **SC-038**: Common paths exempt from CSRF ✅
+- **SC-039**: Security tests match implementation ✅
+- **SC-040**: Data isolation verified ✅
+
+---
+
+**Implementation Priority**:
+1. FR-115, FR-116 (CRITICAL) - immediate fix
+2. FR-117, FR-118 (HIGH) - before production
+3. FR-119 ~ FR-122 (MEDIUM) - maintenance release acceptable

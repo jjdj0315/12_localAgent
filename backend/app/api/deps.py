@@ -65,7 +65,7 @@ async def get_current_user(
 
 async def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
     """
-    Get current user and verify admin privileges.
+    Get current user and verify admin privileges (FR-118).
 
     Args:
         current_user: Current authenticated user
@@ -79,7 +79,7 @@ async def get_current_admin(current_user: User = Depends(get_current_user)) -> U
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin privileges required to access this resource.",
+            detail="관리자 권한이 필요합니다.",  # Korean error message (T311)
         )
 
     return current_user

@@ -24,7 +24,7 @@ class MetricsCollector:
         self.db = db
 
     async def collect_all_metrics(self, granularity: str = "hourly") -> dict:
-        """Collect all metrics and store snapshots
+        """Collect all metrics and store snapshots in a single transaction (FR-113)
 
         Args:
             granularity: 'hourly' or 'daily'
@@ -32,12 +32,26 @@ class MetricsCollector:
         Returns:
             dict: Mapping of metric_type to value (None if failed)
         """
+        # Use single timestamp for all metrics to ensure consistency (FR-113)
         collected_at = datetime.now(timezone.utc).replace(second=0, microsecond=0)
         results = {}
+        snapshots = []
 
+        # Collect all metrics WITHOUT committing individually
         for metric_type in MetricType:
-            value = await self._collect_metric_with_retry(metric_type, collected_at, granularity)
+            value = await self._collect_metric_with_retry(
+                metric_type, collected_at, granularity, commit=False
+            )
             results[metric_type.value] = value
+
+        # Single atomic commit for all successful collections (FR-113)
+        try:
+            await self.db.commit()
+            logger.info(f"모든 메트릭 수집 완료: {len(results)}개 메트릭 (granularity={granularity})")
+        except Exception as e:
+            logger.error(f"메트릭 커밋 실패: {str(e)}")
+            await self.db.rollback()
+            raise
 
         return results
 
@@ -46,15 +60,17 @@ class MetricsCollector:
         metric_type: MetricType,
         collected_at: datetime,
         granularity: str,
-        max_retries: int = 3
+        max_retries: int = 3,
+        commit: bool = True
     ) -> int | None:
-        """Collect a single metric with retry logic (FR-020)
+        """Collect a single metric with retry logic (FR-020, FR-113)
 
         Args:
             metric_type: Type of metric to collect
             collected_at: Timestamp for collection
             granularity: 'hourly' or 'daily'
             max_retries: Maximum retry attempts (default 3)
+            commit: Whether to commit immediately (default True for backwards compatibility)
 
         Returns:
             int: Metric value, or None if all retries failed
@@ -63,7 +79,7 @@ class MetricsCollector:
             try:
                 value = await self._collect_metric(metric_type)
 
-                # Store successful collection
+                # Store successful collection (but don't commit if part of batch)
                 snapshot = MetricSnapshot(
                     metric_type=metric_type.value,
                     value=value,
@@ -72,7 +88,10 @@ class MetricsCollector:
                     retry_count=attempt
                 )
                 self.db.add(snapshot)
-                await self.db.commit()
+
+                # Only commit if not part of atomic batch (FR-113)
+                if commit:
+                    await self.db.commit()
 
                 logger.info(f"메트릭 수집 성공: {metric_type.value}={value} (시도 {attempt+1}/{max_retries})")
                 return value
@@ -88,7 +107,7 @@ class MetricsCollector:
                 else:
                     # All retries exhausted - record failure
                     logger.error(f"최대 재시도 횟수 초과: {metric_type.value}")
-                    await self._record_collection_failure(metric_type, collected_at, granularity, str(e))
+                    await self._record_collection_failure(metric_type, collected_at, granularity, str(e), commit)
                     return None
 
     async def _collect_metric(self, metric_type: MetricType) -> int:
@@ -164,7 +183,8 @@ class MetricsCollector:
         metric_type: MetricType,
         attempted_at: datetime,
         granularity: str,
-        error_message: str
+        error_message: str,
+        commit: bool = True
     ):
         """Record a failed collection attempt
 
@@ -173,6 +193,7 @@ class MetricsCollector:
             attempted_at: When the final attempt occurred
             granularity: 'hourly' or 'daily'
             error_message: Error description
+            commit: Whether to commit immediately (default True)
         """
         try:
             failure = MetricCollectionFailure(
@@ -183,6 +204,7 @@ class MetricsCollector:
                 retry_count=3
             )
             self.db.add(failure)
-            await self.db.commit()
+            if commit:
+                await self.db.commit()
         except Exception as e:
             logger.error(f"실패 기록 저장 오류: {str(e)}")
