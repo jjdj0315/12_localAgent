@@ -244,10 +244,20 @@ def check_model_loading_time():
         try:
             from llama_cpp import Llama
 
-            model_path = "models/qwen3-4b-instruct-q4_k_m.gguf"
+            # Check Docker path first, then local path
+            model_candidates = [
+                "/models/qwen3-4b-instruct-q4_k_m.gguf",
+                "models/qwen3-4b-instruct-q4_k_m.gguf"
+            ]
 
-            if not Path(model_path).exists():
-                return False, f"Model not found: {model_path}"
+            model_path = None
+            for candidate in model_candidates:
+                if Path(candidate).exists():
+                    model_path = candidate
+                    break
+
+            if model_path is None:
+                return False, f"Model not found in {model_candidates}"
 
             start = time.time()
             llm = Llama(
@@ -284,7 +294,20 @@ def check_basic_inference():
         try:
             from llama_cpp import Llama
 
-            model_path = "models/qwen3-4b-instruct-q4_k_m.gguf"
+            # Check Docker path first, then local path
+            model_candidates = [
+                "/models/qwen3-4b-instruct-q4_k_m.gguf",
+                "models/qwen3-4b-instruct-q4_k_m.gguf"
+            ]
+
+            model_path = None
+            for candidate in model_candidates:
+                if Path(candidate).exists():
+                    model_path = candidate
+                    break
+
+            if model_path is None:
+                return False, f"Model not found in {model_candidates}"
 
             llm = Llama(
                 model_path=model_path,
@@ -476,8 +499,21 @@ def main():
     check_basic_inference()
     check_network_isolation()
 
-    # Generate report
-    output_path = Path("docs/deployment/air-gapped-validation-report.md")
+    # Generate report (check Docker path first, then local path)
+    output_candidates = [
+        Path("/validation_docs/deployment/air-gapped-validation-report.md"),  # Docker mount
+        Path("docs/deployment/air-gapped-validation-report.md"),              # Local
+    ]
+
+    output_path = None
+    for candidate in output_candidates:
+        if candidate.parent.exists() or candidate.parent == Path("/validation_docs/deployment"):
+            output_path = candidate
+            break
+
+    if output_path is None:
+        output_path = Path("docs/deployment/air-gapped-validation-report.md")
+
     generate_report(output_path)
 
     # Print summary

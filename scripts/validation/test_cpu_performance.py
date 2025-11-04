@@ -369,24 +369,47 @@ The CPU-only baseline performance does NOT meet SC-001 requirements. P95 latency
 
 def main():
     """Main execution"""
-    # Find model
-    model_path = Path("models/qwen3-4b-instruct-q4_k_m.gguf")
+    # Find model (check Docker path first, then local path)
+    model_candidates = [
+        Path("/models/qwen3-4b-instruct-q4_k_m.gguf"),  # Docker mount
+        Path("models/qwen3-4b-instruct-q4_k_m.gguf"),   # Local
+    ]
 
-    if not model_path.exists():
-        print(f"❌ Model not found: {model_path}")
-        print("\nPlease ensure Qwen3-4B-Instruct GGUF model is in models/ directory")
+    model_path = None
+    for candidate in model_candidates:
+        if candidate.exists():
+            model_path = candidate
+            break
+
+    if model_path is None:
+        print(f"❌ Model not found in:")
+        for candidate in model_candidates:
+            print(f"   - {candidate}")
+        print("\nPlease ensure Qwen3-4B-Instruct GGUF model is available")
         return 1
 
     try:
         # Run performance test
         results = run_performance_test(str(model_path), iterations=3)
 
-        # Save report
-        output_path = Path("docs/validation/cpu-performance-validation.md")
+        # Save report (check Docker path first, then local path)
+        output_candidates = [
+            Path("/validation_docs/validation/cpu-performance-validation.md"),  # Docker mount
+            Path("docs/validation/cpu-performance-validation.md"),              # Local
+        ]
+        output_path = None
+        for candidate in output_candidates:
+            if candidate.parent.exists() or candidate.parent == Path("/validation_docs/validation"):
+                output_path = candidate
+                break
+
+        if output_path is None:
+            output_path = Path("docs/validation/cpu-performance-validation.md")
         save_report(results, output_path)
 
-        # Save raw JSON for analysis
-        json_path = Path("docs/validation/cpu-performance-validation.json")
+        # Save raw JSON for analysis (same directory as markdown report)
+        json_path = output_path.parent / "cpu-performance-validation.json"
+        json_path.parent.mkdir(parents=True, exist_ok=True)
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2, default=str)
         print(f"📄 Raw data saved: {json_path}")
