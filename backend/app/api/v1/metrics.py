@@ -7,7 +7,7 @@ import logging
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -343,10 +343,11 @@ EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     "/export",
     response_model=ExportResponse,
     summary="Export metrics data to CSV or PDF",
-    description="Export metric snapshots to downloadable file with automatic downsampling (FR-024, FR-025)"
+    description="Export metric snapshots to downloadable file with automatic downsampling (FR-024, FR-025, FR-114)"
 )
 async def export_metrics(
     request: ExportRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_admin)
 ):
@@ -391,6 +392,12 @@ async def export_metrics(
                 detail="선택한 기간 동안 메트릭 데이터가 없습니다"
             )
 
+        # Detect OS from User-Agent for BOM handling (FR-114)
+        user_agent = http_request.headers.get("user-agent", "").lower()
+        is_windows = "windows" in user_agent or "win32" in user_agent or "win64" in user_agent
+
+        logger.info(f"내보내기 요청 OS 감지: Windows={is_windows}, User-Agent={user_agent[:100]}")
+
         # Generate export file
         export_id = str(uuid.uuid4())
         downsampled = False
@@ -404,7 +411,8 @@ async def export_metrics(
                 snapshots=all_snapshots,
                 metric_type=request.metric_types[0],  # Primary metric for metadata
                 granularity=request.granularity,
-                include_metadata=True
+                include_metadata=True,
+                add_bom=is_windows  # FR-114: Add BOM only for Windows
             )
 
         elif request.format == 'pdf':

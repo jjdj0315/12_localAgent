@@ -4,7 +4,7 @@ import os
 import time
 from typing import AsyncGenerator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, Engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
@@ -66,12 +66,15 @@ if USE_SQLITE:
         connect_args={"check_same_thread": False},
     )
 else:
+    # PostgreSQL with READ COMMITTED isolation level (FR-113)
+    # This prevents dirty reads while allowing concurrent metric collection
     async_engine = create_async_engine(
         ASYNC_SQLALCHEMY_DATABASE_URL,
         echo=False,
         pool_pre_ping=True,
         pool_size=20,
         max_overflow=40,
+        isolation_level="READ COMMITTED"  # FR-113: Consistent metric snapshots
     )
 
 # ==============================================================================
@@ -92,15 +95,16 @@ def _get_query_type(statement: str) -> str:
     else:
         return 'other'
 
-# Event listener for query execution timing
-@event.listens_for(sync_engine, "before_cursor_execute")
+# Event listener for query execution timing (FR-117)
+# Universal listener captures both sync (migrations) and async (application) queries
+@event.listens_for(Engine, "before_cursor_execute")
 def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
-    """Record query start time"""
+    """Record query start time for both sync and async engines"""
     context._query_start_time = time.time()
 
-@event.listens_for(sync_engine, "after_cursor_execute")
+@event.listens_for(Engine, "after_cursor_execute")
 def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
-    """Record query duration and count"""
+    """Record query duration and count for both sync and async engines"""
     # Calculate duration
     duration = time.time() - context._query_start_time
 
@@ -111,15 +115,19 @@ def after_cursor_execute(conn, cursor, statement, parameters, context, executema
     db_query_duration.labels(query_type=query_type).observe(duration)
     db_queries_total.labels(query_type=query_type, status='success').inc()
 
-# Update connection pool metrics
+# Update connection pool metrics (FR-117)
 def update_pool_metrics():
-    """Update connection pool metrics"""
+    """Update connection pool metrics from async engine"""
     try:
-        pool = sync_engine.pool
+        # Get pool from async engine's sync_engine (FR-117)
+        # This captures actual application connection usage
+        pool = async_engine.sync_engine.pool
         db_connections_active.set(pool.checkedout())
-    except Exception:
+    except Exception as e:
         # Ignore errors (pool might not be initialized yet)
-        pass
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to update pool metrics: {e}")
 
 # Create session factories
 SyncSessionLocal = sessionmaker(

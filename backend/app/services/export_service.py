@@ -84,15 +84,17 @@ class ExportService:
         snapshots: list[MetricSnapshot],
         metric_type: str,
         granularity: str,
-        include_metadata: bool = True
+        include_metadata: bool = True,
+        add_bom: bool = True
     ) -> tuple[bytes, bool]:
-        """Export metric snapshots to CSV format (FR-024)
+        """Export metric snapshots to CSV format (FR-024, FR-114)
 
         Args:
             snapshots: List of metric snapshots to export
             metric_type: Type of metric being exported
             granularity: Data granularity ('hourly' or 'daily')
             include_metadata: Include metadata header rows
+            add_bom: Add UTF-8 BOM for Windows compatibility (default True)
 
         Returns:
             tuple: (CSV data as bytes, whether data was downsampled)
@@ -110,10 +112,11 @@ class ExportService:
 
         df = pd.DataFrame(data)
 
-        # Check estimated size
+        # Check estimated size (FR-114: encoding depends on add_bom)
         csv_buffer = io.StringIO()
-        df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
-        estimated_size = len(csv_buffer.getvalue().encode('utf-8'))
+        encoding = 'utf-8-sig' if add_bom else 'utf-8'
+        df.to_csv(csv_buffer, index=False, encoding=encoding)
+        estimated_size = len(csv_buffer.getvalue().encode(encoding))
 
         downsampled = False
 
@@ -145,16 +148,16 @@ class ExportService:
         else:
             metadata = ''
 
-        # Generate final CSV
+        # Generate final CSV (FR-114: conditional BOM)
         csv_buffer = io.StringIO()
         csv_buffer.write(metadata)
-        df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+        df.to_csv(csv_buffer, index=False, encoding=encoding)
 
-        csv_data = csv_buffer.getvalue().encode('utf-8-sig')
+        csv_data = csv_buffer.getvalue().encode(encoding)
 
         logger.info(
             f"CSV 생성 완료: {len(csv_data)} bytes, "
-            f"{len(df)} 행, 다운샘플링={downsampled}"
+            f"{len(df)} 행, 다운샘플링={downsampled}, BOM={add_bom}"
         )
 
         return csv_data, downsampled
