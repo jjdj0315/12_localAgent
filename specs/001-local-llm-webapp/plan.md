@@ -5,7 +5,7 @@
 
 ## Summary
 
-Build an air-gapped Local LLM web application for small local government employees to use AI assistance for administrative tasks without internet connectivity. The system provides conversational AI, document analysis, conversation history management, multi-user support with administrative oversight, **plus advanced features: Safety Filter (content moderation + PII masking), ReAct Agent (tool-augmented reasoning), and Multi-Agent System (task-specialized agents)** - all running on local infrastructure using Qwen3-4B-Instruct with HuggingFace Transformers or llama.cpp for CPU-compatible deployment (~2.5GB Q4, Qwen2.5-72B-level performance).
+Build an air-gapped Local LLM web application for small local government employees to use AI assistance for administrative tasks without internet connectivity. The system provides conversational AI, document analysis, conversation history management, multi-user support with administrative oversight, **plus advanced features: Safety Filter (content moderation + PII masking), ReAct Agent (tool-augmented reasoning), and Multi-Agent System (task-specialized agents with prompt engineering in Phase 10, optional LoRA fine-tuning in Phase 14)** - all running on local infrastructure using Qwen2.5-1.5B-Instruct (current) or Qwen3-4B-Instruct (future upgrade) with llama.cpp for CPU-compatible deployment.
 
 **Key Value**: Replace unavailable cloud-based AI services (ChatGPT, Gemini) with a secure, locally-hosted alternative that maintains data privacy in a closed network environment, while providing government-specific safety controls and task automation.
 
@@ -26,10 +26,16 @@ Build an air-gapped Local LLM web application for small local government employe
 - SQLAlchemy ORM with Alembic migrations
 
 **LLM Infrastructure**:
-- **Model Choice**: Qwen3-4B-Instruct (April 2025 release, ~2.5GB Q4_K_M, Qwen2.5-72B-level performance, 20-40% improvement in math/coding)
+- **Primary Model (All Phases)**: Qwen3-4B-Instruct
+  - GGUF Q4_K_M: ~2.5GB
+  - Performance: SC-001 CPU baseline 8-12s response time (acceptable for government use)
+  - Qwen2.5-72B-level quality, 20-40% improvement in math/coding
+- **Fallback Option**: Qwen2.5-1.5B-Instruct
+  - GGUF Q4_K_M: ~1GB
+  - Use case: Resource-constrained systems (<16GB RAM)
 - **Model Format Strategy**:
-  - **Phase 10 (CPU-optimized baseline)**: GGUF format (Qwen3-4B-Instruct Q4_K_M) via llama.cpp for CPU-optimized local deployment
-  - **Phase 13 (GPU-accelerated, Optional)**: HuggingFace safetensors (Qwen/Qwen3-4B-Instruct) via vLLM for GPU-accelerated multi-user deployment
+  - **Phase 10 (CPU-optimized baseline)**: GGUF format (Qwen2.5-1.5B or Qwen3-4B Q4_K_M) via llama.cpp for CPU-optimized local deployment
+  - **Phase 13 (GPU-accelerated, Optional)**: HuggingFace safetensors via vLLM for GPU-accelerated multi-user deployment
 - **Inference Engine**: Dual backend via factory pattern (BaseLLMService):
   - llama.cpp (CPU-optimized, 1-3 concurrent users, baseline deployment)
   - vLLM (GPU-accelerated, 10-16 concurrent users, optional migration per Phase 13)
@@ -69,41 +75,40 @@ Build an air-gapped Local LLM web application for small local government employe
 
 **ReAct Agent System** (FR-060 series):
 - **Architecture**: Thought → Action → Observation loop (max 5 iterations, FR-062)
-- **Six Government Tools** (FR-061):
-  1. Document Search: Vector similarity search on uploaded docs (ChromaDB/FAISS)
-  2. Calculator: Mathematical expressions with Korean currency support (sympy/numexpr)
-  3. Date/Schedule: Business days, Korean holidays (JSON calendar), fiscal year conversions
-  4. Data Analysis: CSV/Excel loading (pandas, openpyxl), summary statistics
-  5. Document Template: Jinja2-based government document generation (공문서, 보고서, 안내문)
-  6. Legal Reference: Regulation/ordinance article search with citations
+- **Six Government Tools** (FR-061): Document Search, Calculator, Date/Schedule, Data Analysis, Document Template, Legal Reference. See spec.md FR-061 for detailed tool descriptions and parameter specifications
 - **Safety Features** (FR-063): 30-second timeout per tool, identical call detection (3x limit), sandboxed execution
 - **UX Display** (FR-064): Real-time Thought/Action/Observation with emoji prefixes (🤔/⚙️/👁️)
 - **Error Handling** (FR-065): Transparent failure display, agent provides alternative or guidance
 - **Audit Trail** (FR-066): All tool executions logged with sanitized parameters
 
 **Multi-Agent System** (FR-070 series):
-- **Orchestrator**: LLM-based intent classification (default, few-shot prompt with 2-3 examples per agent) OR keyword-based routing (admin-configurable alternative)
-- **Five Specialized Agents** (FR-071, FR-071A):
-  1. Citizen Support Agent: Empathetic citizen inquiry responses (존댓말, completeness check) + LoRA adapter
-  2. Document Writing Agent: Government document generation (formal language, standard sections) + LoRA adapter
-  3. Legal Research Agent: Regulation search + plain-language interpretation + LoRA adapter
-  4. Data Analysis Agent: Statistical analysis with Korean formatting (천 단위 쉼표) + LoRA adapter
-  5. Review Agent: Content review for errors (factual, grammatical, policy compliance) + LoRA adapter
-- **LoRA Adapter Architecture** (FR-071A):
-  - Base model: Qwen3-4B-Instruct (loaded once on startup, ~2.5GB Q4_K_M)
-  - Dynamic adapter loading: Each agent loads task-specific LoRA adapter on first invocation
-  - Adapter caching: Loaded adapters cached in memory to minimize switching overhead
-  - Switching latency: <3 seconds per agent invocation (adapter load + inference)
-  - Implementation: HuggingFace PEFT library for CPU-compatible adapter management
-  - Storage: LoRA weights in `/models/lora_adapters/{agent_name}/` directories (~100-500MB per adapter, optimized for Qwen3-4B)
+- **Orchestrator**: LLM-based intent classification (default, few-shot prompt with **2 examples per agent**, ≤1000 token budget to reserve ≥1000 tokens for user query in 2048 context window per FR-070) OR keyword-based routing (admin-configurable alternative)
+- **Five Specialized Agents** (FR-071):
+  1. Citizen Support Agent: Empathetic citizen inquiry responses (존댓말, completeness check) + **Prompt Engineering (Phase 10)**
+  2. Document Writing Agent: Government document generation (formal language, standard sections) + **Prompt Engineering (Phase 10)**
+  3. Legal Research Agent: Regulation search + plain-language interpretation + **Prompt Engineering (Phase 10)**
+  4. Data Analysis Agent: Statistical analysis with Korean formatting (천 단위 쉼표) + **Prompt Engineering (Phase 10)**
+  5. Review Agent: Content review for errors (factual, grammatical, policy compliance) + **Prompt Engineering (Phase 10)**
+- **LoRA Adapter Architecture** (FR-071A) - **DEFERRED TO PHASE 14 POST-MVP**:
+  - **Phase 10 Implementation**: Prompt engineering only (Zero/Few-shot learning) for all 5 specialized agents
+  - **Rationale**: Avoid learning data collection complexity (500-1000 samples/agent, 4-6 weeks effort) per Constitution Principle IV (Simplicity Over Optimization)
+  - **Phase 14 Activation Criteria**: IF Phase 10 evaluation shows insufficient performance (<80% quality score), THEN proceed with LoRA fine-tuning
+  - **LoRA Implementation (if activated in Phase 14)**:
+    - Base model: Qwen2.5-1.5B-Instruct (current) or Qwen3-4B-Instruct (future)
+    - Dynamic adapter loading: Each agent loads task-specific LoRA adapter on first invocation
+    - Adapter caching: Loaded adapters cached in memory to minimize switching overhead
+    - Switching latency: <3 seconds per agent invocation (adapter load + inference)
+    - Implementation: HuggingFace PEFT library for CPU-compatible adapter management
+    - Storage: LoRA weights in `/models/lora_adapters/{agent_name}/` directories (~100-500MB per adapter)
+    - Learning data collection: 500-1000 samples per agent (total 2500-5000 samples) from government employees or public datasets
 - **Workflow Support** (FR-072-079):
-  - Sequential workflows: Multi-step tasks with agent chaining (adapter switches between agents)
-  - Parallel execution: Independent sub-tasks dispatched simultaneously (max 3 parallel, multiple adapters loaded concurrently)
-  - Complexity limits: Max 5 agents per chain, 5-minute total timeout (includes adapter switching time)
+  - Sequential workflows: Multi-step tasks with agent chaining (Phase 10: prompt context switching; Phase 14: adapter switches if LoRA activated)
+  - Parallel execution: Independent sub-tasks dispatched simultaneously (max 3 parallel)
+  - Complexity limits: Max 5 agents per chain, 5-minute total timeout
 - **Context Sharing** (FR-077): Agents in same workflow share conversation context and previous outputs
-- **Admin Management** (FR-076): Enable/disable agents, configure routing mode, edit keyword patterns, view performance metrics (includes adapter loading times)
+- **Admin Management** (FR-076): Enable/disable agents, configure routing mode, edit keyword patterns, view performance metrics
 
-**LoRA Adapter Evaluation Protocol** (FR-071A Removal Criteria):
+**LoRA Adapter Evaluation Protocol** (FR-071A) - **PHASE 14 ONLY**:
 
 **Goal**: Determine if agent-specific LoRA adapters provide meaningful quality improvement (≥10%) over base Qwen3-4B model.
 
@@ -260,7 +265,7 @@ LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
 - Maintainability: Priority over performance optimization
 - **Advanced Features Resource Limits** (FR-086):
   - Max 10 concurrent ReAct sessions (queue additional)
-  - Max 5 concurrent multi-agent workflows (return 503 if exceeded)
+  - Max 5 concurrent Multi-Agent workflows (return 503 if exceeded)
   - Safety filter timeout: 2 seconds (allow message through with warning if exceeded)
 
 **Scale/Scope**:
@@ -273,7 +278,7 @@ LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-**Constitution Loaded**: `.specify/memory/constitution.md` v1.0.0 (Ratified: 2025-10-22)
+**Constitution Loaded**: `.specify/memory/constitution.md` v1.1.0 (Ratified: 2025-10-22, Last Amended: 2025-11-01)
 
 ### Core Principles Compliance
 
@@ -310,6 +315,18 @@ LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
   - **Automated load testing**: Recommended for production (SC-002: 10 concurrent users), NOT required for MVP
   - **Unit/integration tests**: Optional - constitution prioritizes deployment speed over test coverage for small-scale government use
   - **Rationale**: Small IT team, limited resources, air-gapped deployment challenges favor manual validation over automated test infrastructure
+
+✅ **VI. Windows 개발 환경 호환성** *(Added in Constitution v1.1.0, 2025-11-01)*
+- **Path handling**: Uses `os.path.join()` for cross-platform compatibility, no hardcoded Unix paths (/)
+- **Command compatibility**: Dual script support:
+  - Bash scripts for Linux production deployment (`scripts/bundle-offline-deps.sh`)
+  - PowerShell scripts for Windows development environment (`scripts/bundle-offline-deps.ps1`, `scripts/backup-daily.ps1`, `scripts/register-backup-task.ps1`)
+- **File encoding**: UTF-8 without BOM for all source files (Korean character support)
+- **Line endings**: Git configured to handle CRLF (Windows) ↔ LF (Linux) conversion automatically
+- **Docker**: Development uses Docker Desktop for Windows with WSL2 backend
+- **Environment variables**: `.env` file supports Windows path format (backslashes)
+- **Development tools**: VSCode/PyCharm on Windows, Python 3.11+ Windows installer, Git for Windows
+- **Prohibited**: No Unix-only commands (`chmod`, `ln -s`) in application code, no hardcoded Unix paths (`/usr/local/bin`), no Bash-only build processes
 
 ### Potential Complexity Concerns
 
@@ -587,13 +604,22 @@ def build_context(conversation_id: int, db: Session) -> list[dict]:
     # Convert to LLM format
     context = [{"role": msg.role, "content": msg.content} for msg in messages]
 
-    # Count tokens (approximate: 1 token ≈ 4 chars for Korean)
-    total_tokens = sum(len(msg["content"]) // 4 for msg in context)
+    # Count tokens using actual tokenizer (DO NOT use character approximation for Korean)
+    # Load tokenizer once and cache for performance
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct")  # or Qwen3-4B when available
+
+    def count_tokens(messages):
+        # Concatenate all message content and count tokens
+        combined_text = " ".join(msg["content"] for msg in messages)
+        return len(tokenizer.encode(combined_text))
+
+    total_tokens = count_tokens(context)
 
     # Trim if exceeds 2048 tokens
     while total_tokens > 2048 and len(context) > 2:
-        removed = context.pop(0)  # FIFO
-        total_tokens -= len(removed["content"]) // 4
+        context.pop(0)  # FIFO - remove oldest message
+        total_tokens = count_tokens(context)
 
     return context
 ```
@@ -927,7 +953,7 @@ function TagManagement() {
 **Purpose**: Validate Multi-Agent functionality with minimal setup
 
 **Technology Stack**:
-- **Library**: llama-cpp-python
+- **Library**: llama.cpp-python
 - **Model Format**: GGUF (Q4_K_M quantization)
 - **Runtime**: CPU-optimized (8-16 threads)
 - **LoRA Support**: GGUF LoRA adapters (infrastructure testing only)
@@ -1085,7 +1111,7 @@ class LlamaCppLLMService(BaseLLMService):
 
         # Load new LoRA adapter
         try:
-            # Note: llama-cpp-python LoRA support may vary by version
+            # Note: llama.cpp-python LoRA support may vary by version
             # Check documentation for exact API
             # self.model.load_lora(lora_path)
             self.current_lora = agent_name
@@ -1203,7 +1229,7 @@ class MultiAgentOrchestrator:
         self.workflow = self._build_workflow()
 
     def _build_workflow(self) -> StateGraph:
-        """Build LangGraph state machine for multi-agent workflows"""
+        """Build LangGraph state machine for Multi-Agent workflows"""
         workflow = StateGraph(AgentState)
 
         # Add nodes
@@ -1458,8 +1484,9 @@ class VLLMLLMService(BaseLLMService):
         system_prompt = self.get_agent_prompt(agent_name)
         full_prompt = f"{system_prompt}\n\n사용자: {prompt}\n\n답변:"
 
-        # TODO: Add LoRA support after validation
-        # lora_request = LoRARequest(...)
+        # LoRA support available in Phase 14 (Post-MVP) per FR-071A
+        # Activate only after prompt engineering validation in Phase 10
+        # Reference: .specify/memory/constitution.md Principle IV (Simplicity Over Optimization)
 
         return await self.generate(full_prompt, max_tokens)
 
@@ -1586,10 +1613,10 @@ huggingface-cli download \
   qwen2.5-1.5b-instruct.Q4_K_M.gguf \
   --local-dir ./models/
 
-# Install llama-cpp-python offline
-pip download llama-cpp-python -d ./offline_packages/
+# Install llama.cpp-python offline
+pip download llama.cpp-python -d ./offline_packages/
 # Transfer to air-gapped server
-pip install --no-index --find-links=./offline_packages/ llama-cpp-python
+pip install --no-index --find-links=./offline_packages/ llama.cpp-python
 ```
 
 **Later (vLLM)**:

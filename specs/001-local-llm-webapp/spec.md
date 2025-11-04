@@ -5,7 +5,7 @@
 **Status**: Draft
 **Input**: User description: "소규모 지방자치단체 공무원 대상, 폐쇄망 환경에서 이용 가능한 Local LLM 웹 애플리케이션 서비스를 구축한다. 이는 ChatGPT, Gemini와 같은 외부 에이전트의 사용이 제한되는 환경에서 업무 지원용 LLM 기반 도구를 제공하기 위함이다."
 
-**Overview**: Air-gapped Local LLM web application for small local government employees using Qwen3-4B-Instruct (April 2025 release, ~2.5GB Q4_K_M quantization, Qwen2.5-72B-level performance) to provide AI assistance for administrative tasks without internet connectivity.
+**Overview**: Air-gapped Local LLM web application for small local government employees using **Qwen3-4B-Instruct** (~2.5GB Q4_K_M quantization, Qwen2.5-72B-level performance) to provide AI assistance for administrative tasks without internet connectivity. Optional fallback to Qwen2.5-1.5B-Instruct (~1GB) for resource-constrained environments.
 
 ## Clarifications
 
@@ -30,6 +30,15 @@
 - Q: Multi-Agent Orchestrator 기본 라우팅 모드 - FR-076은 "keyword-based OR LLM-based (admin-configurable)"이라고만 명시. 시스템 기본 모드는? → A: LLM-based 기본 - 더 정확한 의도 파악, 새로운 질문 패턴에 유연 대응, 추가 LLM 호출 비용 허용. Keyword-based는 fallback 또는 관리자가 성능 최적화 시 전환 가능 (FR-070, FR-076)
 - Q: LLM-based Orchestrator 프롬프트 전략 - LLM이 5개 에이전트 중 선택하도록 하는 구체적 방법은? → A: Few-shot 예시 기반 - 각 에이전트별 2-3개 대표 질문 예시를 프롬프트에 포함, 간결한 에이전트 설명과 함께 제공. 토큰 효율적이면서 높은 정확도 유지 (FR-070, FR-076, Dependencies)
 
+### Session 2025-11-02
+
+- Q: LoRA 파인튜닝 학습 데이터 수집 전략 - Multi-Agent 시스템(Phase 10)에서 5개 에이전트별 LoRA 어댑터 학습에 필요한 데이터를 어떻게 수집해야 하나요? → A: Phase 14 (Post-MVP)로 연기 - Phase 10에서는 프롬프트 엔지니어링만 사용 (Zero/Few-shot 학습), LoRA 파인튜닝 학습 데이터 수집 불필요. Constitution Principle IV (Simplicity Over Optimization) 준수, FR-071A 측정 방법론에 따라 프롬프트 기반 성능 먼저 검증 후 필요시 Phase 14에서 파인튜닝 진행 (FR-071A)
+
+### Session 2025-11-04
+
+- Q: 한국어 품질 테스트 합격 기준 반올림 - SC-004에서 "90% 이상의 쿼리"가 50개 중 45개(90.0%) vs 44개(88%)인지 불명확. 정확한 합격 개수는? → A: 정확한 개수: 50개 중 45개 이상 합격 (90.0%) - 테스트 재현성과 명확성을 위해 정확한 숫자 기준 사용 (SC-004)
+- Q: 문서 생성 모드 키워드 매칭 전략 - FR-017에서 "문서 작성", "초안 생성" 등 키워드 감지 방식이 정확 매칭인지, 부분 매칭 허용인지, LLM 의도 파악인지 불명확. 어떤 전략을 사용하는가? → A: 정확 매칭 (exact substring matching) - 사용자 쿼리에 정의된 키워드 전체가 포함될 경우에만 문서 생성 모드 활성화. 예: "문서 작성해줘" (O), "문서 검색" (X), "초안 생성 부탁" (O), "초안" (X). 오탐지(false positive) 방지 및 예측 가능한 동작 보장 (FR-017, T225A)
+
 ## User Scenarios & Testing *(mandatory)*
 
 **Testing Approach**: Manual acceptance testing per user story acceptance scenarios is MANDATORY per constitution. Automated unit/integration tests are NOT required for MVP but may be added later for regression testing.
@@ -51,7 +60,7 @@ Government employees need to ask questions and receive AI-generated responses fo
 
 ---
 
-### User Story 2 - Conversation History Management (Priority: P2)
+### User Story 2 - Conversation History Management (Priority: P1)
 
 Employees need to save, retrieve, and organize their previous conversations with the LLM to reference past work, continue interrupted tasks, or share helpful responses with colleagues.
 
@@ -178,7 +187,7 @@ Government employees need complex tasks (like responding to citizen inquiries re
 5. **Given** an agent generates a document or response, **When** the workflow includes a review step, **Then** the Review Agent automatically checks for errors (factual, grammatical, policy compliance), highlights potential issues, and suggests improvements
 6. **Given** an employee submits a complex multi-step request (e.g., "Research policy X, draft amendment proposal, and review"), **When** the orchestrator analyzes the task, **Then** multiple agents work sequentially (Legal Research → Document Writing → Review) with each agent's output passed as input to the next, and the user sees progress indicators for each stage
 7. **Given** an administrator manages the system, **When** they access the agent management interface, **Then** they can enable/disable specific agents, adjust orchestrator routing rules (keyword-based or LLM-based classification), and view agent performance metrics (task counts, average response times, error rates)
-8. **Given** an employee views a multi-agent workflow result, **When** they review the response, **Then** the system clearly labels which agent contributed each section (e.g., "법규 검색 에이전트: [content]", "문서 작성 에이전트: [content]") for transparency
+8. **Given** an employee views a Multi-Agent workflow result, **When** they review the response, **Then** the system clearly labels which agent contributed each section (e.g., "법규 검색 에이전트: [content]", "문서 작성 에이전트: [content]") for transparency
 
 ---
 
@@ -301,6 +310,18 @@ Government employees need complex tasks (like responding to citizen inquiries re
 
 ### Functional Requirements
 
+**Numbering Convention**: FR numbers are organized by feature area with intentional gaps for future expansion:
+- FR-001~FR-043: Core functionality (basic chat, document upload, auth, admin)
+- FR-044~FR-049: *Reserved for future core features*
+- FR-050~FR-058: Safety Filter requirements
+- FR-059: *Reserved for future safety features*
+- FR-060~FR-069: ReAct Agent requirements
+- FR-070~FR-080: Multi-Agent System requirements
+- FR-081~FR-088: Common Air-Gapped requirements
+- FR-089~FR-109: Admin Metrics History (Feature 002)
+
+#### Core Functional Requirements
+
 - **FR-001**: System MUST operate entirely within a closed network environment without requiring internet connectivity
 - **FR-002**: System MUST provide a web-based interface accessible through standard web browsers on the internal network
 - **FR-003**: Users MUST be able to submit text queries and receive LLM-generated responses
@@ -313,11 +334,11 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FR-010**: System MUST support multiple concurrent users with individual authentication
 - **FR-011**: System MUST ensure each user can only access their own conversation history and uploaded documents
 - **FR-012**: System MUST provide session management with automatic timeout after 30 minutes (1,800 seconds) of inactivity measured from last user request (click, input, scroll), display warning modal 3 minutes before timeout asking "곧 로그아웃됩니다. 계속하시겠습니까?", redirect to login page on timeout, and save draft messages to local storage for recovery upon re-login
-- **FR-013**: System MUST display error messages in user-friendly language when operations fail
+- **FR-013**: System MUST display error messages in clear Korean (명확한 한국어) when operations fail, following patterns defined in FR-037: "[problem description] + [user action]" format, polite tone (존댓말), minimal technical terms, no blame language
 - **FR-014**: System MUST support Korean language for both queries and responses
 - **FR-015**: System MUST validate uploaded files for type and size before processing
 - **FR-016**: System MUST allow users to edit conversation titles and automatically assign tags from administrator-defined tag list when the first message is sent (system analyzes first message content using semantic similarity to auto-assign relevant tags; if user has manually set a custom conversation title before sending first message, title is also included in analysis; administrators manage organization-wide tag list including creation, editing, and deletion of tags with optional keywords; users can manually add/remove auto-assigned tags at any time; tags are not automatically updated after initial assignment)
-- **FR-017**: System MUST limit response length with two modes: default mode (4,000 character maximum), document generation mode (10,000 character maximum activated by keyword detection in user queries: "문서 작성", "초안 생성", "공문", "보고서 작성", or similar document creation terms), truncating at 3,900/9,900 characters respectively with warning messages "응답이 길이 제한으로 잘렸습니다. 더 구체적인 질문으로 나누어 주세요." or "문서가 너무 깁니다. 더 짧게 요청해주세요."
+- **FR-017**: System MUST limit response length with two modes: default mode (4,000 character maximum), document generation mode (10,000 character maximum activated by exact substring matching of keywords in user queries: "문서 작성", "초안 생성", "공문", "보고서 작성" - full keyword must be present to activate mode, partial matches like "문서" or "초안" alone do not trigger document mode), truncating at 3,900/9,900 characters respectively with warning messages "응답이 길이 제한으로 잘렸습니다. 더 구체적인 질문으로 나누어 주세요." or "문서가 너무 깁니다. 더 짧게 요청해주세요."
 - **FR-018**: System MUST provide an administrator panel with user management (account creation/deletion, password resets), usage statistics, and system health monitoring capabilities
 - **FR-019**: System MUST retain conversations and uploaded documents until users manually delete them OR administrators remove them due to storage constraints (with user notification)
 - **FR-020**: System MUST display storage usage warnings to users when their personal storage exceeds 80% of per-user quota (10GB), and automatically archive or delete oldest conversations/documents (inactive for 30+ days) when 10GB limit is reached, displaying notification to user with list of cleaned items and total space recovered
@@ -342,7 +363,38 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FR-039**: System MUST display zero-state UI: for new users show "아직 대화가 없습니다" with highlighted "새 대화 시작하기" button and optional usage examples; for empty document uploads show "업로드된 문서가 없습니다" with drag-drop area and supported formats; for empty search results show "검색 결과가 없습니다" with keyword suggestion
 - **FR-040**: System MUST support browsers Chrome 90+, Edge 90+, Firefox 88+ (not Internet Explorer), require minimum 1280x720 resolution and JavaScript enabled
 - **FR-041**: System MUST limit conversations to 1,000 messages per conversation, display warning "대화가 너무 깁니다. 새 대화를 시작해주세요." when limit reached while allowing continued use with performance warning, and exempt administrators from limit for debugging
-- **FR-042**: System MUST implement automated backup strategy: daily incremental backups of database and uploaded documents at 2 AM, weekly full backups every Sunday, minimum 30-day backup retention, backups stored on separate storage volume (not system disk), and provide documented restore procedures in docs/admin/backup-restore-guide.md accessible to IT staff via link in admin panel
+- **FR-042**: System MUST implement automated backup strategy with the following specifications:
+
+  **Backup Schedule**:
+  - Daily incremental: 2 AM (pg_dump + document rsync/robocopy)
+  - Weekly full: Sunday 2 AM (pg_dump --format=custom + full document snapshot)
+
+  **Retention Policy**:
+  - **Daily backups**: Keep all from last 30 calendar days, delete on day 31+
+  - **Weekly backups**: Keep minimum 4 most recent, regardless of age (永久 보관 아님, 5번째부터 삭제)
+  - **Combined guarantee**: Always have at least 30 days of daily recovery points OR 4 weekly recovery points (whichever provides longer coverage)
+
+  **Edge Case Handling**:
+  1. **Day 30 backup fails**:
+     - Retention: Keep day 29 backup as newest
+     - Cleanup: Skip deletion of day 1 backup (retain 30 days from last successful)
+     - Alert: Log warning to admin dashboard + email notification (if configured)
+     - Resolution: Next successful backup resets 30-day window
+
+  2. **Multiple consecutive failures** (>3 days):
+     - Retention: Freeze deletion (no cleanup until successful backup)
+     - Alert: Critical alert to admin dashboard (red indicator)
+     - Manual intervention: Administrator must investigate disk space/permissions
+
+  3. **Disk space insufficient after cleanup**:
+     - Action: Halt new backups, display error "백업 공간 부족. 수동 정리 필요."
+     - Alert: Critical notification to admin panel
+     - Recovery: Administrator must free space or expand backup volume
+
+  **Storage**:
+  - Location: Separate storage volume (not system disk)
+  - Path: /backup (Linux) or D:\backups (Windows)
+  - Access: Admin panel link to docs/admin/backup-restore-guide.md
 - **FR-043**: System MUST provide tag management interface for administrators to create, edit, and delete organization-wide tags (tag attributes: name, optional keywords for matching, color/icon for visual distinction, creation date), automatically assign tags to conversations when the first message is sent by analyzing first message content and matching to tag names/keywords using semantic similarity (embedding-based with sentence-transformers; if user has manually set a custom conversation title before sending first message, title is also included in analysis), prevent deletion of tags currently in use by displaying usage count and requiring confirmation, allow users to filter conversations by single or multiple tags, and enable users to manually adjust auto-assigned tags at any time (tags not automatically updated after initial assignment)
 
 #### Safety Filter Requirements (FR-050 series)
@@ -380,39 +432,80 @@ Government employees need complex tasks (like responding to citizen inquiries re
 
 #### Multi-Agent System Requirements (FR-070 series)
 
-- **FR-070**: System MUST implement orchestrator-based multi-agent architecture: orchestrator receives user query, analyzes intent using LLM-based classification (default mode: few-shot prompt with 2-3 example queries per agent + brief agent description for accuracy and flexibility) OR keyword matching (admin-configurable alternative for performance optimization), routes to appropriate specialized agent, returns agent output to user
-- **FR-071**: System MUST provide five specialized agents, each using task-specific LoRA (Low-Rank Adaptation) adapters fine-tuned for optimal performance in their domain:
+- **FR-070**: System MUST implement orchestrator-based Multi-Agent architecture: orchestrator receives user query, analyzes intent using LLM-based classification (default mode: few-shot prompt with **2 example queries per agent** + brief agent description for accuracy and flexibility, **total prompt budget ≤1000 tokens to reserve ≥1000 tokens for user query in 2048 context window**) OR keyword matching (admin-configurable alternative for performance optimization), routes to appropriate specialized agent, returns agent output to user.
+
+  **Token Budget Breakdown**:
+  - Orchestrator system prompt: ~200 tokens
+  - 5 agents × 2 examples × ~60 tokens: ~600 tokens
+  - Agent descriptions: ~200 tokens
+  - **Total reserved**: ~1000 tokens
+  - **Available for user query**: 1048 tokens (2048 - 1000)
+
+  **User Query Overflow Handling**:
+  - **If user query ≤1000 tokens**: Process normally
+  - **If user query >1000 tokens AND ≤1500 tokens**:
+    - Truncate query at 1000 tokens (character boundary, not mid-word)
+    - Display warning: "질문이 너무 깁니다. 마지막 부분이 잘렸습니다. 더 짧게 나누어 질문해주세요."
+    - Continue with orchestrator routing
+  - **If user query >1500 tokens**:
+    - Reject query with error 400 Bad Request
+    - Display error: "질문이 너무 깁니다 (최대 약 3000자). 질문을 2-3개로 나누어 주세요."
+    - Return to input state without processing
+
+  **Token Counting**: Use transformers.AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct") for accurate Korean token counting (not character approximation)
+- **FR-071**: System MUST provide five specialized agents, initially using task-specific prompt engineering (Phase 10) with optional LoRA (Low-Rank Adaptation) adapters (Phase 14, Post-MVP) if evaluation shows significant improvement:
   1. Citizen Support Agent (민원 지원 에이전트): analyzes citizen inquiries, generates empathetic draft responses, ensures polite tone (존댓말), checks completeness (answers all parts of inquiry)
   2. Document Writing Agent (문서 작성 에이전트): generates government documents (보고서, 안내문, 정책 문서) following standard templates, uses formal language, includes proper sections (제목, 배경, 내용, 결론)
   3. Legal Research Agent (법규 검색 에이전트): searches uploaded regulations/ordinances, cites relevant articles with source references, provides plain-language interpretation (쉬운 설명) alongside legal text
   4. Data Analysis Agent (데이터 분석 에이전트): analyzes uploaded CSV/Excel data, provides summary statistics with Korean formatting (천 단위 쉼표), identifies trends, suggests visualization types suitable for government reports
   5. Review Agent (검토 에이전트): reviews drafted content for errors (factual, grammatical, policy compliance), highlights potential issues with explanations, suggests specific improvements with examples
-- **FR-071A** *(Separated from FR-071 as optional performance optimization - LoRA adapters may be removed if fine-tuning shows <10% improvement measured by 3-person blind quality evaluation (0-10 scale) on 50 test queries per agent, per plan.md LoRA Transition Decision Tree)*: System MUST implement dynamic LoRA adapter loading for multi-agent system: base model (Qwen3-4B-Instruct) loaded once on startup, each agent loads its specific LoRA adapter on first invocation with adapter caching to minimize overhead, adapter switching latency must be <3 seconds per agent invocation, LLM service uses HuggingFace PEFT library for adapter management, all LoRA adapter weights bundled locally for air-gapped deployment. **Note**: This requirement may be removed if actual fine-tuning shows <10% improvement per plan.md LoRA Transition Decision Tree
-- **FR-072**: System MUST support sequential multi-agent workflows: orchestrator detects multi-step requests using keyword patterns (e.g., "검색하고... 작성하고... 검토"), creates workflow chain with agent sequence, passes each agent's output as input to next agent, displays progress indicator showing current agent and workflow stage to user
+- **FR-071A** *(DEFERRED TO PHASE 14 POST-MVP - Separated from FR-071 as optional performance optimization)*: **Phase 10 Implementation**: Use prompt engineering only (Zero/Few-shot learning) for all 5 specialized agents without LoRA adapters, avoiding learning data collection complexity per Constitution Principle IV (Simplicity Over Optimization). **Phase 14 (Post-MVP) Activation Criteria**: IF Phase 10 evaluation shows prompt-based agents have insufficient performance (e.g., <80% quality score, excessive latency, poor task-specific accuracy), THEN proceed with LoRA fine-tuning. **LoRA Implementation (if activated)**: System implements dynamic LoRA adapter loading for Multi-Agent system: base model (**PRIMARY**: Qwen3-4B-Instruct, **FALLBACK**: Qwen2.5-1.5B-Instruct for resource-constrained systems) loaded once on startup, each agent loads its specific LoRA adapter on first invocation with adapter caching to minimize overhead, adapter switching latency must be <3 seconds per agent invocation, LLM service uses HuggingFace PEFT library for adapter management, all LoRA adapter weights bundled locally for air-gapped deployment. **Improvement Measurement Methodology**: Compare LoRA-adapted agent vs. base model (prompt-only) on 50 test queries per agent using 3-person blind evaluation (government employees preferred). Calculate composite score = weighted average (Response Quality 50% [correctness, completeness, relevance], Response Time 30% [latency improvement], Task-Specific Accuracy 20% [domain metrics: citation accuracy for Legal, tone appropriateness for Citizen Support, etc.]). **Threshold**: If composite improvement <10% OR quality improvement <5% (even with time gains), remove LoRA infrastructure. **Learning Data Collection (Phase 14 only)**: Requires collection of 500-1000 samples per agent (total 2500-5000 samples) from government employees or public datasets, estimated 4-6 weeks effort. See plan.md LoRA Transition Decision Tree for detailed criteria
+- **FR-072**: System MUST support sequential Multi-Agent workflows: orchestrator detects multi-step requests using keyword patterns (e.g., "검색하고... 작성하고... 검토"), creates workflow chain with agent sequence, passes each agent's output as input to next agent, displays progress indicator showing current agent and workflow stage to user
 - **FR-073**: System MUST handle agent failures in workflows: if agent fails, subsequent agents receive failure notification, failed agent displays error "이전 단계가 실패하여 작업을 완료할 수 없습니다." with explanation of what was attempted, user can retry entire workflow or individual failed step
-- **FR-074**: System MUST display multi-agent outputs with clear attribution: each agent's contribution labeled with agent name (e.g., "📋 문서 작성 에이전트:", "⚖️ 법규 검색 에이전트:"), visual separators between agent outputs (horizontal lines), final combined result shown at end for multi-agent workflows
+- **FR-074**: System MUST display Multi-Agent outputs with clear attribution: each agent's contribution labeled with agent name (e.g., "📋 문서 작성 에이전트:", "⚖️ 법규 검색 에이전트:"), visual separators between agent outputs (horizontal lines), final combined result shown at end for Multi-Agent workflows
 - **FR-075**: System MUST track agent workflow execution: log each agent invocation with timestamp, user_id, agent_name, input_summary (first 200 chars), output_summary (first 200 chars), execution_time_ms, success/failure, for performance monitoring and debugging
 - **FR-076**: System MUST provide administrator interface for agent management: enable/disable individual agents (disabled agents not available for routing), configure orchestrator routing mode (default: LLM-based classification, alternative: keyword-based rules for performance optimization), edit keyword patterns for each agent's routing rules (used when keyword mode selected), view agent performance metrics (task counts, avg response time, error rate)
 - **FR-077**: System MUST implement agent context sharing: agents in same workflow share conversation context (previous messages, uploaded documents), each agent can reference previous agent outputs in the workflow, context limited to current workflow execution (not persisted across different user requests)
 - **FR-078**: System MUST support parallel agent execution for independent tasks: if orchestrator detects independent sub-tasks (e.g., "Analyze data AND search regulations"), dispatch to multiple agents simultaneously, wait for all agents to complete, combine outputs in final response with clear attribution
 - **FR-079**: System MUST limit agent workflow complexity: maximum 5 agents per workflow chain, maximum 3 parallel agents per request, total workflow execution timeout 5 minutes, display "작업 시간이 초과되었습니다." if timeout reached with partial results shown
-- **FR-080**: System MUST load all agent implementations and routing rules locally: agent prompt templates stored in `/prompts` directory as text files, agent-specific LoRA adapter weights stored in `/models/lora_adapters/{agent_name}` directories (e.g., `/models/lora_adapters/citizen_support/`, `/models/lora_adapters/document_writing/`), routing keyword patterns stored in database or config file, no external API dependencies for agent functionality
+- **FR-080**: System MUST load all agent implementations and routing rules locally: agent prompt templates stored in `/prompts` directory as text files (Phase 10 mandatory), agent-specific LoRA adapter weights stored in `/models/lora_adapters/{agent_name}` directories (Phase 14 only if activated per FR-071A, e.g., `/models/lora_adapters/citizen_support/`, `/models/lora_adapters/document_writing/`), routing keyword patterns stored in database or config file, no external API dependencies for agent functionality
 
 #### Common Air-Gapped Requirements (FR-081 series)
 
-- **FR-081**: System MUST bundle all AI models locally: base LLM model (Qwen2.5-1.5B-Instruct or Meta-Llama-3-8B), agent-specific LoRA adapter weights (~100-500MB per adapter, 5 adapters total for multi-agent system), safety filter model weights (unitary/toxic-bert, ~400MB), sentence-transformers embedding model for tag matching and PII detection, with all models loaded from local disk on startup without internet access
-- **FR-082**: System MUST support CPU-only execution: all safety filter models must support CPU inference with acceptable latency (<2 seconds per check), ReAct tools must not require GPU, multi-agent system uses base LLM with dynamically loaded LoRA adapters (CPU-compatible via PEFT library), with optional GPU acceleration if available for faster inference and adapter switching
+- **FR-081**: System MUST bundle all AI models locally: base LLM model (**PRIMARY**: Qwen3-4B-Instruct ~2.5GB Q4_K_M, **FALLBACK**: Qwen2.5-1.5B-Instruct ~1GB Q4_K_M for resource-constrained systems), agent-specific LoRA adapter weights (Phase 14 only if activated per FR-071A: ~100-500MB per adapter, 5 adapters total for Multi-Agent system), safety filter model weights (unitary/toxic-bert, ~400MB), sentence-transformers embedding model for tag matching and PII detection, with all models loaded from local disk on startup without internet access
+- **FR-082**: System MUST support CPU-only execution: all safety filter models must support CPU inference with acceptable latency (<2 seconds per check), ReAct tools must not require GPU, Multi-Agent system uses base LLM with prompt engineering (Phase 10) or dynamically loaded LoRA adapters (Phase 14 only if activated per FR-071A, CPU-compatible via PEFT library), with optional GPU acceleration if available for faster inference
 - **FR-083**: System MUST log all agent/tool/filter actions for audit: centralized audit log table with timestamp, user_id, action_type (filter/tool/agent), action_details (JSON), result (success/blocked/error), execution_time_ms, administrators can query logs by date range, user, or action type
 - **FR-084**: System MUST allow administrators to customize all rule-based systems: safety filter keywords (add/edit/delete per category), ReAct tool availability (enable/disable), agent routing rules (keyword patterns), document templates (upload new .jinja2 files), with changes taking effect immediately or after restart (documented per feature)
-- **FR-085**: System MUST provide admin dashboard section for advanced features: safety filter statistics (filter counts by category/day), ReAct tool usage statistics (per tool usage, avg time, error rate), multi-agent performance metrics (per agent task count, response time, success rate), combined into existing admin panel as new tabs
-- **FR-086**: System MUST enforce resource limits for advanced features: max 10 concurrent ReAct sessions (queue additional requests), max 5 concurrent multi-agent workflows (return 503 if exceeded), safety filter timeout 2 seconds (allow message through with warning if timeout), to prevent resource exhaustion
-- **FR-087**: System MUST handle graceful degradation: if safety filter model fails to load, fallback to rule-based only with warning to admin, if ReAct tools unavailable, fallback to standard LLM conversation, if multi-agent orchestrator fails, route all requests to general LLM, system remains functional even if advanced features fail
+- **FR-085**: System MUST provide admin dashboard section for advanced features: safety filter statistics (filter counts by category/day), ReAct tool usage statistics (per tool usage, avg time, error rate), Multi-Agent performance metrics (per agent task count, response time, success rate), combined into existing admin panel as new tabs
+- **FR-086**: System MUST enforce resource limits for advanced features: max 10 concurrent ReAct sessions (queue additional requests), max 5 concurrent Multi-Agent workflows (return 503 if exceeded), safety filter timeout 2 seconds (allow message through with warning if timeout), to prevent resource exhaustion
+- **FR-087**: System MUST handle graceful degradation: if safety filter model fails to load, fallback to rule-based only with warning to admin, if ReAct tools unavailable, fallback to standard LLM conversation, if Multi-Agent orchestrator fails, route all requests to general LLM, system remains functional even if advanced features fail
 - **FR-088**: System MUST document all customization options: administrator guide includes sections for configuring safety filter rules, adding custom document templates, modifying agent routing keywords, adjusting resource limits, stored in `/docs` directory or accessible via admin panel help section
+- **FR-089**: System MUST automatically collect and store dashboard metrics at two levels: hourly snapshots for detailed analysis and daily aggregates for long-term trends (Feature 002: Admin Metrics History)
+- **FR-090**: System MUST store at minimum the following metrics: active user count, total storage usage, active session count, conversation count, document count, tag count
+- **FR-091**: System MUST retain hourly metrics data for at least 30 days and daily aggregate data for at least 90 days
+- **FR-092**: Administrators MUST be able to switch between hourly and daily views when examining metrics
+- **FR-093**: Administrators MUST be able to view historical metrics as line graphs on the dashboard
+- **FR-094**: Administrators MUST be able to select different time ranges for viewing (7 days, 30 days, 90 days)
+- **FR-095**: System MUST display current (real-time) metrics alongside historical trends on the same dashboard
+- **FR-096**: Graphs MUST show data points with tooltips displaying exact values and timestamps when hovered
+- **FR-097**: System MUST handle missing data points by displaying gaps as dotted lines in graphs, with tooltip "이 기간 동안 데이터 수집 실패" when hovered
+- **FR-098**: System MUST preserve metric history even when the underlying data changes (e.g., if users are deleted, historical user counts remain accurate)
+- **FR-099**: System MUST provide time period comparison functionality allowing admins to overlay two date ranges
+- **FR-100**: System MUST calculate and display percentage changes between compared periods
+- **FR-101**: System MUST allow exporting metric data to CSV format with a maximum file size of 10MB, automatically downsampling data using LTTB (Largest Triangle Three Buckets) algorithm if necessary to maintain visual fidelity
+- **FR-102**: System MUST allow exporting dashboard snapshots to PDF format with a maximum file size of 10MB, automatically downsampling embedded graphs using LTTB algorithm if necessary
+- **FR-103**: Metric collection MUST not impact system performance (non-blocking, background task)
+- **FR-104**: System MUST automatically clean up metrics older than the retention period to manage storage
+- **FR-105**: All metric timestamps MUST be stored in UTC and displayed in admin's local timezone
+- **FR-106**: Dashboard MUST show a "Data Collection Status" indicator with the following criteria: **녹색 (정상)** - Last collection completed within 5 minutes AND fewer than 3 failures in the past 24 hours; **노란색 (주의)** - 3-10 collection failures in the past 24 hours OR last collection 5-60 minutes ago; **빨간색 (오류)** - More than 10 failures in the past 24 hours OR no successful collection for over 1 hour; Indicator shows: status color, last successful collection timestamp, recent failure count
+- **FR-107**: System MUST automatically retry failed metric collection in the next collection cycle, with a maximum of 3 retry attempts for any missed data point
+- **FR-108**: When no historical data exists (new installation), system MUST display empty graphs with message "데이터 수집 중입니다. 첫 데이터는 [next collection time]에 표시됩니다"
+- **FR-109**: System MUST automatically downsample data points on the client side to a maximum of 1000 points per graph using LTTB (Largest Triangle Three Buckets) algorithm to ensure responsive rendering while preserving visual characteristics of time-series data
 
 ### Key Entities
 
 - **User**: Government employee who uses the system; has unique credentials, can create conversations, upload documents
-- **Administrator**: IT staff member with elevated privileges; can manage user accounts, view system statistics, monitor system health, manage organization-wide tags, configure safety filters, manage ReAct tools and multi-agent settings
+- **Administrator**: IT staff member with elevated privileges; can manage user accounts, view system statistics, monitor system health, manage organization-wide tags, configure safety filters, manage ReAct tools and Multi-Agent settings
 - **Conversation**: A series of messages between a user and the LLM; has a title, creation timestamp, last modified timestamp, belongs to a single user, can be associated with multiple tags, can contain uploaded documents
 - **Message**: Individual query or response within a conversation; contains text content, timestamp, role (user or assistant), limited to 4,000 characters, passes through safety filter before storage/delivery
 - **Document**: File uploaded by a user for analysis; has filename, file type, upload timestamp, processed content (extracted text + vector embeddings), belongs to a specific conversation (not shared across conversations), automatically deleted when parent conversation is deleted
@@ -422,21 +515,48 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FilterEvent**: Log record of safety filter action; has timestamp, user_id, category, filter_type (input/output), action_taken (blocked/masked), confidence_score, does not store actual message content for privacy
 - **Tool**: ReAct agent tool implementation; has name, description, enabled/disabled status, execution timeout, usage statistics (call count, avg execution time, error rate)
 - **ToolExecution**: Audit log of ReAct tool invocation; has timestamp, user_id, conversation_id, tool_name, input_parameters (sanitized), output_result (truncated), execution_time_ms, success/failure status
-- **Agent**: Specialized AI agent for multi-agent system; has name (e.g., CitizenSupportAgent), description, system prompt template, enabled/disabled status, routing keywords, performance metrics
-- **AgentWorkflow**: Record of multi-agent workflow execution; has workflow_id, user_id, conversation_id, orchestrator_decision (which agents/sequence), start_time, end_time, total_execution_time, success/failure status
+- **Agent**: Specialized AI agent for Multi-Agent system; has name (e.g., CitizenSupportAgent), description, system prompt template, enabled/disabled status, routing keywords, performance metrics
+- **AgentWorkflow**: Record of Multi-Agent workflow execution; has workflow_id, user_id, conversation_id, orchestrator_decision (which agents/sequence), start_time, end_time, total_execution_time, success/failure status
 - **AgentWorkflowStep**: Individual agent execution within a workflow; has workflow_id, agent_name, step_number, input_summary, output_summary, execution_time_ms, status, links to parent AgentWorkflow
 - **AuditLog**: Centralized audit trail for all advanced features; has timestamp, user_id, action_type (filter/tool/agent), action_details (JSON), result, execution_time_ms, queryable by administrators
+- **MetricSnapshot**: Represents a point-in-time capture of system metrics (Feature 002); contains timestamp, metric type (active_users/storage_bytes/conversations/documents/tags/sessions), value, granularity (hourly/daily), retry_count; used for time-series graphing and trend analysis
+- **MetricCollectionFailure**: Records failed metric collection attempts; contains timestamp, metric_type, error_message, retry_count; helps administrators monitor data collection health and troubleshoot issues
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
 - **SC-001**: Users can submit a query and receive a relevant response within acceptable time for queries under 500 characters:
-  - **GPU-accelerated environment** (vLLM): Target 3 seconds, maximum acceptable 8 seconds
-  - **CPU-only environment** (llama.cpp with Qwen3-4B GGUF Q4_K_M): Target 8 seconds, maximum acceptable 12 seconds
-  - **Rationale**: CPU-only deployment prioritizes availability over performance (Assumption #2, Constitution Principle IV: Simplicity Over Optimization). Qwen3-4B provides superior quality (Qwen2.5-72B-level) with acceptable latency on modern CPU hardware
+
+  **CPU-only baseline** (llama.cpp + Qwen3-4B-Instruct GGUF Q4_K_M):
+  - **Test hardware specification**:
+    - Minimum: Intel Xeon E5-2680 v4 (14 cores @ 2.4GHz) or AMD EPYC 7302 (16 cores @ 3.0GHz)
+    - Recommended: Intel Xeon Gold 6248R (24 cores @ 3.0GHz) or AMD EPYC 7543 (32 cores @ 2.8GHz)
+    - RAM: 32GB minimum, 64GB recommended
+    - CPU features: AVX2, FMA, F16C support (verified via `lscpu` on Linux or `Get-WmiObject Win32_Processor` on Windows)
+  - **Performance targets**:
+    - Target: 8 seconds P50 (median)
+    - Maximum acceptable: 12 seconds P95 (95th percentile)
+  - **Validation**: T037A task must document actual hardware used + measured performance
+
+  **GPU-accelerated environment** (vLLM + Qwen3-4B-Instruct safetensors):
+  - **Test hardware**: NVIDIA RTX 3090 (24GB) or A100 (40GB)
+  - Target: 3 seconds P50, maximum 8 seconds P95
+  - **Note**: Phase 13 optional upgrade
+
+  **Model variants**:
+  - Primary: Qwen3-4B-Instruct (~2.5GB Q4_K_M)
+  - Fallback: Qwen2.5-1.5B-Instruct (~1GB Q4_K_M) for resource-constrained systems
+
+  **Rationale**: CPU-only deployment prioritizes availability over performance (Assumption #2, Constitution Principle IV). Government procurement typically includes 16+ core Xeon/EPYC servers suitable for this workload.
 - **SC-002**: System supports at least 10 concurrent users without response time degradation exceeding 20% (baseline: single-user average 5 seconds per SC-001, target: ≤6 seconds with 10 concurrent users)
 - **SC-003**: Users can upload and process a 20-page PDF document within 60 seconds
+  - **측정 방법**:
+    1. 테스트 문서: 20페이지 한글 PDF (A4 크기, 평균 500자/페이지, ~10,000자 총계)
+    2. 측정 구간: 파일 선택 후 "업로드" 버튼 클릭 → "문서 분석 완료" 메시지 표시까지
+    3. 처리 단계: 파일 업로드(HTTP) + PDF 텍스트 추출(pdfplumber) + 청킹(500자 단위) + 벡터 임베딩(sentence-transformers) + ChromaDB 저장
+    4. 합격 기준: 5회 반복 측정의 중앙값(P50)이 60초 이하
+  - **테스트 도구**: `scripts/test-document-upload-performance.py` (Phase 7 추가 예정)
 - **SC-004**: 한국어 쿼리의 90%가 문법적으로 정확하고 맥락적으로 적절한 응답을 받음
   - **측정 방법**: 50개 다양한 업무 시나리오 쿼리로 구성된 테스트 세트 사용
   - **평가 기준**: 각 응답을 3가지 차원으로 수동 채점 (각 0-10점)
@@ -445,7 +565,7 @@ Government employees need complex tasks (like responding to citizen inquiries re
     3. 한국어 자연스러움: 어색한 번역체 없이 자연스러운 표현
   - **채점자**: 2-3명의 공무원(또는 한국어 원어민)이 독립적으로 채점
   - **Inter-rater reliability**: 동일 응답에 대한 채점자 간 점수 차이가 3점 이상인 경우 재협의 후 평균 점수 사용
-  - **합격 기준**: 90% 이상의 쿼리가 총 30점 만점에 24점 이상 (80% 점수)
+  - **합격 기준**: 50개 쿼리 중 45개 이상이 총 30점 만점에 24점 이상 (90.0% 합격률, 80% 점수)
   - **테스트 도구**: `scripts/test-korean-quality.py` (채점 인터페이스 제공, 점수 수집 및 통계 계산)
   - **데이터셋 생성**: Phase 12 (T238 실행 전), 2-3명의 공무원 또는 한국어 원어민이 50개 다양한 업무 시나리오 쿼리 작성 (민원 처리, 문서 작성, 정책 질문, 일정 계산 등), `backend/tests/data/korean_quality_test_dataset.json`에 저장
 - **SC-005**: Conversation history retrieval completes within 2 seconds regardless of the number of saved conversations
@@ -459,7 +579,8 @@ Government employees need complex tasks (like responding to citizen inquiries re
     1. 10개 다중 메시지 대화 생성 (각 5-10 메시지)
     2. 24시간 대기 (또는 시스템 시간 조작)
     3. 각 대화를 재개하여 컨텍스트 의존적 질문 제출 (예: "앞서 말한 그 정책은 언제부터 시행되나요?")
-  - **합격 기준**: 10개 대화 중 9개 이상이 모든 메시지를 데이터베이스에 보존하고, 재개 후 질문이 이전 맥락 반영한 답변 생성
+  - **합격 기준**: 10개 대화 중 9개 이상(90.0%)이 모든 메시지를 데이터베이스에 보존하고, 재개 후 질문이 이전 맥락 반영한 답변 생성
+    - 참고: "95% 정확도"는 컨텍스트 보존의 품질 목표를 의미하며, 실제 테스트 합격률은 10개 중 9개(90.0%)로 측정 (SC-004와 동일한 합격률 기준 적용)
   - **테스트 도구**: `scripts/test-context-preservation.py` (Phase 8 추가 예정)
 - **SC-008**: Zero unauthorized access incidents to other users' conversations or documents during testing period
 - **SC-009**: 85% of employees can complete their first query and receive a response without requiring assistance or training
@@ -491,6 +612,13 @@ Government employees need complex tasks (like responding to citizen inquiries re
     2. 각 고급 기능의 대표 시나리오 실행 (안전 필터: 부적절한 내용 차단, ReAct: 도구 3개 사용, 멀티 에이전트: 2-agent 워크플로우)
     3. 모든 시나리오가 성공적으로 완료되는지 확인 (타임아웃, 네트워크 오류 없음)
   - **합격 기준**: 3개 고급 기능 모두 외부 네트워크 없이 정상 동작, 모델 로딩 시간 ≤60초, 기능 실행 시간 정상 범위 내
+- **SC-021**: Administrators can view 7 days of historical metrics within 2 seconds of loading the dashboard (Feature 002: Metrics History)
+- **SC-022**: System successfully collects metrics at configured intervals with 99% reliability (no more than 1% missed collections)
+- **SC-023**: Metric collection completes within 5 seconds and does not impact concurrent user operations
+- **SC-024**: Administrators can identify trends (increasing/decreasing patterns) within 30 seconds of viewing a metric graph
+- **SC-025**: 90% of administrators successfully export metrics data on first attempt without assistance
+- **SC-026**: System maintains metric history for 90 days without data loss or corruption
+- **SC-027**: Dashboard graphs render any time range within 3 seconds through automatic downsampling (maximum 1000 rendered points)
 
 ## Assumptions
 
@@ -498,14 +626,14 @@ This specification is based on the following assumptions:
 
 1. **Network Environment**: The local government has an internal network infrastructure that supports web applications, even though it's isolated from the internet
 2. **Hardware Resources**: Server hardware meeting minimum specifications is available:
-   - **CPU** (Required): 8-core Intel Xeon or equivalent minimum, 16-core recommended for production. CPU-only deployment is the baseline configuration with acceptable performance (8-12 seconds response time per SC-001) using Qwen3-4B-Instruct (~2.5GB Q4_K_M quantization)
+   - **CPU** (Required): 8-core Intel Xeon or equivalent minimum, 16-core recommended for production. CPU-only deployment is the baseline configuration with acceptable performance (8-12 seconds response time per SC-001) using Qwen2.5-1.5B-Instruct (~1GB Q4_K_M) or future Qwen3-4B-Instruct (~2.5GB Q4_K_M)
    - **RAM** (Required): 32GB minimum, 64GB recommended for production
    - **GPU** (Optional): NVIDIA RTX 3090 or A100 with 16GB+ VRAM and CUDA support for acceleration. GPU improves response time (3-8 seconds) and concurrent user capacity (10-16 users vs. 1-3 on CPU), but is NOT required for initial deployment
    - **Storage** (Required): 500GB+ SSD for OS/app/data, NVMe SSD 1TB recommended
    - **Network** (Required): Internal Gigabit Ethernet
 3. **User Devices**: Government employees have access to computers with supported browsers (Chrome 90+, Edge 90+, Firefox 88+, minimum 1280x720 resolution, JavaScript enabled). Internet Explorer is not supported.
 4. **Data Sensitivity**: While the environment is air-gapped for security, the specific classification level of data that can be processed is not defined
-5. **LLM Capabilities**: Qwen3-4B-Instruct will be used as the local LLM model, providing high-quality Korean language support with Qwen2.5-72B-level performance when deployed via HuggingFace Transformers or llama.cpp with 4-bit quantization (CPU-compatible, ~2.5GB memory footprint); Qwen3-4B prioritized for optimal balance of quality and efficiency in CPU-only deployments (April 2025 release, 20-40% improvement in math/coding over Qwen2.5)
+5. **LLM Capabilities**: **Qwen2.5-1.5B-Instruct** will be used for initial implementation (verified available, ~1GB Q4_K_M quantization), providing Korean language support when deployed via HuggingFace Transformers or llama.cpp with 4-bit quantization (CPU-compatible). **Future upgrade path**: Qwen3-4B-Instruct (April 2025 release, ~2.5GB memory footprint, Qwen2.5-72B-level performance with 20-40% improvement in math/coding) when verified available. Both models support CPU-only deployments with acceptable latency (8-12 seconds per SC-001)
 6. **User Volume & Storage**: "Small local government" implies approximately 10-50 employees who might use the system. Storage provisioning assumes 10GB per user (500GB total for 50 users), with monthly growth of 1-5GB total. Administrators responsible for storage expansion when capacity warnings occur.
 7. **Authentication**: Basic username/password authentication is sufficient; advanced methods like SSO or multi-factor authentication are not required
 8. **Maintenance**: Technical staff are available to perform system maintenance, updates, and user management on the local server
@@ -516,9 +644,19 @@ This specification is based on the following assumptions:
 ## Dependencies
 
 - Local server infrastructure with CPU-based deployment as baseline (8-core minimum, 16-core recommended), GPU optional for acceleration (NVIDIA RTX 3090/A100 for improved performance)
-- Qwen3-4B-Instruct model files (Qwen/Qwen3-4B-Instruct, April 2025 release) supporting Korean language and running on local hardware with HuggingFace Transformers + BitsAndBytes 4-bit quantization or llama.cpp GGUF format (~2.5GB Q4_K_M quantization, Qwen2.5-72B-level performance with 20-40% improvement in math/coding tasks)
+- **LLM Model**:
+  - **Primary Model**: Qwen3-4B-Instruct
+    - HuggingFace: `Qwen/Qwen3-4B-Instruct`
+    - Size: ~2.5GB Q4_K_M GGUF quantization
+    - Korean support: Excellent (Qwen2.5-72B-level performance)
+    - Format: HuggingFace Transformers + BitsAndBytes 4-bit quantization OR llama.cpp GGUF
+    - Performance: 20-40% improvement over Qwen2.5-1.5B in math/coding tasks
+  - **Fallback Model (Resource-Constrained)**: Qwen2.5-1.5B-Instruct
+    - HuggingFace: `Qwen/Qwen2.5-1.5B-Instruct`
+    - Size: ~1GB Q4_K_M GGUF quantization
+    - Use case: Systems with limited RAM (<16GB) or storage constraints
 - Vector database (ChromaDB or FAISS) with embedding model for document semantic search
-- **Embedding model**: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (HuggingFace: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, ~420MB, supports Korean, CPU-compatible) pre-downloaded for offline installation, used for both document Q&A (FR-009) and tag auto-matching (FR-043)
+- **Embedding model**: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (HuggingFace: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, **default fp32 variant**, ~420MB, supports Korean, CPU-compatible) pre-downloaded for offline installation using `huggingface-cli download sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --local-dir ./models/embeddings/`, used for both document Q&A (FR-009) and tag auto-matching (FR-043). **Note**: For air-gapped deployment, download includes all files in model repository (pytorch_model.bin, config.json, tokenizer files)
 - **Safety Filter Dependencies**:
   - Lightweight toxic content classification model (HuggingFace: `unitary/toxic-bert`, ~400MB, multilingual including Korean, CPU-compatible) pre-downloaded from HuggingFace for offline installation
   - Regex pattern library for PII detection (주민등록번호, phone, email patterns)
@@ -528,14 +666,21 @@ This specification is based on the following assumptions:
   - Government document templates (공문서, 보고서 templates in Jinja2 format) stored in `/templates` directory
   - Python libraries: pandas (data analysis), openpyxl (Excel support), sympy or numexpr (calculator)
 - **Multi-Agent System Dependencies**:
-  - Agent prompt templates (stored as text files in `/prompts` directory for each specialized agent)
-  - Agent-specific LoRA adapter weights: 5 fine-tuned adapters (~100-500MB each) for Citizen Support, Document Writing, Legal Research, Data Analysis, Review agents optimized for Qwen3-4B, pre-downloaded and stored in `/models/lora_adapters/` directory structure
-  - HuggingFace PEFT (Parameter-Efficient Fine-Tuning) library for LoRA adapter loading and management (CPU-compatible)
-  - Orchestrator routing configuration: LLM-based few-shot prompt file with 2-3 example queries per agent + brief descriptions (default), keyword patterns stored in database or config file (alternative mode)
+  - Agent prompt templates (stored as text files in `/prompts` directory for each specialized agent) - **Phase 10 mandatory**
+  - Agent-specific LoRA adapter weights: **Phase 14 only if activated per FR-071A** - 5 fine-tuned adapters (~100-500MB each) for Citizen Support, Document Writing, Legal Research, Data Analysis, Review agents optimized for Qwen2.5-1.5B-Instruct (current) or Qwen3-4B-Instruct (future upgrade), pre-downloaded and stored in `/models/lora_adapters/` directory structure
+  - HuggingFace PEFT (Parameter-Efficient Fine-Tuning) library for LoRA adapter loading and management (CPU-compatible) - **Phase 14 only if activated per FR-071A**
+  - Orchestrator routing configuration: LLM-based few-shot prompt file with **2 example queries per agent** (≤1000 token budget per FR-070) + brief descriptions (default), keyword patterns stored in database or config file (alternative mode)
 - Separate storage volume for backups (minimum 1TB recommended, separate from system disk for redundancy)
 - Internal network with stable connectivity between employee workstations and the application server
 - Browser compatibility with modern web standards for the user interface
 - IT staff access to the server for initial deployment, ongoing maintenance, and configuration of advanced features (filter rules, agent settings)
+- **Metrics History Dependencies** (Feature 002):
+  - APScheduler 3.10+ for background task scheduling (metric collection)
+  - pandas 2.1+ for CSV data processing and export
+  - ReportLab 4.0+ for PDF report generation
+  - Chart.js + react-chartjs-2 for frontend time-series visualization
+  - PostgreSQL with sufficient storage for metric history (estimated ~100KB per day, ~3.65MB per year for 6 metrics)
+  - LTTB (Largest Triangle Three Buckets) algorithm implementation for data downsampling
 
 ## Out of Scope
 
@@ -552,3 +697,14 @@ This feature specification explicitly excludes:
 - Export of conversations to specific government document formats
 - Version control or audit trails for document changes
 - Advanced security features like encryption at rest, detailed access logs, or role-based permissions beyond basic user separation
+- **Metrics History Out of Scope** (Feature 002):
+  - Predictive analytics or forecasting based on historical trends
+  - Real-time streaming metric updates (refresh rate faster than dashboard reload)
+  - Per-admin customizable dashboards or personalized metric views
+  - Metric alerting, notifications, or threshold-based triggers
+  - Integration with external monitoring tools (Prometheus, Grafana, etc.) - Note: Prometheus/Grafana were added separately for performance monitoring, not business metrics
+  - User-level metrics (tracking individual user behavior over time)
+  - Audit trail for who viewed which metrics when
+  - Mobile-optimized metric viewing interface
+  - Multi-timezone support for distributed admin teams (assumes single-location deployment)
+  - Individual metric drill-down (clicking graph to see detailed breakdown)
