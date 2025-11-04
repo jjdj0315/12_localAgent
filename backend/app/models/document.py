@@ -59,19 +59,3 @@ class Document(Base):
     # Relationships
     user = relationship("User", back_populates="documents")
     conversation = relationship("Conversation", back_populates="documents")
-    conversation_documents = relationship("ConversationDocument", back_populates="document", cascade="all, delete-orphan")
-
-
-class ConversationDocument(Base):
-    """Association table for conversations and documents"""
-
-    __tablename__ = "conversation_documents"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
-    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
-    added_at = Column(DateTime(timezone=True), nullable=False, default=get_current_utc)
-
-    # Relationships
-    conversation = relationship("Conversation", back_populates="conversation_documents")
-    document = relationship("Document", back_populates="conversation_documents")

@@ -37,6 +37,11 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
     throw new APIError(response.status, error.message || 'Request failed', error)
   }
 
+  // Handle 204 No Content responses (e.g., DELETE requests)
+  if (response.status === 204) {
+    return null
+  }
+
   return response.json()
 }
 

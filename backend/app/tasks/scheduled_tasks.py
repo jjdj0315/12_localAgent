@@ -15,6 +15,9 @@ from app.services.metrics_collector import MetricsCollector
 from app.models.metric_snapshot import MetricSnapshot
 from app.models.metric_collection_failures import MetricCollectionFailure
 
+# Import Prometheus business metrics updater
+from app.core.business_metrics import update_all_business_metrics
+
 logger = logging.getLogger(__name__)
 
 
@@ -262,3 +265,13 @@ def register_scheduled_tasks(scheduler):
         replace_existing=True
     )
     logger.info("등록됨: 만료된 내보내기 파일 정리 (매시 30분)")
+
+    # Update Prometheus business metrics (every 5 minutes)
+    scheduler.add_job(
+        update_all_business_metrics,
+        'interval',
+        minutes=5,
+        id='update_business_metrics',
+        replace_existing=True
+    )
+    logger.info("등록됨: Prometheus 비즈니스 메트릭 업데이트 (5분마다)")

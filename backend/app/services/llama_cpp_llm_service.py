@@ -7,6 +7,7 @@ Designed for Phase 10 local testing, will be replaced with vLLM in production.
 
 import os
 import asyncio
+import time
 from typing import Optional, List, Dict, AsyncGenerator
 from pathlib import Path
 
@@ -22,6 +23,13 @@ except ImportError:
     print("[WARNING] llama-cpp-python not installed. Install with: pip install llama-cpp-python")
 
 from .base_llm_service import BaseLLMService
+
+# Import Prometheus metrics
+from app.core.metrics import (
+    llm_request_duration,
+    llm_requests_total,
+    llm_requests_in_progress
+)
 
 
 class LlamaCppLLMService(BaseLLMService):
@@ -52,7 +60,7 @@ class LlamaCppLLMService(BaseLLMService):
         # Model configuration from environment
         self.model_path = os.getenv(
             "GGUF_MODEL_PATH",
-            "/models/qwen2.5-3b-instruct-q4_k_m.gguf"
+            "/models/qwen3-0.6b-q8_0.gguf"
         )
         self.n_ctx = int(os.getenv("LLAMA_N_CTX", "2048"))
         self.n_threads = int(os.getenv("LLAMA_N_THREADS", "8"))
@@ -222,26 +230,49 @@ class LlamaCppLLMService(BaseLLMService):
     ) -> str:
         """Generate text using llama.cpp (CPU inference)"""
 
-        # Ensure model is loaded before generating
-        if not self.model_loaded:
-            await self.load_model()
+        # Start timing
+        start_time = time.time()
 
-        # Default stop sequences for Korean
-        if stop_sequences is None:
-            stop_sequences = ["사용자:", "User:", "\n\n\n"]
+        # Track in-progress requests
+        llm_requests_in_progress.inc()
 
-        # Run in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        output = await loop.run_in_executor(
-            None,
-            self._generate_sync,
-            prompt,
-            max_tokens,
-            temperature,
-            stop_sequences,
-        )
+        try:
+            # Ensure model is loaded before generating
+            if not self.model_loaded:
+                await self.load_model()
 
-        return output
+            # Default stop sequences for Korean
+            if stop_sequences is None:
+                stop_sequences = ["사용자:", "User:", "\n\n\n"]
+
+            # Run in thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            output = await loop.run_in_executor(
+                None,
+                self._generate_sync,
+                prompt,
+                max_tokens,
+                temperature,
+                stop_sequences,
+            )
+
+            # Record successful request
+            llm_requests_total.labels(status='success').inc()
+
+            return output
+
+        except Exception as e:
+            # Record failed request
+            llm_requests_total.labels(status='error').inc()
+            raise
+
+        finally:
+            # Record duration
+            duration = time.time() - start_time
+            llm_request_duration.observe(duration)
+
+            # Decrement in-progress counter
+            llm_requests_in_progress.dec()
 
     def _generate_sync(
         self,

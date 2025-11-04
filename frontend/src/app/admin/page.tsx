@@ -2,7 +2,7 @@
 
 /**
  * Admin Dashboard Home Page
- * Overview of system statistics and quick actions
+ * Overview of system statistics and quick actions with metrics history
  */
 
 import { useEffect, useState } from 'react'
@@ -10,12 +10,62 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
 import { adminAPI } from '@/lib/api'
 import type { UsageStats } from '@/types/admin'
+import MetricsGraph from '@/components/admin/MetricsGraph'
+import MetricsComparison from '@/components/admin/MetricsComparison'
+import MetricsTimeRange from '@/components/admin/MetricsTimeRange'
+import MetricsGranularityToggle from '@/components/admin/MetricsGranularityToggle'
+import MetricsExport from '@/components/admin/MetricsExport'
+import {
+  getMetricsTimeSeries,
+  getCurrentMetrics,
+  getCollectionStatus,
+} from '@/lib/metricsApi'
+import {
+  downsampleMetrics,
+  getPresetDateRange,
+  formatMetricValue,
+  getMetricDisplayName,
+  COMPARISON_PRESETS,
+  getComparisonDateRanges,
+} from '@/lib/chartUtils'
+import type { MetricType, MetricGranularity, MetricSnapshot } from '@/types/metrics'
+
+const METRIC_TYPES: MetricType[] = [
+  'active_users',
+  'storage_bytes',
+  'active_sessions',
+  'conversation_count',
+  'document_count',
+  'tag_count',
+]
 
 export default function AdminDashboard() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const [stats, setStats] = useState<UsageStats | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Metrics state
+  const [metricsViewMode, setMetricsViewMode] = useState<'normal' | 'comparison'>('normal')
+  const [selectedDays, setSelectedDays] = useState(7)
+  const [granularity, setGranularity] = useState<MetricGranularity>('hourly')
+  const [comparisonPreset, setComparisonPreset] = useState<'week' | 'month'>('week')
+  const [metricsData, setMetricsData] = useState<Record<MetricType, MetricSnapshot[]>>({
+    active_users: [],
+    storage_bytes: [],
+    active_sessions: [],
+    conversation_count: [],
+    document_count: [],
+    tag_count: [],
+  })
+  const [currentValues, setCurrentValues] = useState<Record<string, number | null>>({})
+  const [collectionStatus, setCollectionStatus] = useState<{
+    status: 'healthy' | 'degraded'
+    last_collection_at: string | null
+    next_collection_at: string
+    failure_count_24h: number
+  } | null>(null)
+  const [metricsLoading, setMetricsLoading] = useState(false)
 
   useEffect(() => {
     if (!authLoading && (!user || !user.is_admin)) {
@@ -26,8 +76,17 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (user && user.is_admin) {
       loadStats()
+      loadMetrics()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
+
+  useEffect(() => {
+    if (user && user.is_admin) {
+      loadMetrics()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDays, granularity, user])
 
   const loadStats = async () => {
     try {
@@ -38,6 +97,58 @@ export default function AdminDashboard() {
       console.error('Failed to load stats:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadMetrics = async () => {
+    try {
+      setMetricsLoading(true)
+      const { start, end } = getPresetDateRange(selectedDays)
+
+      // Fetch time series for all metrics in parallel
+      const promises = METRIC_TYPES.map(async (metricType) => {
+        try {
+          const data = await getMetricsTimeSeries(metricType, granularity, start, end)
+          const downsampled = downsampleMetrics(data, 1000)
+          return { metricType, data: downsampled }
+        } catch (err) {
+          console.error(`Failed to fetch ${metricType}:`, err)
+          return { metricType, data: [] }
+        }
+      })
+
+      const results = await Promise.all(promises)
+
+      const newMetricsData: Record<MetricType, MetricSnapshot[]> = {
+        active_users: [],
+        storage_bytes: [],
+        active_sessions: [],
+        conversation_count: [],
+        document_count: [],
+        tag_count: [],
+      }
+
+      results.forEach(({ metricType, data }) => {
+        newMetricsData[metricType] = data
+      })
+
+      setMetricsData(newMetricsData)
+
+      // Fetch current values
+      const currentData = await getCurrentMetrics()
+      const currentValuesMap: Record<string, number | null> = {}
+      currentData.metrics.forEach((m) => {
+        currentValuesMap[m.metric_type] = m.value
+      })
+      setCurrentValues(currentValuesMap)
+
+      // Fetch collection status
+      const status = await getCollectionStatus()
+      setCollectionStatus(status)
+    } catch (err) {
+      console.error('Failed to fetch metrics:', err)
+    } finally {
+      setMetricsLoading(false)
     }
   }
 
@@ -76,7 +187,7 @@ export default function AdminDashboard() {
           {/* Quick Actions */}
           <section>
             <h2 className="mb-4 text-lg font-semibold text-gray-900">빠른 작업</h2>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <button
                 onClick={() => router.push('/admin/users')}
                 className="rounded-lg border-2 border-gray-200 bg-white p-6 text-left transition-all hover:border-blue-500 hover:shadow-md"
@@ -105,33 +216,6 @@ export default function AdminDashboard() {
               </button>
 
               <button
-                onClick={() => router.push('/admin/stats')}
-                className="rounded-lg border-2 border-gray-200 bg-white p-6 text-left transition-all hover:border-green-500 hover:shadow-md"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="rounded-full bg-green-100 p-3">
-                    <svg
-                      className="h-6 w-6 text-green-600"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">사용 통계</h3>
-                    <p className="text-sm text-gray-500">활성 사용자, 쿼리 수, 응답 시간</p>
-                  </div>
-                </div>
-              </button>
-
-              <button
                 onClick={() => router.push('/admin/health')}
                 className="rounded-lg border-2 border-gray-200 bg-white p-6 text-left transition-all hover:border-purple-500 hover:shadow-md"
               >
@@ -152,35 +236,8 @@ export default function AdminDashboard() {
                     </svg>
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900">시스템 상태</h3>
-                    <p className="text-sm text-gray-500">CPU, 메모리, 디스크, GPU 사용량</p>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => router.push('/admin/storage')}
-                className="rounded-lg border-2 border-gray-200 bg-white p-6 text-left transition-all hover:border-orange-500 hover:shadow-md"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="rounded-full bg-orange-100 p-3">
-                    <svg
-                      className="h-6 w-6 text-orange-600"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900">스토리지 관리</h3>
-                    <p className="text-sm text-gray-500">사용자별 용량 및 전체 스토리지</p>
+                    <h3 className="font-semibold text-gray-900">시스템 상태 및 관리</h3>
+                    <p className="text-sm text-gray-500">CPU, 메모리, 디스크, GPU, 스토리지</p>
                   </div>
                 </div>
               </button>
@@ -300,6 +357,188 @@ export default function AdminDashboard() {
               </div>
             </section>
           ) : null}
+
+          {/* Metrics History Section */}
+          <section>
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">시스템 메트릭 히스토리</h2>
+
+              {/* Controls */}
+              <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-4">
+                {/* View Mode Toggle */}
+                <div className="mb-4 flex items-center gap-4 pb-4 border-b border-gray-200">
+                  <span className="text-sm font-medium text-gray-700">보기 모드:</span>
+                  <div className="inline-flex rounded-lg border border-gray-300 bg-gray-50 p-1">
+                    <button
+                      onClick={() => setMetricsViewMode('normal')}
+                      className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                        metricsViewMode === 'normal'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      일반
+                    </button>
+                    <button
+                      onClick={() => setMetricsViewMode('comparison')}
+                      className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                        metricsViewMode === 'comparison'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      비교
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mode-specific controls */}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  {metricsViewMode === 'normal' ? (
+                    <>
+                      <MetricsTimeRange selectedDays={selectedDays} onRangeChange={setSelectedDays} />
+                      <MetricsGranularityToggle
+                        granularity={granularity}
+                        onGranularityChange={setGranularity}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      {/* Comparison preset selector */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-700">비교 기간:</span>
+                        <div className="flex gap-2">
+                          {COMPARISON_PRESETS.map((preset) => (
+                            <button
+                              key={preset.value}
+                              onClick={() => setComparisonPreset(preset.value)}
+                              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                comparisonPreset === preset.value
+                                  ? 'bg-blue-600 text-white shadow-sm'
+                                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <MetricsGranularityToggle
+                        granularity={granularity}
+                        onGranularityChange={setGranularity}
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Collection Status Widget */}
+              {collectionStatus && (
+                <div
+                  className={`mb-4 p-4 rounded-lg border ${
+                    collectionStatus.status === 'healthy'
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-yellow-50 border-yellow-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-block w-3 h-3 rounded-full ${
+                          collectionStatus.status === 'healthy' ? 'bg-green-500' : 'bg-yellow-500'
+                        }`}
+                      />
+                      <span className="font-medium text-gray-900">
+                        {collectionStatus.status === 'healthy' ? '정상 수집 중' : '일부 수집 실패'}
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      {collectionStatus.last_collection_at && (
+                        <span>
+                          마지막 수집:{' '}
+                          {new Date(collectionStatus.last_collection_at).toLocaleString('ko-KR')}
+                        </span>
+                      )}
+                      {collectionStatus.failure_count_24h > 0 && (
+                        <span className="ml-4 text-yellow-700 font-medium">
+                          최근 24시간 실패: {collectionStatus.failure_count_24h}건
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {metricsLoading ? (
+              <div className="rounded-lg bg-white p-8 text-center shadow-sm">
+                <div className="text-gray-500">메트릭 데이터 로딩 중...</div>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                  {METRIC_TYPES.map((metricType) => {
+                    const currentValue = currentValues[metricType]
+                    const data = metricsData[metricType]
+
+                    return (
+                      <div
+                        key={metricType}
+                        className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
+                      >
+                        {/* Metric Header */}
+                        <div className="mb-4 flex items-center justify-between">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {getMetricDisplayName(metricType)}
+                          </h3>
+                          {metricsViewMode === 'normal' && (
+                            <div className="text-right">
+                              <p className="text-sm text-gray-500">현재 값</p>
+                              <p className="text-2xl font-bold text-gray-900">
+                                {currentValue !== null && currentValue !== undefined
+                                  ? formatMetricValue(metricType, currentValue)
+                                  : '-'}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Graph or Comparison */}
+                        {metricsViewMode === 'normal' ? (
+                          <MetricsGraph
+                            metricType={metricType}
+                            granularity={granularity}
+                            data={data}
+                            height={250}
+                            showLegend={false}
+                          />
+                        ) : (
+                          <MetricsComparison
+                            metricType={metricType}
+                            granularity={granularity}
+                            period1={getComparisonDateRanges(comparisonPreset).period1}
+                            period2={getComparisonDateRanges(comparisonPreset).period2}
+                            height={250}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Export Section */}
+                {metricsViewMode === 'normal' && (
+                  <div className="mt-6">
+                    <MetricsExport
+                      granularity={granularity}
+                      startTime={getPresetDateRange(selectedDays).start}
+                      endTime={getPresetDateRange(selectedDays).end}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </section>
         </div>
       </main>
     </div>

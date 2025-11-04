@@ -651,9 +651,92 @@ rsync -a --link-dest=../$(date -d "1 day ago" +%Y%m%d) \
 
 ---
 
+## Metrics History Tables (Feature 002: FR-089~109)
+
+### 11. metric_snapshots Table
+
+**Purpose**: Stores point-in-time metric values at hourly and daily granularity for admin dashboard historical graphs
+
+```sql
+CREATE TABLE metric_snapshots (
+    id SERIAL PRIMARY KEY,
+    metric_type VARCHAR(50) NOT NULL,
+    value BIGINT NOT NULL,
+    granularity VARCHAR(10) NOT NULL CHECK (granularity IN ('hourly', 'daily')),
+    collected_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    retry_count SMALLINT DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    CONSTRAINT unique_metric_snapshot UNIQUE (metric_type, granularity, collected_at)
+);
+
+-- Performance indexes
+CREATE INDEX idx_metric_type_time ON metric_snapshots (metric_type, granularity, collected_at DESC);
+CREATE INDEX idx_cleanup_hourly ON metric_snapshots (collected_at) WHERE granularity = 'hourly';
+CREATE INDEX idx_cleanup_daily ON metric_snapshots (collected_at) WHERE granularity = 'daily';
+```
+
+**Columns**:
+- `id`: Auto-incrementing primary key
+- `metric_type`: Type identifier (active_users, storage_bytes, active_sessions, conversation_count, document_count, tag_count)
+- `value`: Numeric value (BIGINT to support large storage byte counts)
+- `granularity`: Discriminator for hourly vs daily aggregates
+- `collected_at`: Timestamp when metric was captured (UTC)
+- `retry_count`: Number of retry attempts before successful collection
+- `created_at`: Database insertion timestamp
+
+**Retention Policy** (enforced by scheduled cleanup task):
+- Hourly: Delete rows where `granularity='hourly' AND collected_at < NOW() - INTERVAL '30 days'`
+- Daily: Delete rows where `granularity='daily' AND collected_at < NOW() - INTERVAL '90 days'`
+
+**Storage Estimate**:
+- Hourly data (30 days): 6 types × 24 hours × 30 days = 4,320 rows (~432 KB)
+- Daily data (90 days): 6 types × 90 days = 540 rows (~54 KB)
+- Total: ~486 KB
+
+**Related FRs**: FR-089, FR-090, FR-091, FR-092, FR-093, FR-094, FR-095, FR-096, FR-097, FR-098, FR-104, FR-105, FR-109
+
+### 12. metric_collection_failures Table
+
+**Purpose**: Tracks failed metric collection attempts for dashboard status indicator (FR-106)
+
+```sql
+CREATE TABLE metric_collection_failures (
+    id SERIAL PRIMARY KEY,
+    metric_type VARCHAR(50) NOT NULL,
+    granularity VARCHAR(10) NOT NULL,
+    attempted_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    error_message TEXT,
+    retry_count SMALLINT DEFAULT 3,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_failures_recent ON metric_collection_failures (created_at DESC) LIMIT 1000;
+```
+
+**Columns**:
+- `metric_type`: Which metric failed
+- `granularity`: Which collection cycle failed (hourly or daily)
+- `attempted_at`: When the final retry attempt occurred
+- `error_message`: Korean error message for debugging
+- `retry_count`: Always 3 (max retries exhausted per FR-107)
+- `created_at`: Record creation timestamp
+
+**Retention**: Keep last 1000 failures only (for dashboard status widget)
+
+**Storage Estimate**: 1000 rows × ~200 bytes = ~200 KB
+
+**Related FRs**: FR-106, FR-107
+
+**Relationships**:
+- No foreign keys (failures are independent records)
+- Soft reference to metric_type values (application-level enum)
+
+---
+
 ## Data Model Summary
 
-**10 core entities**: User, Conversation, Message, Document, Conversation_Document, Session, Admin, Tag, ConversationTag, LoginAttempt
+**12 core entities**: User, Conversation, Message, Document, Conversation_Document, Session, Admin, Tag, ConversationTag, LoginAttempt, MetricSnapshot, MetricCollectionFailure
 
 **Key Design Decisions**:
 1. **UUIDs**: Better for distributed systems, no sequential ID leakage
@@ -673,5 +756,6 @@ rsync -a --link-dest=../$(date -d "1 day ago" +%Y%m%d) \
 - FR-033: Privilege escalation prevention (Admin table instead of is_admin flag)
 - FR-042: Backup strategy (pg_dump + rsync, 30-day retention)
 - FR-043: Tag auto-matching (Tag + ConversationTag tables with confidence scoring)
+- FR-089~109: Metrics history tracking (MetricSnapshot + MetricCollectionFailure tables with hourly/daily granularity, 30/90-day retention, LTTB downsampling for export)
 
 **Ready for Phase 1: API Contracts**.

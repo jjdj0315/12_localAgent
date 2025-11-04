@@ -6,6 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
+from app.middleware.metrics import MetricsMiddleware
+from app.core.business_metrics import update_all_business_metrics
+import asyncio
 
 
 @asynccontextmanager
@@ -13,6 +16,10 @@ async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup: Start the scheduler
     start_scheduler()
+
+    # Initialize Prometheus business metrics
+    asyncio.create_task(update_all_business_metrics())
+
     yield
     # Shutdown: Stop the scheduler
     stop_scheduler()
@@ -36,6 +43,9 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+# Add metrics middleware (must be added after CORS)
+app.add_middleware(MetricsMiddleware)
+
 
 @app.get("/health")
 async def health_check():
@@ -54,7 +64,7 @@ async def root():
 
 
 # Import API routers
-from app.api.v1 import admin, auth, chat, conversations, documents, health, setup, metrics
+from app.api.v1 import admin, auth, chat, conversations, documents, health, setup, metrics, monitoring
 
 # Register routers
 app.include_router(setup.router, prefix="/api/v1", tags=["Setup"])  # No auth required for setup
@@ -64,4 +74,5 @@ app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["Metrics"])
+app.include_router(monitoring.router, tags=["Monitoring"])  # Prometheus metrics (no auth, no prefix)
 app.include_router(health.router, prefix="/api/v1", tags=["Health"])

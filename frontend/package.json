@@ -17,7 +17,12 @@
     "axios": "^1.6.0",
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.0",
-    "lucide-react": "^0.344.0"
+    "lucide-react": "^0.344.0",
+    "react-chartjs-2": "^5.2.0",
+    "chart.js": "^4.4.0",
+    "chartjs-adapter-date-fns": "^3.0.0",
+    "date-fns": "^3.0.0",
+    "downsample": "^1.4.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
