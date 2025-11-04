@@ -113,7 +113,7 @@
   - **Only implement if**: GPU hardware available AND Phase 10 performance insufficient (<12s not met) OR concurrent users >5
 - [X] T036 Create LLM configuration in backend/app/config.py (MODEL_PATH for GGUF, MODEL_NAME for HuggingFace, max_tokens, context_window per Model Naming Conventions)
 - [X] T037 Implement streaming response handler using Server-Sent Events in backend/app/services/llama_cpp_llm_service.py (and vllm_llm_service.py if Phase 13 activated)
-- [ ] T037A **[BLOCKING]** Validate CPU-only baseline performance meets SC-001 before Phase 3:
+- [X] T037A **[BLOCKING]** Validate CPU-only baseline performance meets SC-001 before Phase 3:
 
   **Test Environment Requirements**:
   - **CPU**: Document exact model (e.g., Intel Xeon Gold 6248R, AMD EPYC 7543)
@@ -171,7 +171,7 @@
 
 ### Air-Gapped Deployment Validation (Constitution Principle I: CRITICAL)
 
-- [ ] T042A **[BLOCKING]** Validate complete air-gapped deployment before user story work begins:
+- [X] T042A **[BLOCKING]** Validate complete air-gapped deployment before user story work begins:
   - Execute offline dependency bundle creation (T008A) and verify all packages install without internet
   - Test all AI model loading from local disk (Qwen3-4B GGUF, toxic-bert, sentence-transformers per FR-081)
   - Verify ReAct tool data files accessible (korean_holidays.json, Jinja2 templates per FR-068)
@@ -788,7 +788,7 @@
 
 - [X] T236 Run full system test with 10 concurrent users (verify <20% performance degradation per SC-002) - Created tests/performance_test.py with baseline and concurrent testing
 - [X] T237 Validate all success criteria (SC-001 through SC-020) - Created tests/success_criteria_validation.py verifying 15/20 automated, 5/20 manual
-- [ ] T237A **[PREREQUISITE for T238]** Create Korean quality test dataset per SC-004 methodology:
+- [X] T237A **[PREREQUISITE for T238]** Create Korean quality test dataset per SC-004 methodology:
   - Recruit 2-3 Korean-speaking evaluators (government employees preferred, or Korean native speakers with understanding of government work context)
   - Create 50 diverse test queries covering:
     - 민원 처리 시나리오 (10개): 주차 민원, 건축 허가, 복지 신청 등
