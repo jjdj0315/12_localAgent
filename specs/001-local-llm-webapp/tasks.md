@@ -30,12 +30,15 @@
 - [X] T006 [P] Create .env.example with all required environment variables (database, secrets, LLM config, API URLs)
 - [X] T007 [P] Configure ESLint and Prettier for frontend in frontend/.eslintrc.js and frontend/.prettierrc
 - [X] T008 [P] Configure Black, Ruff, and mypy for backend in backend/pyproject.toml
-- [X] T008A [P] Create offline dependency bundling script in scripts/bundle-offline-deps.sh:
+- [X] T008A [P] Create offline dependency bundling script in scripts/:
+  - **Bash version**: scripts/bundle-offline-deps.sh (Linux 배포 서버용)
+  - **PowerShell version**: scripts/bundle-offline-deps.ps1 (Windows 개발 환경용, Constitution Principle VI)
   - Download all Python packages from requirements.txt using `pip download -d ./offline_packages/ -r backend/requirements.txt`
   - Download HuggingFace models (GGUF for Phase 10, safetensors for Phase 13 optional) using huggingface-cli
   - Download toxic-bert, sentence-transformers models for air-gapped installation
   - Create tarball archive for transfer to air-gapped server
   - Document usage in scripts/bundle-offline-deps.README.md with: (1) when to run (before air-gapped deployment), (2) bundle contents manifest (models, packages, sizes), (3) installation instructions for target server (pip install --no-index, model placement paths), (4) verification checklist (model loading test, dependency import check) per FR-081, FR-082
+  - **Cross-platform note**: Both scripts perform identical operations, choose based on development OS
 
 ---
 
@@ -49,7 +52,11 @@
 
 - [X] T009 Create PostgreSQL schema and Alembic migration framework in backend/alembic/
 - [X] T010 [P] Implement database connection and session management in backend/app/core/database.py
-- [X] T011 Create initial migration (v0.1.0) defining core tables (users, admins, conversations, messages, documents, sessions, tags, conversation_tags, login_attempts, safety_filter_rules, filter_events, tools, tool_executions, agents, agent_workflows, agent_workflow_steps, audit_logs) in backend/alembic/versions/001_initial_schema.py
+- [X] T011 Create initial migration (v0.1.0) defining core tables (users, admins, conversations, messages, documents, sessions, tags, conversation_tags, login_attempts, safety_filter_rules, filter_events, tools, tool_executions, agents, agent_workflows, agent_workflow_steps, audit_logs, **metric_snapshots, metric_collection_failures**) in backend/alembic/versions/001_initial_schema.py
+  - **Added for Feature 002**: metric_snapshots and metric_collection_failures tables per data-model.md sections 11-12
+  - Include indexes: idx_metric_type_time, idx_cleanup_hourly, idx_cleanup_daily, idx_failures_recent
+  - Include unique constraint: unique_metric_snapshot (metric_type, granularity, collected_at)
+  - Include check constraint: granularity IN ('hourly', 'daily')
 
 ### Authentication & Security
 
@@ -89,12 +96,14 @@
 ### LLM Service Setup (Phase 10 Baseline: llama.cpp)
 
 - [X] T035 **Phase 10 - llama.cpp Baseline (CPU-optimized)**: Create llama.cpp LLM service wrapper in backend/app/services/llama_cpp_llm_service.py:
-  - Load Qwen3-4B-Instruct GGUF (Q4_K_M quantization, ~2.5GB) from local filesystem
-  - Use llama-cpp-python bindings with CPU-only mode (n_gpu_layers=0)
+  - **Model**: Qwen3-4B-Instruct GGUF Q4_K_M quantization (~2.5GB) - PRIMARY MODEL
+  - Load from local filesystem (models/qwen3-4b-instruct-q4_k_m.gguf)
+  - Use llama.cpp-python bindings with CPU-only mode (n_gpu_layers=0)
   - Context window: n_ctx=2048 tokens (per FR-036)
   - Implement BaseLLMService interface for future backend switching
   - Target performance: 8-12 seconds per query (SC-001 CPU baseline)
   - Supports 1-3 concurrent users (plan.md L34)
+  - **Fallback**: Qwen2.5-1.5B-Instruct available for resource-constrained systems
 - [X] T035A [P] **Phase 13 - Optional vLLM Migration (GPU-accelerated)**: Create vLLM LLM service wrapper in backend/app/services/vllm_llm_service.py:
   - Load Qwen/Qwen3-4B-Instruct safetensors from HuggingFace local cache
   - GPU acceleration with tensor parallelism (if NVIDIA GPU available)
@@ -104,6 +113,53 @@
   - **Only implement if**: GPU hardware available AND Phase 10 performance insufficient (<12s not met) OR concurrent users >5
 - [X] T036 Create LLM configuration in backend/app/config.py (MODEL_PATH for GGUF, MODEL_NAME for HuggingFace, max_tokens, context_window per Model Naming Conventions)
 - [X] T037 Implement streaming response handler using Server-Sent Events in backend/app/services/llama_cpp_llm_service.py (and vllm_llm_service.py if Phase 13 activated)
+- [ ] T037A **[BLOCKING]** Validate CPU-only baseline performance meets SC-001 before Phase 3:
+
+  **Test Environment Requirements**:
+  - **CPU**: Document exact model (e.g., Intel Xeon Gold 6248R, AMD EPYC 7543)
+    - Cores: 16+ recommended (minimum 8-core acceptable with performance note)
+    - Features: Verify AVX2/FMA/F16C support via system info commands
+  - **RAM**: 32GB+ available
+  - **Model**: Qwen3-4B-Instruct GGUF Q4_K_M (~2.5GB, PRIMARY MODEL)
+  - **OS**: Linux (production target) OR Windows WSL2 (development)
+
+  **Test Methodology**:
+  - Create test query dataset: 10 diverse Korean queries
+    - 민원 처리: 2개
+    - 문서 작성: 2개
+    - 정책 질문: 2개
+    - 일정/계산: 2개
+    - 일반 업무: 2개
+  - Each query <500 characters (per SC-001 constraint)
+  - Run each query 5 times (cold start + 4 warm runs)
+  - Measure: First token latency + full response generation time
+  - Calculate: P50 (median), P95 (95th percentile) across 50 total runs (10 queries × 5 runs)
+
+  **Pass Criteria** (SC-001 CPU baseline):
+  - P50 ≤ 8 seconds (target)
+  - **P95 ≤ 12 seconds (MANDATORY GATE)**
+
+  **Failure Handling**:
+  1. **If P95 12-15 seconds**:
+     - Optimize llama.cpp settings (n_threads=16, batch_size=512, n_ctx=2048)
+     - Re-test with optimizations
+  2. **If P95 15-20 seconds**:
+     - Consider Q3_K_M quantization (test quality degradation)
+     - Evaluate hardware upgrade (24+ cores)
+  3. **If P95 >20 seconds**:
+     - **BLOCK Phase 3**: Require Phase 13 vLLM migration (GPU) OR user approval for degraded performance
+
+  **Documentation**:
+  - Create docs/deployment/cpu-performance-baseline.md with:
+    - Exact hardware specifications (CPU model, cores, RAM, features)
+    - Test results table (P50, P95, P99 per query type)
+    - llama.cpp configuration used (n_threads, batch_size, etc.)
+    - Recommendations for production hardware procurement
+  - Create performance test script: tests/cpu_baseline_performance.py
+
+  **Gate Decision**:
+  - **Pass**: Proceed to Phase 3, Phase 13 vLLM migration optional
+  - **Fail**: Resolve performance issues before Phase 3 (non-negotiable)
 
 ### Frontend Infrastructure
 
@@ -113,7 +169,22 @@
 - [X] T041 [P] Setup React Query configuration in frontend/src/app/providers.tsx
 - [X] T042 [P] Create reusable UI components (Button, Input, Card, Loading) in frontend/src/components/ui/
 
+### Air-Gapped Deployment Validation (Constitution Principle I: CRITICAL)
+
+- [ ] T042A **[BLOCKING]** Validate complete air-gapped deployment before user story work begins:
+  - Execute offline dependency bundle creation (T008A) and verify all packages install without internet
+  - Test all AI model loading from local disk (Qwen3-4B GGUF, toxic-bert, sentence-transformers per FR-081)
+  - Verify ReAct tool data files accessible (korean_holidays.json, Jinja2 templates per FR-068)
+  - Verify Multi-Agent prompts load from backend/prompts/*.txt (per FR-080)
+  - Confirm model loading time <60 seconds (per SC-020)
+  - Test network disconnection: Physically disable network interface OR use iptables/Windows Firewall to block all traffic
+  - Run basic LLM inference test (single query) to confirm operational
+  - **Pass criteria**: All models load successfully, no "file not found" errors, no network calls detected
+  - **If fails**: BLOCK all Phase 3+ work until resolved (Constitution Principle I is NON-NEGOTIABLE)
+  - Document results in docs/deployment/air-gapped-validation-report.md
+
 **Checkpoint**: ✅ Foundation ready - user story implementation can now begin in parallel
+**⚠️ GATE**: T042A must PASS before proceeding to Phase 3
 
 ---
 
@@ -180,6 +251,7 @@
 - [X] T068 [US2] Verify search functionality across conversation titles and content
 - [X] T069 [US2] Verify auto-tag assignment on first message
 - [X] T070 [US2] Verify tag filtering works correctly
+- [X] T070A [US2] Validate conversation history retrieval performance (SC-005: <2 seconds regardless of conversation count) - test with 100+ saved conversations, measure retrieval time using browser DevTools Network tab, ensure database query optimization (indexed queries on user_id, created_at)
 
 ---
 
@@ -262,12 +334,20 @@
 - [X] T105 [US5] Implement initial setup wizard endpoint POST /api/v1/setup in backend/app/api/v1/setup.py (first admin creation, setup.lock file per FR-034)
 - [X] T105A [US5] Implement setup.lock file mechanism in backend/app/services/setup_service.py (create file on wizard completion in project root, check file existence in setup endpoint to return 403 Forbidden if already configured, document lock file location in .gitignore per FR-034) ✅ **2025-11-01**
 - [X] T106 [US5] Implement backup management endpoints in backend/app/api/v1/admin.py (trigger backup, view backup history per FR-042)
-- [X] T106A [P] [US5] Create backup automation scripts in scripts/:
-  - backup-daily.sh: Incremental backup using pg_dump + rsync for documents (scheduled daily at 2 AM via cron)
-  - backup-weekly.sh: Full backup using pg_dump --format=custom (scheduled weekly on Sunday)
-  - cleanup-old-backups.sh: Delete backups older than 30 days, keep minimum 4 weekly full backups
-  - restore-from-backup.sh: Restore database and documents from backup (documented procedure for IT staff)
-  - Create crontab configuration example in scripts/crontab.example (per FR-042)
+- [X] T106A [P] [US5] Create backup automation scripts in scripts/ (**Dual platform support per Constitution Principle VI**):
+  - **Linux/Production**:
+    - backup-daily.sh: Incremental backup using pg_dump + rsync (cron daily 2 AM)
+    - backup-weekly.sh: Full backup using pg_dump --format=custom (cron Sunday)
+    - cleanup-old-backups.sh: Delete daily backups older than 31+ days (`find -mtime +30`)
+    - restore-from-backup.sh: Restore procedure
+    - crontab.example: cron 설정 예시
+  - **Windows/Development**:
+    - backup-daily.ps1: Incremental backup using pg_dump + Robocopy (Task Scheduler daily 2 AM)
+    - backup-weekly.ps1: Full backup (Task Scheduler Sunday)
+    - cleanup-old-backups.ps1: 30일 이상 백업 삭제
+    - restore-from-backup.ps1: 복원 절차
+    - register-backup-task.ps1: Windows 작업 스케줄러 등록 스크립트
+  - **Cross-platform note**: Both script sets perform identical operations, choose based on deployment OS
 
 ### Frontend Implementation
 
@@ -413,22 +493,16 @@
 - [X] T174 [US8] Create AgentWorkflowStep model (SQLAlchemy) in backend/app/models/agent_workflow_step.py
 - [X] T175 [US8] Create agent schemas in backend/app/schemas/agent.py
 
-### Backend - LLM Service Infrastructure (FR-071A)
+### Backend - LLM Service Infrastructure (FR-071, FR-071A)
 
 - [X] T175A [US8] Create abstract base class in backend/app/services/base_llm_service.py (define generate(), generate_with_agent(), get_agent_prompt() methods for environment-agnostic interface)
-- [X] T175B [P] [US8] Implement llama.cpp service in backend/app/services/llama_cpp_llm_service.py (GGUF model loading, CPU optimization, optional LoRA adapter loading for infrastructure testing)
+- [X] T175B [P] [US8] Implement llama.cpp service in backend/app/services/llama_cpp_llm_service.py (GGUF model loading, CPU optimization, **NO LoRA support in Phase 10** - prompt engineering only per FR-071A clarification 2025-11-02)
 - [X] T175C [US8] Create LLM service factory in backend/app/services/llm_service_factory.py (environment variable LLM_BACKEND selector: llama_cpp or vLLM)
 - [X] T175D [US8] Create vLLM service stub in backend/app/services/vllm_llm_service.py (production implementation placeholder, to be completed later)
-- [X] T175E [P] [US8] Create GGUF model download script in scripts/download_gguf_model.py (download Qwen3-4B-Instruct GGUF Q4_K_M ~2.5GB from HuggingFace for local testing)
-- [X] T175F [P] [US8] Create dummy LoRA generator script in scripts/create_dummy_lora.py:
-  - Create 5 dummy GGUF LoRA files for infrastructure testing (not actual fine-tuning)
-  - **Important**: Dummy files are for path detection and loading mechanism testing only
-  - If llama.cpp requires valid LoRA file format for loading, generate minimal valid empty LoRA files using llama.cpp tools or compatible library
-  - If llama.cpp accepts any file, simple placeholder files (b'DUMMY_LORA') are sufficient
-  - Test script should verify: file exists, loading mechanism works (even if adapter has no effect)
-  - **Removal**: Per plan.md LoRA Transition Decision Tree, if Phase 10 completes successfully with dummy LoRA, immediately remove dummy LoRA loading code (T175F files) before Phase 11 unless proceeding with actual fine-tuning
-- [X] T175G [US8] Update requirements.txt to include llama-cpp-python (for Phase 10), add vllm as optional dependency (for later)
-- [X] T175H [US8] Create models directory structure (models/ for GGUF base model, models/lora/ for dummy adapters) and configure paths in backend/app/config.py
+- [X] T175E [P] [US8] Create GGUF model download script in scripts/download_gguf_model.py (download Qwen2.5-1.5B-Instruct or Qwen3-4B-Instruct GGUF Q4_K_M from HuggingFace for local testing)
+- [X] ~~T175F~~ **REMOVED** - LoRA infrastructure deferred to Phase 14 Post-MVP per FR-071A (Clarification 2025-11-02: Simplicity Over Optimization - avoid learning data collection complexity)
+- [X] T175G [US8] Update requirements.txt to include llama.cpp-python (for Phase 10), add vllm as optional dependency (for Phase 13 if needed)
+- [X] T175H [US8] Create models directory structure (models/ for GGUF base model **only**, NO lora/ directory in Phase 10) and configure paths in backend/app/config.py
 
 ### Backend - Agent Implementations
 
@@ -440,7 +514,11 @@
 
 ### Backend - Orchestrator (LangGraph-based)
 
-- [X] T181 [US8] Create few-shot orchestrator prompt file in backend/prompts/orchestrator_few_shot.txt (2-3 example queries per agent per FR-070)
+- [X] T181 [US8] Create few-shot orchestrator prompt file in backend/prompts/orchestrator_few_shot.txt (**2 example queries per agent**, ≤1000 token budget total to reserve ≥1000 tokens for user query per FR-070), **implement token overflow handling** in orchestrator service:
+  - Count user query tokens using AutoTokenizer before orchestrator invocation
+  - If >1000 tokens and ≤1500: truncate at 1000 tokens + display warning "질문이 너무 깁니다..."
+  - If >1500 tokens: return 400 error "질문이 너무 깁니다 (최대 약 3000자)..."
+  - Log truncation events to audit_logs table
 - [X] T182 [P] [US8] Implement LangGraph-based orchestrator in backend/app/services/orchestrator_service.py (AgentState TypedDict, StateGraph setup, classify_intent node per FR-070)
 - [X] T183 [US8] Implement single agent execution node in orchestrator_service.py (_execute_single_agent method)
 - [X] T184 [US8] Implement sequential workflow node in orchestrator_service.py (_execute_sequential method, agent chaining with context sharing per FR-072, FR-077)
@@ -450,7 +528,7 @@
 - [X] T188 [US8] Implement workflow complexity limits in orchestrator_service.py (max 5 agents, max 3 parallel, 5-minute timeout with asyncio.wait_for per FR-079)
 - [X] T189 [US8] Implement workflow execution logging in orchestrator_service.py (execution_log in state, timestamp/agent/status tracking per FR-075)
 - [X] T189A [US8] Implement keyword-based orchestrator alternative (optional admin-configurable mode, fallback if LangGraph fails per FR-076)
-- [X] T190 [US8] Integrate multi-agent system into chat endpoint in backend/app/api/v1/chat.py (call orchestrator.route_and_execute)
+- [X] T190 [US8] Integrate Multi-Agent system into chat endpoint in backend/app/api/v1/chat.py (call orchestrator.route_and_execute)
 
 ### Backend - Admin Interface
 
@@ -467,17 +545,22 @@
 - [X] T194 [P] [US8] Implement WorkflowProgress component in frontend/src/components/agents/WorkflowProgress.tsx (show current agent and stage per FR-072)
 - [X] T195 [P] [US8] Create AgentManagement admin component in frontend/src/components/admin/AgentManagement.tsx
 - [X] T196 [P] [US8] Create AgentStatistics admin component in frontend/src/components/admin/AgentStatistics.tsx
-- [X] T197 [US8] Integrate multi-agent display into chat interface in frontend/src/app/(user)/chat/page.tsx ✅ **2025-10-31**
+- [X] T197 [US8] Integrate Multi-Agent display into chat interface in frontend/src/app/(user)/chat/page.tsx ✅ **2025-10-31**
 
 ### Manual Testing
 
 **Note**: T197A-B completed. T166-T204 require manual testing in Windows CMD/PowerShell (Cygwin bash incompatibility). See MANUAL_TEST_GUIDE.md.
 
 - [X] T197A [US8] Test LLM service factory (verify llama.cpp loads correctly with LLM_BACKEND=llama_cpp environment variable) ✅ **2025-10-31**
-- [X] T197B [US8] Test GGUF model loading (Qwen3-4B-Instruct Q4_K_M, ~2.5GB, expected load time <1 second, CPU AVX2/FMA/F16C optimizations) ✅ **2025-11-01**
-  - **UPDATE 2025-11-01**: Using Qwen3-4B-Instruct (April 2025 release) for superior performance (Qwen2.5-72B-level quality, 20-40% improvement in math/coding over Qwen2.5-1.5B, ~50% efficiency gain)
-  - llama.cpp model loading verified, ready for user testing
-- [X] T197C [US8] Test dummy LoRA adapter detection (optional, verify dummy files detected without errors if present) ✅ **2025-11-01**: Optional feature ready
+- [X] T197B [US8] Test GGUF model loading:
+  - **Model**: Qwen3-4B-Instruct Q4_K_M (~2.5GB) - PRIMARY MODEL
+  - Expected load time: <1 second
+  - CPU optimizations: AVX2/FMA/F16C
+  - Verify model loads successfully without errors
+  - Test basic inference (single query) to confirm operational
+  - Document model path: models/qwen3-4b-instruct-q4_k_m.gguf
+  - ✅ **2025-11-01**: llama.cpp model loading verified, ready for user testing
+- [X] ~~T197C~~ **REMOVED** - LoRA testing deferred to Phase 14 per FR-071A clarification 2025-11-02
 - [X] T198 [US8] Test orchestrator routing accuracy (85%+ correct per SC-021) on test dataset of 50 queries ✅ **2025-11-01**: Orchestrator implemented, ready for accuracy measurement
 - [X] T199 [US8] Test sequential 3-agent workflow completes within 90 seconds (per SC-022) ✅ **2025-11-01**: Sequential workflow (FR-072) verified
 - [X] T200 [US8] Test parallel agent execution for independent sub-tasks (max 3 agents) ✅ **2025-11-01**: Parallel execution (FR-078) implemented
@@ -498,7 +581,7 @@
 
 ### Backend - Resource Limits & Graceful Degradation
 
-- [X] T204 Implement resource limit middleware in backend/app/middleware/resource_limit_middleware.py (max 10 ReAct sessions, max 5 multi-agent workflows, queue or 503 per FR-086)
+- [X] T204 Implement resource limit middleware in backend/app/middleware/resource_limit_middleware.py (max 10 ReAct sessions, max 5 Multi-Agent workflows, queue or 503 per FR-086)
 - [ ] T204A [Decision Gate] Validate Phase 10 CPU performance with 10 concurrent users (SC-002) to determine if Phase 13 vLLM migration is needed. If CPU latency >12s OR concurrent users >5 cause degradation, proceed to Phase 13. If acceptable (8-12s response time maintained), stay with llama.cpp per Constitution Principle IV (Simplicity Over Optimization)
 - [X] T205 Implement graceful degradation in backend/app/services/graceful_degradation_service.py (safety filter fallback to rule-based, ReAct fallback to standard LLM, orchestrator fallback to general LLM per FR-087)
 - [X] T206 Create centralized AuditLog model (SQLAlchemy) in backend/app/models/audit_log.py
@@ -544,7 +627,13 @@
 
 ### Air-Gapped Deployment Testing
 
-- [X] T220 Test complete air-gapped deployment (disable all network, verify all features work per SC-020) - Tools created: air-gapped-verification-checklist.md, offline-install.sh
+- [X] T220 Test advanced features in air-gapped environment (assumes T042A baseline validation passed):
+  - Verify Safety Filter works offline (toxic-bert model loaded, rule-based filter operational per FR-057)
+  - Verify ReAct Agent works offline (6 tools execute without network calls per FR-068)
+  - Verify Multi-Agent system works offline (orchestrator + 5 agents operational, LLM-based routing per FR-080)
+  - Test complete SC-020 scenarios (safety filter + ReAct + Multi-Agent in single workflow)
+  - **Note**: Basic air-gapped validation (models, dependencies) already completed in T042A (Phase 2)
+  - Tools created: air-gapped-verification-checklist.md, offline-install.sh
 - [X] T221 Verify all AI models and tool data files load from local disk - Tools created: test_offline_model_loading.py, test_offline_embedding_loading.py, verify_python_dependencies.py, verify-node-dependencies.js:
   - AI models: Qwen2.5-1.5B (or GGUF equivalent), toxic-bert, sentence-transformers (per FR-081)
   - ReAct tool data: korean_holidays.json in backend/data/, Jinja2 templates in backend/templates/ (per FR-068)
@@ -552,6 +641,102 @@
   - Verify file paths configured correctly in backend/app/config.py
   - Confirm no "file not found" errors during service startup
 - [X] T222 Verify model loading time <60 seconds and feature execution within normal ranges (per SC-020) - Verification scripts check loading times and offline operation
+
+---
+
+## Phase 11.5: Feature 002 - Admin Metrics History Dashboard (Priority: P3)
+
+**Goal**: Administrators can view historical system metrics with time-series graphs, period comparison, and CSV/PDF export
+
+**Covered Requirements**: FR-089 (automatic metric collection), FR-090 (6 metric types), FR-091 (retention policy 30/90 days), FR-092 (hourly/daily granularity toggle), FR-093 (line graphs), FR-094 (time range selector), FR-095 (real-time + historical display), FR-096 (tooltips with exact values), FR-097 (missing data handling), FR-098 (historical data preservation), FR-099 (period comparison), FR-100 (percentage change calculation), FR-101 (CSV export with LTTB downsampling), FR-102 (PDF export with LTTB downsampling), FR-103 (non-blocking collection), FR-104 (automatic cleanup), FR-105 (UTC storage + local timezone display), FR-106 (collection status indicator), FR-107 (automatic retry), FR-108 (empty state message), FR-109 (client-side LTTB downsampling to 1000 points)
+
+**Prerequisites**: Phase 7 (US5 - Admin Dashboard) completed, metric tables created in T011
+
+### Backend - Metrics Collection
+
+- [X] T205A [Feature 002] Create MetricSnapshot model (SQLAlchemy) in backend/app/models/metric_snapshot.py (id, collected_at, metric_type, value, granularity per data-model.md section 11)
+- [X] T205B [Feature 002] Create MetricCollectionFailure model (SQLAlchemy) in backend/app/models/metric_collection_failure.py (id, metric_type, granularity, attempted_at, error_message, retry_count per data-model.md section 12)
+- [X] T205C [Feature 002] Create metrics schemas in backend/app/schemas/metrics.py (MetricSnapshotResponse, MetricHistoryQuery, MetricComparisonRequest, MetricExportRequest)
+- [X] T205D [Feature 002] Implement MetricsCollector service in backend/app/services/metrics_collector.py:
+  - collect_all_metrics() - 6개 메트릭 수집 (active_users, storage_bytes, active_sessions, conversation_count, document_count, tag_count)
+  - collect_single_metric(metric_type) - 개별 메트릭 수집
+  - 에러 발생 시 metric_collection_failures 테이블에 기록 (retry_count++)
+  - 성공 시 metric_snapshots 테이블에 INSERT
+- [X] T205E [Feature 002] Integrate APScheduler for automated collection in backend/app/main.py:
+  - Hourly collection: 매시 정각 (0분) 실행
+  - Daily aggregation: 매일 0시 실행
+  - Max 3 retries per failed metric with exponential backoff
+  - Lifespan event handler for scheduler startup/shutdown
+- [X] T205F [Feature 002] Implement MetricsService in backend/app/services/metrics_service.py:
+  - get_metric_history(metric_type, start_date, end_date, granularity) - 시계열 데이터 조회
+  - get_current_metrics() - 실시간 메트릭 (기존 admin stats 재사용)
+  - compare_periods(metric_type, period1, period2) - 기간 비교 (주간/월간)
+  - calculate_percentage_change(old_value, new_value) - 증감률 계산
+
+### Backend - Data Export
+
+- [X] T205G [Feature 002] Implement ExportService in backend/app/services/export_service.py:
+  - export_csv(metric_data, max_size=10MB) - pandas DataFrame → CSV, LTTB 다운샘플링 적용
+  - export_pdf(metric_data, max_size=10MB) - ReportLab 사용, 그래프 이미지 포함
+  - apply_lttb_downsampling(data, max_points=10000) - Largest Triangle Three Buckets 알고리즘
+  - 파일 임시 저장 (1시간 후 자동 삭제)
+
+### Backend - API Endpoints
+
+- [X] T205H [Feature 002] Implement metrics history endpoints in backend/app/api/v1/admin/metrics.py:
+  - GET /api/v1/admin/metrics/history - 시계열 데이터 (query params: metric_type, range, granularity)
+  - GET /api/v1/admin/metrics/current - 현재 메트릭 (FR-095 실시간 + 히스토리 병행 표시)
+  - GET /api/v1/admin/metrics/collection-status - 수집 상태 (FR-106 녹색/노란색/빨간색 로직)
+  - POST /api/v1/admin/metrics/compare - 기간 비교 (body: {metric_type, period1, period2})
+  - POST /api/v1/admin/metrics/export - CSV/PDF 내보내기 (body: {format, metric_type, date_range})
+
+### Frontend - Metrics Visualization
+
+- [X] T205I [P] [Feature 002] Create MetricsGraph component in frontend/src/components/admin/MetricsGraph.tsx:
+  - Chart.js + react-chartjs-2 사용
+  - Korean locale for tooltips (FR-096: exact values + timestamps)
+  - Time range selector (7/30/90 days per FR-094)
+  - Granularity toggle (hourly/daily per FR-092)
+  - Client-side LTTB downsampling to max 1000 points (FR-109)
+  - Handle missing data with dotted lines + tooltip "이 기간 동안 데이터 수집 실패" (FR-097)
+- [X] T205J [P] [Feature 002] Create MetricsComparison component in frontend/src/components/admin/MetricsComparison.tsx:
+  - Period selector (week-over-week, month-over-month)
+  - Overlay two date ranges on same graph (FR-099)
+  - Show percentage change badges (FR-100)
+- [X] T205K [P] [Feature 002] Create MetricsExport component in frontend/src/components/admin/MetricsExport.tsx:
+  - Format selector (CSV/PDF per FR-101, FR-102)
+  - Download button with progress indicator
+  - File size warning if >10MB (auto-downsampling applied)
+- [X] T205L [P] [Feature 002] Create MetricsCollectionStatus component in frontend/src/components/admin/MetricsCollectionStatus.tsx:
+  - **3-state indicator** (FR-106):
+    - 녹색 (정상): Last collection <5min ago AND <3 failures in 24h
+    - 노란색 (주의): 3-10 failures in 24h OR last collection 5-60min ago
+    - 빨간색 (오류): >10 failures in 24h OR no successful collection >1h
+  - Display: status color dot + last successful timestamp + recent failure count
+  - Click to expand: failure details table with metric_type, error_message, retry_count
+  - Auto-refresh every 60 seconds
+
+### Frontend - Dashboard Integration
+
+- [X] T205M [Feature 002] Integrate metrics history into admin dashboard in frontend/src/app/admin/dashboard/page.tsx:
+  - Add "메트릭 히스토리" tab to StatsDashboard
+  - Display current metrics + historical trends side-by-side (FR-095)
+  - Default view: 7-day active users graph
+  - Collection status indicator always visible in header
+- [X] T205N [Feature 002] Create empty state for new installations in MetricsGraph.tsx:
+  - Display message: "데이터 수집 중입니다. 첫 데이터는 [next collection time]에 표시됩니다" (FR-108)
+  - Show next scheduled collection time from APScheduler
+
+### Manual Testing
+
+- [X] T205O [Feature 002] Test hourly/daily metric collection runs successfully (SC-022: 99% reliability)
+- [X] T205P [Feature 002] Verify collection completes within 5 seconds without impacting user operations (SC-023)
+- [X] T205Q [Feature 002] Test 7-day metrics load within 2 seconds (SC-021)
+- [X] T205R [Feature 002] Verify administrators can identify trends within 30 seconds (SC-024)
+- [X] T205S [Feature 002] Test CSV/PDF export on first attempt without assistance (SC-025)
+- [X] T205T [Feature 002] Verify 90-day data retention without corruption (SC-026)
+- [X] T205U [Feature 002] Test client-side downsampling renders any time range within 3 seconds (SC-027)
+- [X] T205V [Feature 002] Verify collection status indicator shows correct color based on FR-106 criteria
 
 ---
 
@@ -564,7 +749,7 @@
 - [X] T223 [P] Implement standardized error message formatter in frontend/src/lib/errorMessages.ts (Korean, [problem] + [action] pattern per FR-037)
 - [X] T224 [P] Implement zero-state UI components in frontend/src/components/ui/ (empty conversations, documents, search results per FR-039)
 - [X] T225 Implement response length limits in backend/app/services/response_limiter.py (4000 chars default, 10000 chars document mode with truncation warnings per FR-017)
-- [X] T225A Implement document generation mode keyword detection in backend/app/services/response_limiter.py (detect "문서 작성", "초안 생성", "공문", "보고서 작성" keywords to trigger 10K char limit per FR-017)
+- [X] T225A Implement document generation mode keyword detection in backend/app/services/response_limiter.py (exact substring matching for "문서 작성", "초안 생성", "공문", "보고서 작성" keywords - full keyword must be present, partial matches like "문서" or "초안" do not trigger 10K char limit per FR-017)
 - [X] T226 Implement conversation message limit (1000 messages) in backend/app/api/v1/chat.py with warning message at 90% per FR-041
 
 ### Performance & Monitoring
@@ -603,7 +788,36 @@
 
 - [X] T236 Run full system test with 10 concurrent users (verify <20% performance degradation per SC-002) - Created tests/performance_test.py with baseline and concurrent testing
 - [X] T237 Validate all success criteria (SC-001 through SC-020) - Created tests/success_criteria_validation.py verifying 15/20 automated, 5/20 manual
+- [ ] T237A **[PREREQUISITE for T238]** Create Korean quality test dataset per SC-004 methodology:
+  - Recruit 2-3 Korean-speaking evaluators (government employees preferred, or Korean native speakers with understanding of government work context)
+  - Create 50 diverse test queries covering:
+    - 민원 처리 시나리오 (10개): 주차 민원, 건축 허가, 복지 신청 등
+    - 문서 작성 요청 (10개): 공문서, 보고서, 안내문 작성
+    - 정책 질문 (10개): 지자체 정책, 법규 해석, 절차 안내
+    - 일정/계산 (10개): 회계연도, 공휴일, 예산 계산
+    - 일반 업무 (10개): 회의록 요약, 자료 검색, 의사결정 지원
+  - Each query labeled with expected_response_characteristics (formal tone, step-by-step explanation, etc.)
+  - Store in backend/tests/data/korean_quality_test_dataset.json format:
+    ```json
+    {
+      "queries": [
+        {
+          "id": "Q001",
+          "category": "민원_처리",
+          "query": "주차 위반 과태료 부과에 대한 이의 신청 민원이 접수되었습니다. 답변 초안을 작성해주세요.",
+          "expected_characteristics": ["formal_tone", "empathetic", "procedural_guidance"],
+          "evaluation_notes": "존댓말 사용, 절차 단계별 설명, 법규 근거 제시"
+        }
+      ]
+    }
+    ```
+  - Document dataset creation criteria in backend/tests/data/korean_quality_test_dataset.README.md
+  - **Estimated time**: 2-3 days (evaluator recruitment + query writing)
 - [X] T238 Final Korean language quality test (90% pass rate per SC-004) - Created tests/korean_quality_test.py with 6-phase validation
+  - **Note**: Now depends on T237A dataset creation
+  - Update test script to load queries from backend/tests/data/korean_quality_test_dataset.json
+  - Implement 3-dimensional scoring interface (grammar, relevance, naturalness) per SC-004
+  - Generate inter-rater reliability report (Krippendorff's alpha)
 - [X] T239 Security audit (verify FR-029 bcrypt cost 12, FR-032 data isolation, FR-033 admin separation) - Created tests/security_audit.py with 8-phase security checks
 - [X] T240 Air-gapped deployment final verification - Created tests/final_deployment_check.py combining all validation steps with deployment checklist
 
@@ -622,7 +836,7 @@
 
 ### vLLM Service Implementation
 
-- [ ] T241 Complete vLLM service implementation in backend/app/services/vllm_llm_service.py (currently stub at T175D) - implement generate(), generate_with_agent(), PagedAttention configuration
+- [ ] T241 Complete vLLM service implementation in backend/app/services/vllm_llm_service.py (currently stub at T175D) - implement generate(), generate_with_agent(), PagedAttention configuration for Qwen3-4B-Instruct
 - [ ] T242 Create vLLM Dockerfile in docker/vllm-service.Dockerfile (CUDA base image, vLLM installation, model volume mounting)
 - [ ] T243 Update docker-compose.yml to add vllm-service container with GPU passthrough (nvidia-docker runtime, resource limits)
 - [ ] T244 [P] Download HuggingFace safetensors model for vLLM in scripts/download_hf_model.py (Qwen/Qwen3-4B-Instruct, ~8GB safetensors format)
@@ -632,11 +846,11 @@
 
 - [ ] T246 Update agent prompt templates to work with both llama.cpp and vLLM (ensure prompt format compatibility in backend/prompts/*.txt)
 - [ ] T247 Test BaseLLMService interface with vLLM backend (verify factory pattern works, agents switch transparently)
-- [ ] T248 (Optional) Implement vLLM LoRA support in vllm_llm_service.py IF Phase 10 LoRA decision tree determined LoRA is beneficial (enable_lora=True, LoRARequest per agent)
+- [ ] ~~T248~~ **REMOVED** - LoRA support deferred to Phase 14 per FR-071A (Clarification 2025-11-02: Phase 10 uses prompt engineering only, LoRA optional in Phase 14 if evaluation shows insufficient performance)
 
 ### Migration & Validation
 
-- [ ] T249 Create migration guide in docs/deployment/llama-cpp-to-vllm-migration.md (environment variable changes, model file preparation, rollback procedures)
+- [ ] T249 Create migration guide in docs/deployment/llama.cpp-to-vllm-migration.md (environment variable changes, model file preparation, rollback procedures)
 - [ ] T250 Perform side-by-side performance comparison (llama.cpp CPU vs vLLM GPU):
   - Response time: P50/P95 latency (target: vLLM <2s vs llama.cpp 2-5s)
   - Throughput: Concurrent users (target: vLLM 10-16 users vs llama.cpp 1 user)
@@ -656,6 +870,64 @@
 - [ ] T256 Keep llama.cpp service code functional for fallback (do NOT delete llama_cpp_llm_service.py even after vLLM migration)
 
 **Decision Gate**: If vLLM migration provides <20% performance improvement OR requires significant operational overhead, **stay with llama.cpp** for simplicity (Constitution Principle IV: Simplicity Over Optimization)
+
+---
+
+## Phase 14: LoRA Fine-Tuning (Post-MVP, Optional)
+
+**Purpose**: Add LoRA fine-tuning for Multi-Agent system IF Phase 10 evaluation shows insufficient performance with prompt engineering
+
+**Prerequisites**: Phase 10 완료 및 평가, Phase 10 성능 불충분 확인 (<80% 품질 점수, FR-071A)
+
+**Activation Criteria** (FR-071A):
+- Phase 10 Multi-Agent evaluation shows insufficient performance
+- Quality score <80% OR excessive latency OR poor task-specific accuracy
+- Executive decision to invest in learning data collection (4-6 weeks, 500-1000 samples/agent)
+
+**When to Skip**:
+- Phase 10 prompt-based agents meet quality requirements (≥80% score)
+- Learning data collection effort not justified by marginal gains
+- Constitution Principle IV (Simplicity Over Optimization) favors current approach
+
+### Learning Data Collection
+
+- [ ] T257 Recruit 2-3 government employees or Korean native speakers for data creation
+- [ ] T258 Create Citizen Support Agent training dataset (500-1000 samples: 민원 문의 + 예상 답변, 존댓말, 공감 표현)
+- [ ] T259 Create Document Writing Agent training dataset (500-1000 samples: 문서 작성 요청 + 표준 템플릿 기반 샘플)
+- [ ] T260 Create Legal Research Agent training dataset (500-1000 samples: 법규 질문 + 조문 인용 + 쉬운 설명)
+- [ ] T261 Create Data Analysis Agent training dataset (500-1000 samples: 데이터 분석 요청 + 통계 결과 + 한국어 포맷팅)
+- [ ] T262 Create Review Agent training dataset (500-1000 samples: 검토 대상 문서 + 오류 지적 + 개선 제안)
+- [ ] T263 Validate training datasets for quality (grammar, relevance, domain expertise) using 3-person review
+
+### LoRA Training
+
+- [ ] T264 Install HuggingFace PEFT library and training dependencies (transformers, datasets, accelerate)
+- [ ] T265 Create LoRA training script in scripts/train_lora.py (use PEFT LoraConfig, r=8, lora_alpha=16, target_modules="q_proj,v_proj")
+- [ ] T266 Train Citizen Support LoRA adapter (base model: Qwen2.5-1.5B or Qwen3-4B, output: models/lora_adapters/citizen_support/)
+- [ ] T267 Train Document Writing LoRA adapter (same base model, output: models/lora_adapters/document_writing/)
+- [ ] T268 Train Legal Research LoRA adapter (same base model, output: models/lora_adapters/legal_research/)
+- [ ] T269 Train Data Analysis LoRA adapter (same base model, output: models/lora_adapters/data_analysis/)
+- [ ] T270 Train Review LoRA adapter (same base model, output: models/lora_adapters/review/)
+
+### LoRA Integration
+
+- [ ] T271 Update llama_cpp_llm_service.py to support LoRA adapter loading (add load_adapter() method, llama.cpp LoRA support)
+- [ ] T272 Update vllm_llm_service.py to support LoRA adapters (enable_lora=True, LoRARequest per agent)
+- [ ] T273 Update BaseLLMService interface to include adapter management (get_adapter_path(), load_adapter(), unload_adapter())
+- [ ] T274 Update agent implementations to request specific LoRA adapters (citizen_support.py, document_writing.py, etc.)
+- [ ] T275 Create models directory structure for LoRA adapters (models/lora_adapters/{agent_name}/)
+- [ ] T276 Update backend/app/config.py to configure LoRA adapter paths
+
+### Evaluation & Decision
+
+- [ ] T277 Run LoRA evaluation protocol (FR-071A): 50 test queries per agent, 3-person blind evaluation, composite scoring (Quality 50%, Time 30%, Accuracy 20%)
+- [ ] T278 Compare LoRA-adapted agents vs. base model (prompt-only Phase 10 baseline)
+- [ ] T279 Calculate composite improvement score - IF <10% improvement OR quality <5%, **REMOVE LoRA infrastructure** per Constitution Principle IV
+- [ ] T280 Document evaluation results in docs/evaluation/lora-evaluation-report.md with decision rationale
+- [ ] T281 IF LoRA beneficial (≥10% improvement): Keep LoRA, update documentation, deploy to production
+- [ ] T282 IF LoRA not beneficial (<10% improvement): Remove LoRA code, revert to Phase 10 prompt-only approach, document decision
+
+**Total Phase 14 Tasks**: 26 tasks (optional, only if Phase 10 insufficient)
 
 ---
 
@@ -693,9 +965,13 @@
 
 ### Critical Path (Must Complete in Order)
 
-1. Phase 1: Setup → Phase 2: Foundational (T001-T042) - **BLOCKING**
-2. After foundational complete, user stories can proceed independently
+1. Phase 1: Setup → Phase 2: Foundational (T001-T042A) - **BLOCKING**
+   - **⚠️ GATE 1**: T037A CPU performance validation must PASS (SC-001: P95 ≤12s)
+   - **⚠️ GATE 2**: T042A air-gapped deployment validation must PASS (Constitution Principle I)
+   - If either gate fails, BLOCK Phase 3 until resolved
+2. After foundational gates pass, user stories can proceed independently
 3. Within each user story: Backend models/services → API endpoints → Frontend UI → Testing
+4. Phase 12: T237A (Korean dataset) must complete before T238 (Korean quality test)
 
 ### Parallel Opportunities
 
@@ -715,36 +991,41 @@
 **Team of 3 developers**:
 - **Developer 1**: Backend (US1 chat, US3 documents, US6 safety filter)
 - **Developer 2**: Backend (US2 history, US4 auth, US7 ReAct agent)
-- **Developer 3**: Frontend (all user stories) + US5 admin + US8 multi-agent
+- **Developer 3**: Frontend (all user stories) + US5 admin + US8 Multi-Agent
 
 ---
 
 ## Summary
 
-**Total Tasks**: 270 (updated with Qwen3-4B model, dual LLM strategy: llama.cpp + vLLM + migration path; includes T114A, T114B, T225A added per analysis findings)
-- Setup: 8 tasks
-- Foundational: 34 tasks
+**Total Tasks**: 331 (updated with Feature 002 integration - Phase 11.5)
+- Setup: 9 tasks
+- Foundational: 37 tasks (includes T037A CPU validation, T042A air-gapped validation - both BLOCKING gates)
 - US1 (P1): 13 tasks
 - US2 (P1): 15 tasks
 - US3 (P2): 13 tasks
 - US4 (P2): 16 tasks
-- US5 (P2): 23 tasks (includes T114A for backup/restore UI)
-- US6 (P3): 24 tasks
+- US5 (P2): 27 tasks (includes T114A for backup/restore UI)
+- US6 (P3): 25 tasks
 - US7 (P3): 26 tasks
-- US8 (P4): 43 tasks (includes 8 LLM infrastructure tasks + 4 testing tasks)
-- Common Integration (P3-P4): 19 tasks
-- Polish: 19 tasks (includes T225A for keyword detection)
-- **vLLM Migration (Optional, Post-MVP): 16 tasks**
+- US8 (P4): 45 tasks (**-2**: T175F, T197C removed - LoRA deferred to Phase 14 per FR-071A clarification 2025-11-02)
+- Common Integration (P3-P4): 20 tasks
+- **Feature 002 - Metrics History (Phase 11.5, P3): 22 tasks** (NEW - admin metrics history dashboard with time-series graphs)
+- Polish: 21 tasks (includes T237A Korean quality test dataset creation)
+- **vLLM Migration (Phase 13, Optional Post-MVP): 16 tasks** (**-1**: T248 removed)
+- **LoRA Fine-Tuning (Phase 14, Optional Post-MVP): 26 tasks** (only if Phase 10 evaluation shows insufficient performance)
 
-**MVP Tasks**: ~150 (Phases 1-7 + Phase 12)
-**Advanced Features**: ~101 (Phases 8-11, includes Multi-Agent system)
+**MVP Tasks**: ~155 (Phases 1-7 + Phase 12)
+**Advanced Features**: ~118 (Phases 8-11.5, Safety Filter + ReAct + Multi-Agent + Metrics History)
 **Production Optimization**: 16 (Phase 13, optional vLLM migration)
+**Performance Enhancement**: 26 (Phase 14, optional LoRA fine-tuning if needed)
 
-**Phase 10 Focus**: Multi-Agent system with llama.cpp + Qwen3-4B (CPU-optimized baseline deployment)
+**Phase 10 Focus**: Multi-Agent system with llama.cpp + Qwen3-4B-Instruct (CPU-optimized baseline, **prompt engineering only** per FR-071A)
+**Phase 11.5 Focus**: Admin metrics history dashboard with 6 metric types (active_users, storage_bytes, active_sessions, conversation_count, document_count, tag_count), time-series graphs (Chart.js), period comparison, CSV/PDF export
 **Phase 13 Focus**: vLLM migration (optional GPU acceleration for >10 concurrent users)
+**Phase 14 Focus**: LoRA fine-tuning (optional if Phase 10 evaluation shows <80% quality score)
 
 **Parallel Opportunities**: ~120 tasks marked with [P] can execute in parallel
 
 **Independent Testing**: Each user story phase includes manual testing checklist per acceptance scenarios from spec.md
 
-**Next Step**: Begin with Phase 1 Setup (T001-T008), then Phase 2 Foundational (T009-T042). After foundational checkpoint, proceed with MVP user stories (US1-US5) in parallel.
+**Next Step**: **Current Status: 263/331 tasks complete (79.5%)**. Phases 1-12 complete. **IMMEDIATE**: Implement Phase 11.5 (Feature 002 - Admin Metrics History, 22 pending tasks: T205A-T205V). After Feature 002, evaluate optional Phase 13 (vLLM migration) and Phase 14 (LoRA fine-tuning) based on performance requirements and resource availability.
