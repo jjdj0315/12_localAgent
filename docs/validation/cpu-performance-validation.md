@@ -1,14 +1,14 @@
 # CPU Performance Validation Report - T037A
 
 **Status**: ❌ FAIL
-**Date**: 2025-11-04T05:44:02.129650
-**Model**: qwen3-4b-instruct-q4_k_m.gguf
+**Date**: 2025-11-04T06:54:54.374923
+**Model**: qwen3-0.6b-q8_0.gguf
 
 ## SC-001 Requirement
 
 **Requirement**: System responds to single-user queries with P95 latency ≤12 seconds on CPU-only deployment
 
-**Result**: P95 = 97.59s
+**Result**: P95 = 98.77s
 **Status**: ❌ FAIL - Exceeds SC-001 threshold
 
 ## Test Environment
@@ -20,8 +20,8 @@
 | RAM | 7.5GB |
 | OS | Linux #1 SMP Thu Jan 11 04:09:03 UTC 2024 |
 | Python | 3.11.14 |
-| Model | qwen3-4b-instruct-q4_k_m.gguf |
-| Model Load Time | 246.99s |
+| Model | qwen3-0.6b-q8_0.gguf |
+| Model Load Time | 67.15s |
 | Context Window | 2048 tokens |
 
 ## Test Methodology
@@ -36,12 +36,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Mean | 59.19s |
-| Median | 58.80s |
-| Std Dev | 18.02s |
-| Min | 0.33s |
-| Max | 127.96s |
-| **P95** | **97.59s** |
+| Mean | 23.71s |
+| Median | 12.61s |
+| Std Dev | 27.84s |
+| Min | 0.08s |
+| Max | 121.33s |
+| **P95** | **98.77s** |
 
 ## Detailed Results
 
@@ -51,10 +51,10 @@
 
 | Iteration | Time (s) |
 |-----------|----------|
-| 1 | 63.42 |
-| 2 | 60.27 |
-| 3 | 62.32 |
-| **Average** | **62.00** |
+| 1 | 65.19 |
+| 2 | 61.84 |
+| 3 | 80.31 |
+| **Average** | **69.11** |
 
 ### Q02 - 문서_작성
 
@@ -62,10 +62,10 @@
 
 | Iteration | Time (s) |
 |-----------|----------|
-| 1 | 61.19 |
-| 2 | 56.52 |
-| 3 | 72.74 |
-| **Average** | **63.48** |
+| 1 | 121.33 |
+| 2 | 42.86 |
+| 3 | 46.43 |
+| **Average** | **70.21** |
 
 ### Q03 - 정책_질문
 
@@ -73,10 +73,10 @@
 
 | Iteration | Time (s) |
 |-----------|----------|
-| 1 | 69.97 |
-| 2 | 61.99 |
-| 3 | 57.57 |
-| **Average** | **63.18** |
+| 1 | 55.97 |
+| 2 | 12.98 |
+| 3 | 12.39 |
+| **Average** | **27.11** |
 
 ### Q04 - 일정_계산
 
@@ -84,10 +84,10 @@
 
 | Iteration | Time (s) |
 |-----------|----------|
-| 1 | 71.78 |
-| 2 | 55.59 |
-| 3 | 59.92 |
-| **Average** | **62.43** |
+| 1 | 5.54 |
+| 2 | 12.25 |
+| 3 | 1.00 |
+| **Average** | **6.26** |
 
 ### Q05 - 일반_업무
 
@@ -95,10 +95,10 @@
 
 | Iteration | Time (s) |
 |-----------|----------|
-| 1 | 62.25 |
-| 2 | 64.35 |
-| 3 | 44.88 |
-| **Average** | **57.16** |
+| 1 | 12.66 |
+| 2 | 12.67 |
+| 3 | 12.18 |
+| **Average** | **12.50** |
 
 ### Q06 - 민원_처리
 
@@ -106,10 +106,10 @@
 
 | Iteration | Time (s) |
 |-----------|----------|
-| 1 | 127.96 |
-| 2 | 62.34 |
-| 3 | 58.14 |
-| **Average** | **82.81** |
+| 1 | 13.02 |
+| 2 | 1.09 |
+| 3 | 0.08 |
+| **Average** | **4.73** |
 
 ### Q07 - 문서_작성
 
@@ -117,10 +117,10 @@
 
 | Iteration | Time (s) |
 |-----------|----------|
-| 1 | 64.83 |
-| 2 | 55.37 |
-| 3 | 56.23 |
-| **Average** | **58.81** |
+| 1 | 12.51 |
+| 2 | 12.41 |
+| 3 | 12.45 |
+| **Average** | **12.46** |
 
 ### Q08 - 정책_질문
 
@@ -128,10 +128,10 @@
 
 | Iteration | Time (s) |
 |-----------|----------|
-| 1 | 58.98 |
-| 2 | 58.62 |
-| 3 | 53.77 |
-| **Average** | **57.12** |
+| 1 | 14.02 |
+| 2 | 13.91 |
+| 3 | 12.45 |
+| **Average** | **13.46** |
 
 ### Q09 - 일정_계산
 
@@ -139,10 +139,10 @@
 
 | Iteration | Time (s) |
 |-----------|----------|
-| 1 | 52.29 |
-| 2 | 49.07 |
-| 3 | 48.70 |
-| **Average** | **50.02** |
+| 1 | 13.50 |
+| 2 | 0.18 |
+| 3 | 12.63 |
+| **Average** | **8.77** |
 
 ### Q10 - 일반_업무
 
@@ -150,16 +150,16 @@
 
 | Iteration | Time (s) |
 |-----------|----------|
-| 1 | 51.01 |
-| 2 | 0.33 |
-| 3 | 53.19 |
-| **Average** | **34.84** |
+| 1 | 12.54 |
+| 2 | 12.32 |
+| 3 | 12.60 |
+| **Average** | **12.49** |
 
 ## Conclusion
 
 ❌ **VALIDATION FAILED**
 
-The CPU-only baseline performance does NOT meet SC-001 requirements. P95 latency is 97.59s (exceeds 12s threshold).
+The CPU-only baseline performance does NOT meet SC-001 requirements. P95 latency is 98.77s (exceeds 12s threshold).
 
 **Required Actions**:
 1. ⚠️ BLOCK Phase 3 until resolved

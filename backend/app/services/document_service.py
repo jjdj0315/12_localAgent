@@ -13,7 +13,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document
-from app.models.conversation_document import conversation_document
 
 
 class DocumentService:
@@ -165,6 +164,7 @@ class DocumentService:
     async def save_document(
         db: AsyncSession,
         user_id: UUID,
+        conversation_id: UUID,
         filename: str,
         file_content: bytes,
         file_type: str,
@@ -175,6 +175,7 @@ class DocumentService:
         Args:
             db: Database session
             user_id: User ID
+            conversation_id: Conversation ID to attach document to
             filename: Original filename
             file_content: File content bytes
             file_type: File type (pdf, docx, txt)
@@ -208,6 +209,7 @@ class DocumentService:
         document = Document(
             id=doc_id,
             user_id=user_id,
+            conversation_id=conversation_id,
             filename=filename,
             file_path=str(file_path),
             file_type=file_type,
@@ -322,40 +324,6 @@ class DocumentService:
         return True
 
     @staticmethod
-    async def attach_document_to_conversation(
-        db: AsyncSession, conversation_id: UUID, document_id: UUID
-    ) -> None:
-        """
-        Attach document to conversation.
-
-        Args:
-            db: Database session
-            conversation_id: Conversation ID
-            document_id: Document ID
-        """
-        # Check if already attached
-        from sqlalchemy import and_
-
-        query = select(conversation_document).where(
-            and_(
-                conversation_document.c.conversation_id == conversation_id,
-                conversation_document.c.document_id == document_id,
-            )
-        )
-        result = await db.execute(query)
-        existing = result.first()
-
-        if not existing:
-            from sqlalchemy import insert
-
-            stmt = insert(conversation_document).values(
-                conversation_id=conversation_id,
-                document_id=document_id,
-            )
-            await db.execute(stmt)
-            await db.commit()
-
-    @staticmethod
     async def get_conversation_documents(
         db: AsyncSession, conversation_id: UUID
     ) -> list[Document]:
@@ -369,11 +337,7 @@ class DocumentService:
         Returns:
             List of documents
         """
-        query = (
-            select(Document)
-            .join(conversation_document, Document.id == conversation_document.c.document_id)
-            .where(conversation_document.c.conversation_id == conversation_id)
-        )
+        query = select(Document).where(Document.conversation_id == conversation_id)
 
         result = await db.execute(query)
         return list(result.scalars().all())

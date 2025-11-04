@@ -205,7 +205,9 @@ class AdminService:
         # Active users (users who created messages)
         async def count_active_users(since: datetime) -> int:
             query = (
-                select(func.count(func.distinct(Message.user_id)))
+                select(func.count(func.distinct(Conversation.user_id)))
+                .select_from(Message)
+                .join(Conversation, Message.conversation_id == Conversation.id)
                 .where(Message.created_at >= since)
             )
             result = await db.execute(query)

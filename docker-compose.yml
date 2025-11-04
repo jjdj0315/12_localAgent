@@ -31,7 +31,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       SESSION_TIMEOUT_MINUTES: ${SESSION_TIMEOUT_MINUTES:-30}
       LLM_BACKEND: llama_cpp
-      GGUF_MODEL_PATH: /models/qwen3-4b-instruct-q4_k_m.gguf
+      GGUF_MODEL_PATH: /models/qwen3-0.6b-q8_0.gguf
       LLAMA_N_THREADS: 8
       LLAMA_N_CTX: 2048
       LLAMA_N_GPU_LAYERS: 0
@@ -64,8 +64,8 @@ services:
         echo 'Creating initial admin user...' &&
         python scripts/create_admin.py --username admin --password admin123! 2>/dev/null || true &&
         echo 'Verifying GGUF model...' &&
-        ls -lh /models/qwen3-4b-instruct-q4_k_m.gguf &&
-        echo 'Starting backend server with llama.cpp (Qwen3-4B)...' &&
+        ls -lh /models/qwen3-0.6b-q8_0.gguf &&
+        echo 'Starting backend server with llama.cpp (Qwen3-0.6B Q8_0)...' &&
         uvicorn app.main:app --host 0.0.0.0 --port 8000
       "
 
@@ -83,9 +83,49 @@ services:
     stdin_open: true
     tty: true
 
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: llm-webapp-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: llm-webapp-grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/alerting:/etc/grafana/provisioning/alerting:ro
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_INSTALL_PLUGINS=
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   uploads_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   default:

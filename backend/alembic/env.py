@@ -14,7 +14,7 @@ from app.models.user import User
 from app.models.session import Session
 from app.models.conversation import Conversation
 from app.models.message import Message
-from app.models.document import Document, ConversationDocument
+from app.models.document import Document
 from app.core.database import Base
 
 # this is the Alembic Config object, which provides

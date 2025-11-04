@@ -370,9 +370,10 @@ The CPU-only baseline performance does NOT meet SC-001 requirements. P95 latency
 def main():
     """Main execution"""
     # Find model (check Docker path first, then local path)
+    # Using Qwen3-0.6B Q8_0 for better CPU performance
     model_candidates = [
-        Path("/models/qwen3-4b-instruct-q4_k_m.gguf"),  # Docker mount
-        Path("models/qwen3-4b-instruct-q4_k_m.gguf"),   # Local
+        Path("/models/qwen3-0.6b-q8_0.gguf"),  # Docker mount
+        Path("models/qwen3-0.6b-q8_0.gguf"),   # Local
     ]
 
     model_path = None
