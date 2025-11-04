@@ -192,3 +192,177 @@ npm run dev
 - 이 문서는 Cygwin bash 환경 제약으로 인한 수동 테스트 가이드입니다.
 - 프로덕션 환경에서는 Docker Compose로 전체 스택을 실행할 수 있습니다.
 - 모든 기능 구현은 완료되었으며, 테스트만 수동으로 진행하면 됩니다.
+
+---
+
+## Feature 002: Admin Metrics History Dashboard 수동 테스트 (Phase 11.5)
+
+### Prerequisites
+- 백엔드 서버 실행 중 (APScheduler 자동 시작됨)
+- Admin 계정으로 로그인
+- Admin 대시보드 페이지 접속 (`/admin` 또는 `/admin/dashboard`)
+
+### T205O: 시간별/일별 메트릭 수집 테스트 (SC-022: 99% reliability)
+**목적**: 자동 메트릭 수집이 정상 작동하는지 확인
+
+**테스트 절차**:
+1. 백엔드 로그에서 `"시간별 메트릭 수집 작업 시작"` 메시지 확인 (매시 정각)
+2. Admin API에서 collection status 확인:
+   ```bash
+   curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/metrics/status
+   ```
+3. `last_collection_at` 값이 최근 5분 이내인지 확인
+4. `failure_count_24h` 값이 3개 미만인지 확인
+
+**성공 기준**: ✅ 
+- 시간별 수집이 매시 정각에 자동 실행
+- 실패율 <1% (24시간 동안 1개 이하 실패)
+
+---
+
+### T205P: 수집 성능 테스트 (SC-023: <5초, non-blocking)
+**목적**: 메트릭 수집이 사용자 작업에 영향을 주지 않는지 확인
+
+**테스트 절차**:
+1. 백엔드 로그에서 수집 작업 시작/종료 시간 확인:
+   ```
+   [시간별 메트릭 수집 작업 시작]
+   [시간별 메트릭 수집 완료 - 성공: 6, 실패: 0]  # <-- 이 두 줄 사이 시간차 확인
+   ```
+2. Chat page에서 LLM 응답 요청 (수집 중)
+3. 응답 속도가 정상인지 확인 (10초 이내)
+
+**성공 기준**: ✅
+- 메트릭 수집 완료 시간 <5초
+- Chat 응답 속도 영향 없음 (백그라운드 실행)
+
+---
+
+### T205Q: 7일 메트릭 로딩 성능 테스트 (SC-021: <2초)
+**목적**: 시계열 데이터 조회가 빠르게 로딩되는지 확인
+
+**테스트 절차**:
+1. Admin 대시보드 페이지 접속
+2. 브라우저 DevTools Network 탭 열기 (F12)
+3. Time range를 "7일"로 선택
+4. `/api/v1/metrics/timeseries` API 호출 시간 확인
+
+**성공 기준**: ✅ Response time <2초
+
+---
+
+### T205R: 트렌드 식별 테스트 (SC-024: 30초 이내)
+**목적**: 관리자가 메트릭 트렌드를 빠르게 파악할 수 있는지 확인
+
+**테스트 절차**:
+1. Admin 대시보드에서 MetricsGraph 컴포넌트 확인
+2. 다음 질문에 30초 이내 답변 가능한지 확인:
+   - "최근 7일간 active_users가 증가했는가, 감소했는가?"
+   - "storage_bytes 증가율이 가장 높은 날은 언제인가?"
+   - "conversation_count가 급증한 시점이 있는가?"
+
+**성공 기준**: ✅ 
+- 그래프가 명확하게 표시됨 (Chart.js)
+- Tooltip에 정확한 값과 timestamp 표시 (한글 형식)
+- 30초 이내에 트렌드 파악 가능
+
+---
+
+### T205S: CSV/PDF 내보내기 테스트 (SC-025: 첫 시도 성공)
+**목적**: 도움 없이 데이터 내보내기가 가능한지 확인
+
+**테스트 절차**:
+1. Admin 대시보드에서 "내보내기" 버튼 클릭
+2. CSV 형식 선택, 메트릭 타입 선택 (1개 이상), 시간 범위 선택
+3. "다운로드" 버튼 클릭
+4. 다운로드된 CSV 파일 열기 (Excel 또는 텍스트 편집기)
+5. 동일한 절차로 PDF 내보내기 테스트
+
+**성공 기준**: ✅
+- 도움 없이 첫 시도에 성공
+- CSV: 데이터가 올바른 형식으로 내보내기됨
+- PDF: 한글 폰트가 정상 표시됨 (NanumGothic)
+- 파일 크기 <10MB (자동 LTTB downsampling 적용)
+
+---
+
+### T205T: 90일 데이터 보관 테스트 (SC-026: corruption 없음)
+**목적**: 장기 데이터 보관이 corruption 없이 유지되는지 확인
+
+**테스트 절차**:
+1. 데이터베이스에서 metric_snapshots 테이블 조회:
+   ```sql
+   SELECT granularity, MIN(collected_at), MAX(collected_at), COUNT(*) 
+   FROM metric_snapshots 
+   GROUP BY granularity;
+   ```
+2. Hourly 데이터: 최대 30일 보관 확인
+3. Daily 데이터: 최대 90일 보관 확인
+4. 데이터 무결성 확인 (NULL 값, 중복 레코드 없음):
+   ```sql
+   SELECT COUNT(*) FROM metric_snapshots WHERE value IS NULL;
+   ```
+
+**성공 기준**: ✅
+- Hourly: 30일 이내 데이터만 존재
+- Daily: 90일 이내 데이터만 존재
+- NULL 값 0개
+- unique_metric_snapshot constraint 위반 0건
+
+---
+
+### T205U: 클라이언트 다운샘플링 테스트 (SC-027: <3초 렌더링)
+**목적**: 대용량 데이터도 빠르게 렌더링되는지 확인
+
+**테스트 절차**:
+1. Admin 대시보드에서 time range를 "90일" (daily) 선택
+2. 브라우저 Performance 탭 (F12) 열기
+3. "Recording" 시작 후 그래프 렌더링 시간 측정
+4. DevTools Console에서 다운샘플링 로그 확인:
+   ```
+   [Metrics] Downsampled 2000 points to 1000 points using LTTB
+   ```
+
+**성공 기준**: ✅
+- 렌더링 시간 <3초
+- 데이터 포인트 >1000개일 경우 자동 다운샘플링 적용
+- 그래프 시각적 특성 유지 (LTTB 알고리즘)
+
+---
+
+### T205V: 수집 상태 표시기 테스트 (FR-106: 색상 기준)
+**목적**: 수집 상태 표시기가 올바른 색상을 표시하는지 확인
+
+**테스트 절차**:
+1. Admin 대시보드에서 MetricsCollectionStatus 컴포넌트 확인
+2. 정상 상태 (Green):
+   - 최근 수집: <5분 전
+   - 24시간 실패: <3건
+3. 경고 상태 (Yellow) 시뮬레이션:
+   - 스케줄러 일시 중단 후 5-60분 대기
+   - 또는 3-10회 실패 기록 생성
+4. 위험 상태 (Red) 시뮬레이션:
+   - 스케줄러 1시간 이상 중단
+   - 또는 10회 이상 실패 기록
+
+**성공 기준**: ✅
+- Green: last_collection <5min AND failures <3
+- Yellow: failures 3-10 OR 5-60min ago
+- Red: failures >10 OR >1hr ago
+- 30초마다 자동 갱신
+
+---
+
+## Feature 002 테스트 완료 체크리스트
+
+- [ ] T205O: 시간별/일별 메트릭 수집 (99% reliability)
+- [ ] T205P: 수집 성능 (<5초, non-blocking)
+- [ ] T205Q: 7일 메트릭 로딩 (<2초)
+- [ ] T205R: 트렌드 식별 (30초 이내)
+- [ ] T205S: CSV/PDF 내보내기 (첫 시도 성공)
+- [ ] T205T: 90일 데이터 보관 (corruption 없음)
+- [ ] T205U: 클라이언트 다운샘플링 (<3초 렌더링)
+- [ ] T205V: 수집 상태 표시기 (색상 기준)
+
+**모든 테스트 통과 시**: Phase 11.5 완료 ✅
+
