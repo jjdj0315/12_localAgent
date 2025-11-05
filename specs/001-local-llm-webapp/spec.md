@@ -5,7 +5,7 @@
 **Status**: Draft
 **Input**: User description: "소규모 지방자치단체 공무원 대상, 폐쇄망 환경에서 이용 가능한 Local LLM 웹 애플리케이션 서비스를 구축한다. 이는 ChatGPT, Gemini와 같은 외부 에이전트의 사용이 제한되는 환경에서 업무 지원용 LLM 기반 도구를 제공하기 위함이다."
 
-**Overview**: Air-gapped Local LLM web application for small local government employees using Qwen3-4B-Instruct (April 2025 release, ~2.5GB Q4_K_M quantization, Qwen2.5-72B-level performance) to provide AI assistance for administrative tasks without internet connectivity.
+**Overview**: Air-gapped Local LLM web application for small local government employees using **Qwen3-4B-Instruct** (~2.5GB Q4_K_M quantization, Qwen2.5-72B-level performance) to provide AI assistance for administrative tasks without internet connectivity. Optional fallback to Qwen2.5-1.5B-Instruct (~1GB) for resource-constrained environments.
 
 ## Clarifications
 
@@ -26,9 +26,26 @@
 
 - Q: GPU 하드웨어 요구사항 모순 - Assumption #2는 GPU 필수라고 했지만 Dependencies는 CPU 우선/GPU 선택적이라고 명시. 실제 배포 요구사항은? → A: CPU 우선, GPU 선택 - CPU로 기본 동작 보장, GPU 있으면 가속 활용. 지자체 환경에서 GPU 서버 조달 어려움과 경량 모델(Qwen3-4B)의 CPU 작동 가능성 고려 (Assumption #2, Dependencies)
 - Q: Safety Filter 모델 구체화 - "toxic-bert or similar"는 모호함. 폐쇄망 사전 다운로드를 위해 정확한 모델 이름 필요. 어떤 모델 사용? → A: unitary/toxic-bert - 다국어 지원(한국어 포함), ~400MB, CPU 호환, HuggingFace에서 다운로드 가능, 검증된 toxic content 분류 모델 (FR-050, FR-057, Dependencies)
-- Q: ReAct 도구 실패 시 사용자 경험 - FR-065는 "우아하게 처리"라고만 명시. 도구 실패 시 사용자에게 어떻게 보여줄지? → A: Transparent failure - Observation에 실패 내용 표시(예: "문서를 찾을 수 없습니다"), AI가 대안 시도 또는 명확한 안내 제공. ReAct의 추론 가시성 유지하면서 실패를 숨기지 않음 (FR-065, User Story 7 Acceptance Scenario 6)
-- Q: Multi-Agent Orchestrator 기본 라우팅 모드 - FR-076은 "keyword-based OR LLM-based (admin-configurable)"이라고만 명시. 시스템 기본 모드는? → A: LLM-based 기본 - 더 정확한 의도 파악, 새로운 질문 패턴에 유연 대응, 추가 LLM 호출 비용 허용. Keyword-based는 fallback 또는 관리자가 성능 최적화 시 전환 가능 (FR-070, FR-076)
-- Q: LLM-based Orchestrator 프롬프트 전략 - LLM이 5개 에이전트 중 선택하도록 하는 구체적 방법은? → A: Few-shot 예시 기반 - 각 에이전트별 2-3개 대표 질문 예시를 프롬프트에 포함, 간결한 에이전트 설명과 함께 제공. 토큰 효율적이면서 높은 정확도 유지 (FR-070, FR-076, Dependencies)
+- Q: 전문 Agent 도구 실패 시 사용자 경험 - 도구 실행 실패 시 사용자에게 어떻게 보여줄지? → A: Transparent failure - 도구 실패 내용을 명확히 표시(예: "문서를 찾을 수 없습니다"), AI Agent가 대안 시도 또는 명확한 안내 제공. 실패를 숨기지 않고 사용자에게 투명하게 전달 (FR-065, User Story 7 Acceptance Scenario 9)
+- Q: Orchestrator 기본 라우팅 모드 - keyword-based와 LLM-based 중 시스템 기본 모드는? → A: LLM-based 기본 - Few-shot 예시 기반으로 더 정확한 의도 파악, 새로운 질문 패턴에 유연 대응. Keyword-based는 관리자가 성능 최적화 시 전환 가능 (FR-066, User Story 7)
+- Q: LLM-based Orchestrator 프롬프트 전략 - LLM이 6개 Agent + 일반응답 중 선택하도록 하는 구체적 방법은? → A: Few-shot 예시 기반 - 각 Agent별 2-3개 대표 질문 예시를 프롬프트에 포함, 간결한 Agent 설명과 함께 제공. 토큰 효율적이면서 높은 정확도 유지 (FR-066, Dependencies)
+- Q: LoRA adapter 동시 사용 전략 - 여러 사용자가 동시에 다른 Agent 호출 시 메모리 관리는? → A: LRU 캐싱 - 최근 사용한 2-3개 LoRA adapter를 메모리에 유지(~500MB-1.5GB 추가), 나머지는 디스크에서 동적 로딩(<3초). 메모리 효율과 응답 속도 밸런스 유지 (FR-070, User Story 7 Acceptance Scenario 8)
+
+### Session 2025-11-02
+
+- Q: LoRA 파인튜닝 학습 데이터 수집 전략 - Specialized Agent 시스템(Phase 10)에서 6개 Agent별 LoRA adapter 학습에 필요한 데이터를 어떻게 수집해야 하나요? → A: 2단계 접근 - Phase 10에서는 LoRA 로딩 인프라만 구현 (identity LoRA 또는 랜덤 초기화), 프롬프트 엔지니어링으로 Agent 동작. Phase 14에서 학습 데이터 수집 (Agent별 500-1000 샘플, 총 3000-6000) + 파인튜닝 진행. Constitution Principle IV (Simplicity Over Optimization) 준수 (FR-070, FR-071)
+
+### Session 2025-11-04
+
+- Q: 한국어 품질 테스트 합격 기준 반올림 - SC-004에서 "90% 이상의 쿼리"가 50개 중 45개(90.0%) vs 44개(88%)인지 불명확. 정확한 합격 개수는? → A: 정확한 개수: 50개 중 45개 이상 합격 (90.0%) - 테스트 재현성과 명확성을 위해 정확한 숫자 기준 사용 (SC-004)
+- Q: 문서 생성 모드 키워드 매칭 전략 - FR-017에서 "문서 작성", "초안 생성" 등 키워드 감지 방식이 정확 매칭인지, 부분 매칭 허용인지, LLM 의도 파악인지 불명확. 어떤 전략을 사용하는가? → A: 정확 매칭 (exact substring matching) - 사용자 쿼리에 정의된 키워드 전체가 포함될 경우에만 문서 생성 모드 활성화. 예: "문서 작성해줘" (O), "문서 검색" (X), "초안 생성 부탁" (O), "초안" (X). 오탐지(false positive) 방지 및 예측 가능한 동작 보장 (FR-017, T225A)
+
+### Session 2025-11-05
+
+- Q: Specialized Agent 시스템 아키텍처 변경 - ReAct Agent와 Multi-Agent 구조를 폐지하고 새로운 구조로 전환하는 이유는? → A: 메모리 효율성과 전문성 강화 - Base 모델 1개만 로드하고 Agent별 LoRA를 동적으로 교체하는 방식으로 메모리 사용량 감소 (~2.5GB base + 최대 1.5GB LoRA 캐시 vs 기존 방식). 각 Agent가 전용 LoRA + 템플릿 + 도구를 활용하여 도메인 전문성 향상 (User Story 7)
+- Q: RAG(문서 검색) 기능을 별도 Agent로 분리하는 이유는? → A: 전문화된 문서 분석 - 기존 FR-009의 기본 RAG 기능을 전문 RAG Agent로 승격하여 문서 검색/분석에 특화된 LoRA adapter 적용. 복잡한 문서 비교, 다중 문서 추론, 정확한 출처 인용 등 고급 RAG 기능 제공 (FR-068)
+- Q: Base 모델 공유 방식 - 6개 Agent가 동일한 base 모델을 어떻게 공유하나? → A: LoRA adapter 동적 교체 - Base 모델(Qwen3-4B-Instruct)은 startup 시 1회만 로드. 각 Agent 호출 시 해당 Agent의 LoRA adapter만 로드/언로드. LRU 캐싱으로 최근 사용 2-3개 adapter를 메모리에 유지하여 스왑 오버헤드 최소화 (<3초) (FR-070)
+- Q: Phase 10과 Phase 14의 LoRA 역할 차이는? → A: Phase 10(구조), Phase 14(학습) - Phase 10에서는 LoRA 로딩 인프라(PEFT 라이브러리, adapter 관리, 캐싱)만 구현하고 identity LoRA 또는 프롬프트만 사용. Phase 14에서 학습 데이터 수집(Agent별 500-1000 샘플) + 실제 파인튜닝 진행하여 성능 향상 (FR-071)
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -51,7 +68,7 @@ Government employees need to ask questions and receive AI-generated responses fo
 
 ---
 
-### User Story 2 - Conversation History Management (Priority: P2)
+### User Story 2 - Conversation History Management (Priority: P1)
 
 Employees need to save, retrieve, and organize their previous conversations with the LLM to reference past work, continue interrupted tasks, or share helpful responses with colleagues.
 
@@ -141,44 +158,35 @@ Government employees need the system to automatically filter inappropriate conte
 
 ---
 
-## User Story 7 - ReAct Agent with Government Tools (Priority: P3)
+## User Story 7 - Specialized Agent System with Orchestration (Priority: P3)
 
-Government employees need the AI to systematically break down complex tasks using reasoning steps and specialized tools (document search, calculations, date logic, templates) to provide accurate and traceable answers.
+Government employees need the AI system to intelligently route queries to specialized agents (document search, legal research, citizen support, etc.) that provide expert-level responses using domain-specific fine-tuned models and specialized tools, while simple queries are handled directly by the base model for efficiency.
 
-**Why this priority**: ReAct agent capabilities significantly enhance AI usefulness for complex government tasks, but basic Q&A (P1) provides immediate value without it. Should be implemented after core functionality is stable.
+**Why this priority**: Specialized agent system with orchestration provides significant productivity gains for complex domain-specific tasks while maintaining fast responses for simple queries. Requires stable foundation of P1-P2 features and can be added after core conversation functionality is proven.
 
-**Independent Test**: Can be tested by submitting complex queries requiring multiple steps (e.g., "Find regulation X in uploaded documents and calculate budget impact for next fiscal year") and verifying the agent shows clear reasoning steps and tool usage.
-
-**Acceptance Scenarios**:
-
-1. **Given** an employee asks a question requiring document lookup, **When** the ReAct agent processes the request, **Then** the agent displays its reasoning ("Thought: 업로드된 문서에서 관련 규정을 검색해야 합니다"), executes the document search tool, and shows the result before generating final answer
-2. **Given** an employee requests a calculation (budget, deadline, statistics), **When** the ReAct agent processes the request, **Then** the agent uses the calculator tool with clear input/output display (e.g., "Action: 계산기(1500000 * 1.05) = 1575000") and explains the result in context
-3. **Given** an employee needs to check dates or deadlines, **When** they ask about fiscal years, business days, or holiday schedules, **Then** the agent uses the date/schedule tool to calculate accurate results considering Korean holidays and government calendar rules
-4. **Given** an employee requests a standard document (공문서, 보고서), **When** the ReAct agent detects the request, **Then** the agent uses the document template tool to generate structured output with appropriate headers, sections, and formatting based on government document standards
-5. **Given** the ReAct agent is processing a task, **When** it completes more than 5 reasoning-action cycles, **Then** the system stops iteration and displays "작업이 너무 복잡합니다. 질문을 단순화해주세요." (Task too complex. Please simplify your question.) with a summary of steps taken so far
-6. **Given** a tool execution fails (e.g., document not found, calculation error), **When** the ReAct agent receives an error, **Then** the agent displays the error in its observation and either tries an alternative approach or explains the limitation to the user
-7. **Given** an administrator reviews system usage, **When** they view tool execution logs in the admin panel, **Then** they see all tool invocations with timestamps, user, tool name, input parameters, output, and execution time for audit purposes
-
----
-
-## User Story 8 - Multi-Agent System for Complex Workflows (Priority: P4)
-
-Government employees need complex tasks (like responding to citizen inquiries requiring legal research, document drafting, and review) to be automatically distributed across specialized AI agents working collaboratively.
-
-**Why this priority**: Multi-agent orchestration provides significant productivity gains for complex workflows but requires stable foundation of P1-P3 features. Can be added after single-agent capabilities are proven.
-
-**Independent Test**: Can be tested by submitting a complex request (e.g., "Draft a response to citizen complaint about parking policy, cite relevant ordinances, and review for accuracy") and verifying multiple agents collaborate with clear handoffs.
+**Independent Test**: Can be tested by submitting various query types (general questions, document analysis requests, legal inquiries, citizen complaints, data analysis tasks) and verifying correct agent routing, specialized responses using domain knowledge, and appropriate tool usage.
 
 **Acceptance Scenarios**:
 
-1. **Given** an employee submits a citizen inquiry question, **When** the orchestrator analyzes the request, **Then** the system automatically routes it to the Citizen Support Agent, which generates a draft response considering tone, clarity, and completeness
-2. **Given** an employee requests document creation (보고서, 안내문, 정책 문서), **When** the orchestrator assigns the task, **Then** the Document Writing Agent generates structured content following government document standards with appropriate sections, formatting, and professional language
-3. **Given** an employee needs legal or regulatory information, **When** the orchestrator detects legal keywords, **Then** the Legal Research Agent searches uploaded regulations/ordinances, cites relevant articles with source references, and provides interpretation in plain language
-4. **Given** an employee uploads statistical data or asks for data analysis, **When** the orchestrator routes to the Data Analysis Agent, **Then** the agent provides summary statistics, identifies trends, and suggests visualization approaches suitable for government reports
-5. **Given** an agent generates a document or response, **When** the workflow includes a review step, **Then** the Review Agent automatically checks for errors (factual, grammatical, policy compliance), highlights potential issues, and suggests improvements
-6. **Given** an employee submits a complex multi-step request (e.g., "Research policy X, draft amendment proposal, and review"), **When** the orchestrator analyzes the task, **Then** multiple agents work sequentially (Legal Research → Document Writing → Review) with each agent's output passed as input to the next, and the user sees progress indicators for each stage
-7. **Given** an administrator manages the system, **When** they access the agent management interface, **Then** they can enable/disable specific agents, adjust orchestrator routing rules (keyword-based or LLM-based classification), and view agent performance metrics (task counts, average response times, error rates)
-8. **Given** an employee views a multi-agent workflow result, **When** they review the response, **Then** the system clearly labels which agent contributed each section (e.g., "법규 검색 에이전트: [content]", "문서 작성 에이전트: [content]") for transparency
+1. **Given** an employee submits a general query (e.g., "What is the weather today?" or "Explain photosynthesis"), **When** the orchestrator analyzes the intent, **Then** the base model responds directly without routing to specialized agents, providing fast and accurate general knowledge responses
+
+2. **Given** an employee requests document search or analysis (e.g., "Find information about budget policy in uploaded documents" or "Summarize the key points from the uploaded regulation"), **When** the orchestrator detects document-related intent, **Then** the system routes to the RAG Agent which uses document search tools and specialized LoRA to provide accurate answers with source citations
+
+3. **Given** an employee submits a citizen inquiry (e.g., "How should I respond to a complaint about parking fines?"), **When** the orchestrator identifies citizen support intent, **Then** the Citizen Support Agent generates an empathetic, clear response with appropriate tone (존댓말) and completeness using its specialized LoRA
+
+4. **Given** an employee requests document creation (e.g., "Draft a report on last quarter's budget execution" or "Create a policy announcement about the new recycling program"), **When** the orchestrator detects document writing intent, **Then** the Document Writing Agent generates structured content following government standards with proper formatting, sections (제목, 배경, 내용, 결론), and professional language using document template tools and specialized LoRA
+
+5. **Given** an employee needs legal or regulatory information (e.g., "Find regulations about public procurement" or "Cite relevant ordinances for building permits"), **When** the orchestrator detects legal research intent, **Then** the Legal Research Agent searches uploaded regulations using legal reference tools, cites articles with source references, and provides plain-language interpretation using specialized LoRA
+
+6. **Given** an employee asks for data analysis (e.g., "Analyze the trends in this year's civil complaint data" or "Calculate the average processing time from this CSV"), **When** the orchestrator routes to the Data Analysis Agent, **Then** the agent uses data analysis tools to load CSV/Excel files, provides summary statistics, identifies trends, and suggests visualizations using specialized LoRA
+
+7. **Given** an employee requests review or quality check (e.g., "Review this draft document for errors" or "Check this response for policy compliance"), **When** the orchestrator detects review intent, **Then** the Review Agent checks for errors (factual, grammatical, policy compliance), highlights issues, and suggests specific improvements using specialized LoRA
+
+8. **Given** multiple users simultaneously request different specialized agents, **When** the system processes concurrent requests, **Then** the system efficiently manages LoRA adapter swapping using LRU caching (keeps 2-3 most recently used adapters loaded) with <3 second adapter loading time
+
+9. **Given** an agent needs to use specialized tools (calculator, date/schedule, templates), **When** processing a query, **Then** the agent can invoke shared tool library functions (document search, calculator, date/schedule, data analysis, document template, legal reference tools) and display results clearly
+
+10. **Given** an administrator manages the system, **When** they access the agent management interface, **Then** they can enable/disable individual agents, configure orchestrator routing (LLM-based few-shot classification is default), view agent performance metrics (task counts, average response times, LoRA swap times, error rates), and manage LoRA adapter loading policies
 
 ---
 
@@ -267,39 +275,54 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **Handling**: Support multiple PII pattern variations (주민등록번호: 6 digits + dash + 7 digits, phone: with/without dashes, email: standard regex). If undetected PII is reported by user or admin, add pattern to detection rules. Document known limitations (e.g., names cannot be auto-detected).
 - **Covered by**: FR-052
 
-**EC-015: ReAct Agent Infinite Loop**
-- **Scenario**: Agent repeatedly attempts the same failed tool or gets stuck in reasoning cycle
-- **Handling**: Track tool usage per request. If same tool called 3+ times with identical parameters, force stop with message "도구 실행이 반복되고 있습니다. 다른 방법을 시도해주세요." (Tool execution is repeating. Please try a different approach.). Maximum 5 reasoning cycles enforced (FR-062).
-- **Covered by**: FR-062
+**EC-015: Agent Tool Infinite Loop**
+- **Scenario**: Specialized agent repeatedly attempts the same failed tool invocation or calls tools in infinite loop
+- **Handling**: Track tool usage per agent request. If same tool called 3+ times consecutively with identical parameters, force stop with error message "도구 실행이 반복되고 있습니다. 다른 방법을 시도해주세요." (Tool execution is repeating. Please try a different approach.) Agent must then provide response without tool or explain limitation to user.
+- **Covered by**: FR-061 (tool execution safety)
 
 **EC-016: Tool Execution Timeout**
-- **Scenario**: Document search tool takes >30 seconds due to large corpus or complex query
-- **Handling**: Set tool execution timeout at 30 seconds. If exceeded, return timeout error to agent. Agent's observation shows "도구 실행 시간 초과" (Tool execution timeout), and agent should explain limitation to user or try alternative approach.
-- **Covered by**: FR-060, FR-061
-
-**EC-017: Calculator Tool Malformed Expression**
-- **Scenario**: ReAct agent generates invalid calculation expression (e.g., "계산기(1000 원 + 500 원)")
-- **Handling**: Parse expressions to extract numbers only, ignore currency symbols and Korean text. If parsing fails completely, return error "잘못된 계산식입니다." (Invalid calculation expression.) to agent. Agent should reformulate or ask user for clarification.
+- **Scenario**: Document Search Tool takes >30 seconds due to large document corpus or complex semantic query
+- **Handling**: Set tool execution timeout at 30 seconds (configurable by administrator per FR-061). If exceeded, return timeout error to agent with message "도구 실행 시간 초과" (Tool execution timeout). Agent should explain limitation to user ("문서 검색 시간이 초과되었습니다. 더 구체적인 키워드로 다시 시도해주세요.") or attempt alternative approach.
 - **Covered by**: FR-061
 
-**EC-018: Multi-Agent Orchestrator Routing Failure**
-- **Scenario**: User query is ambiguous and orchestrator cannot determine which agent to route to
-- **Handling**: Default to general conversation mode (no specialized agent) and process with standard LLM. If user query explicitly mentions multiple agent domains (e.g., "Search regulations AND draft document AND review"), orchestrator creates sequential workflow automatically.
-- **Covered by**: FR-070, FR-072
+**EC-017: Calculator Tool Malformed Expression**
+- **Scenario**: Specialized agent (e.g., Data Analysis Agent) generates invalid calculation expression (e.g., "계산기(1000 원 + 500 원)" with Korean text)
+- **Handling**: Parse expressions to extract numbers only, ignore currency symbols (원) and Korean text. If parsing fails completely, return error "잘못된 계산식입니다." (Invalid calculation expression) to agent. Agent should reformulate calculation with proper numeric format or ask user for clarification.
+- **Covered by**: FR-060 (Calculator Tool specification)
 
-**EC-019: Agent Collaboration Failure**
-- **Scenario**: Legal Research Agent fails (no documents found), but workflow requires its output for Document Writing Agent
-- **Handling**: Each agent in workflow receives previous agent's status. If upstream agent failed, downstream agent displays error: "이전 단계가 실패하여 작업을 완료할 수 없습니다." (Cannot complete task due to previous step failure.) and explains what was attempted. User can retry with modified query.
-- **Covered by**: FR-073, FR-075
+**EC-018: Orchestrator Routing Failure**
+- **Scenario**: User query is ambiguous and orchestrator cannot determine routing decision (direct response vs. which specialized agent)
+- **Handling**: Default to base model direct response without specialized agent routing (per FR-073 routing error handling). Log routing failure for administrator review. If query pattern repeats, suggest adding to orchestrator few-shot examples or keyword patterns.
+- **Covered by**: FR-066 (orchestrator), FR-073 (routing error handling)
+
+**EC-019: Sequential Agent Workflow Failure (Phase 11 Feature)**
+- **Scenario**: In multi-step workflow, Legal Research Agent fails (no documents found), but workflow requires its output for Document Writing Agent in next step
+- **Handling**: Downstream agent (Document Writing) receives upstream failure notification. Display error: "이전 단계가 실패하여 작업을 완료할 수 없습니다." (Cannot complete task due to previous step failure) with explanation of what Legal Research Agent attempted. User can retry entire workflow with modified query or skip failed step. Sequential workflows are Phase 11 feature (FR-074), not MVP.
+- **Covered by**: FR-074 (sequential workflows)
 
 **EC-020: Safety Filter Blocking Tool Output**
-- **Scenario**: Document search tool returns content containing PII, which is then flagged by safety filter before returning to user
-- **Handling**: Apply safety filter to tool outputs before passing to agent or user. Mask PII in tool results. If tool output is entirely inappropriate, replace with "[도구 결과에 부적절한 내용이 포함되어 필터링되었습니다.]" (Tool output contained inappropriate content and was filtered.). Agent should handle gracefully in its reasoning.
-- **Covered by**: FR-050, FR-051, FR-052
+- **Scenario**: Document Search Tool or Legal Reference Tool returns content containing PII or inappropriate content, which is then flagged by safety filter before agent can use it
+- **Handling**: Apply safety filter to all tool outputs before passing to agent (FR-062 transparent failure approach). Mask PII in tool results (e.g., 주민등록번호 → 123456-*******). If tool output is entirely inappropriate, replace with "[도구 결과에 부적절한 내용이 포함되어 필터링되었습니다.]" (Tool output contained inappropriate content and was filtered). Agent receives filtered result and must handle gracefully in response generation.
+- **Covered by**: FR-050 (safety filter), FR-051 (PII masking), FR-062 (tool error handling)
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
+
+**Numbering Convention**: FR numbers are organized by feature area with intentional gaps for future expansion:
+- FR-001~FR-043: Core functionality (basic chat, document upload, auth, admin)
+- FR-044~FR-049: *Reserved for future core features*
+- FR-050~FR-058: Safety Filter requirements
+- FR-059: *Reserved for future safety features*
+- FR-060~FR-065: Shared Tool Library requirements
+- FR-066~FR-075: Orchestrator and Agent System requirements
+- FR-076~FR-080: *Reserved for future agent features*
+- FR-081~FR-088: Common Air-Gapped requirements
+- FR-089~FR-109: Admin Metrics History (Feature 002)
+- FR-110~FR-114: Security Hardening (Feature 002 Patch)
+- FR-115~FR-122: Quality & Operational (Post-Implementation Review)
+
+#### Core Functional Requirements
 
 - **FR-001**: System MUST operate entirely within a closed network environment without requiring internet connectivity
 - **FR-002**: System MUST provide a web-based interface accessible through standard web browsers on the internal network
@@ -313,11 +336,11 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FR-010**: System MUST support multiple concurrent users with individual authentication
 - **FR-011**: System MUST ensure each user can only access their own conversation history and uploaded documents
 - **FR-012**: System MUST provide session management with automatic timeout after 30 minutes (1,800 seconds) of inactivity measured from last user request (click, input, scroll), display warning modal 3 minutes before timeout asking "곧 로그아웃됩니다. 계속하시겠습니까?", redirect to login page on timeout, and save draft messages to local storage for recovery upon re-login
-- **FR-013**: System MUST display error messages in user-friendly language when operations fail
+- **FR-013**: System MUST display error messages in clear Korean (명확한 한국어) when operations fail, following patterns defined in FR-037: "[problem description] + [user action]" format, polite tone (존댓말), minimal technical terms, no blame language
 - **FR-014**: System MUST support Korean language for both queries and responses
 - **FR-015**: System MUST validate uploaded files for type and size before processing
 - **FR-016**: System MUST allow users to edit conversation titles and automatically assign tags from administrator-defined tag list when the first message is sent (system analyzes first message content using semantic similarity to auto-assign relevant tags; if user has manually set a custom conversation title before sending first message, title is also included in analysis; administrators manage organization-wide tag list including creation, editing, and deletion of tags with optional keywords; users can manually add/remove auto-assigned tags at any time; tags are not automatically updated after initial assignment)
-- **FR-017**: System MUST limit response length with two modes: default mode (4,000 character maximum), document generation mode (10,000 character maximum activated by keyword detection in user queries: "문서 작성", "초안 생성", "공문", "보고서 작성", or similar document creation terms), truncating at 3,900/9,900 characters respectively with warning messages "응답이 길이 제한으로 잘렸습니다. 더 구체적인 질문으로 나누어 주세요." or "문서가 너무 깁니다. 더 짧게 요청해주세요."
+- **FR-017**: System MUST limit response length with two modes: default mode (4,000 character maximum), document generation mode (10,000 character maximum activated by exact substring matching of keywords in user queries: "문서 작성", "초안 생성", "공문", "보고서 작성" - full keyword must be present to activate mode, partial matches like "문서" or "초안" alone do not trigger document mode), truncating at 3,900/9,900 characters respectively with warning messages "응답이 길이 제한으로 잘렸습니다. 더 구체적인 질문으로 나누어 주세요." or "문서가 너무 깁니다. 더 짧게 요청해주세요."
 - **FR-018**: System MUST provide an administrator panel with user management (account creation/deletion, password resets), usage statistics, and system health monitoring capabilities
 - **FR-019**: System MUST retain conversations and uploaded documents until users manually delete them OR administrators remove them due to storage constraints (with user notification)
 - **FR-020**: System MUST display storage usage warnings to users when their personal storage exceeds 80% of per-user quota (10GB), and automatically archive or delete oldest conversations/documents (inactive for 30+ days) when 10GB limit is reached, displaying notification to user with list of cleaned items and total space recovered
@@ -342,7 +365,38 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FR-039**: System MUST display zero-state UI: for new users show "아직 대화가 없습니다" with highlighted "새 대화 시작하기" button and optional usage examples; for empty document uploads show "업로드된 문서가 없습니다" with drag-drop area and supported formats; for empty search results show "검색 결과가 없습니다" with keyword suggestion
 - **FR-040**: System MUST support browsers Chrome 90+, Edge 90+, Firefox 88+ (not Internet Explorer), require minimum 1280x720 resolution and JavaScript enabled
 - **FR-041**: System MUST limit conversations to 1,000 messages per conversation, display warning "대화가 너무 깁니다. 새 대화를 시작해주세요." when limit reached while allowing continued use with performance warning, and exempt administrators from limit for debugging
-- **FR-042**: System MUST implement automated backup strategy: daily incremental backups of database and uploaded documents at 2 AM, weekly full backups every Sunday, minimum 30-day backup retention, backups stored on separate storage volume (not system disk), and provide documented restore procedures in docs/admin/backup-restore-guide.md accessible to IT staff via link in admin panel
+- **FR-042**: System MUST implement automated backup strategy with the following specifications:
+
+  **Backup Schedule**:
+  - Daily incremental: 2 AM (pg_dump + document rsync/robocopy)
+  - Weekly full: Sunday 2 AM (pg_dump --format=custom + full document snapshot)
+
+  **Retention Policy**:
+  - **Daily backups**: Keep all from last 30 calendar days, delete on day 31+
+  - **Weekly backups**: Keep minimum 4 most recent, regardless of age (永久 보관 아님, 5번째부터 삭제)
+  - **Combined guarantee**: Always have at least 30 days of daily recovery points OR 4 weekly recovery points (whichever provides longer coverage)
+
+  **Edge Case Handling**:
+  1. **Day 30 backup fails**:
+     - Retention: Keep day 29 backup as newest
+     - Cleanup: Skip deletion of day 1 backup (retain 30 days from last successful)
+     - Alert: Log warning to admin dashboard + email notification (if configured)
+     - Resolution: Next successful backup resets 30-day window
+
+  2. **Multiple consecutive failures** (>3 days):
+     - Retention: Freeze deletion (no cleanup until successful backup)
+     - Alert: Critical alert to admin dashboard (red indicator)
+     - Manual intervention: Administrator must investigate disk space/permissions
+
+  3. **Disk space insufficient after cleanup**:
+     - Action: Halt new backups, display error "백업 공간 부족. 수동 정리 필요."
+     - Alert: Critical notification to admin panel
+     - Recovery: Administrator must free space or expand backup volume
+
+  **Storage**:
+  - Location: Separate storage volume (not system disk)
+  - Path: /backup (Linux) or D:\backups (Windows)
+  - Access: Admin panel link to docs/admin/backup-restore-guide.md
 - **FR-043**: System MUST provide tag management interface for administrators to create, edit, and delete organization-wide tags (tag attributes: name, optional keywords for matching, color/icon for visual distinction, creation date), automatically assign tags to conversations when the first message is sent by analyzing first message content and matching to tag names/keywords using semantic similarity (embedding-based with sentence-transformers; if user has manually set a custom conversation title before sending first message, title is also included in analysis), prevent deletion of tags currently in use by displaying usage count and requiring confirmation, allow users to filter conversations by single or multiple tags, and enable users to manually adjust auto-assigned tags at any time (tags not automatically updated after initial assignment)
 
 #### Safety Filter Requirements (FR-050 series)
@@ -359,60 +413,241 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FR-057**: System MUST load all safety filter models and keyword lists locally from disk on application startup, with no external network calls required, supporting fully air-gapped deployment
 - **FR-058**: System MUST allow filter bypass for false positives: display "이 내용이 업무와 관련된 경우 [재시도]를 클릭하세요." option when input is blocked, retry bypasses rule-based filter but still applies ML filter, log all bypass attempts with user_id for administrator review
 
-#### ReAct Agent Requirements (FR-060 series)
+#### Shared Tool Library Requirements (FR-060 series)
 
-- **FR-060**: System MUST implement ReAct (Reasoning and Acting) pattern with loop structure: Thought (사고: LLM generates reasoning step) → Action (행동: execute tool with parameters) → Observation (관찰: display tool result) → repeat until final answer, with each step visible to user in chat interface
-- **FR-061**: System MUST provide six government-specialized tools for ReAct agent:
-  1. Document Search Tool: searches uploaded documents in current conversation using vector similarity, returns text snippets with source references (filename, page)
-  2. Calculator Tool: evaluates mathematical expressions (addition, subtraction, multiplication, division, percentages), handles Korean currency symbols (원), returns numeric result
-  3. Date/Schedule Tool: calculates business days excluding weekends/Korean public holidays, fiscal year conversions (회계연도), deadline calculations from start date + duration
-  4. Data Analysis Tool: loads CSV/Excel files from uploads, provides summary statistics (mean, median, sum, count), basic filtering and grouping
-  5. Document Template Tool: generates structured Korean government documents (공문서, 보고서, 안내문) with standard headers, sections, signature blocks
-  6. Legal Reference Tool: searches uploaded regulations/ordinances for specific articles, returns citations with article numbers and full text
-- **FR-062**: System MUST limit ReAct agent iterations: maximum 5 reasoning-action cycles per user query (default, configurable by admin), stop with message "작업이 너무 복잡합니다. 질문을 단순화해주세요." if limit reached, display summary of steps taken so far to help user reformulate
-- **FR-063**: System MUST implement tool execution safety: 30-second timeout per tool call, track identical tool calls (if same tool + same parameters called 3+ times, force stop with error "도구 실행이 반복되고 있습니다."), sandbox tool execution to prevent system access beyond designated directories
-- **FR-064**: System MUST display ReAct agent progress in real-time: show each Thought as italic text with "🤔 사고:" prefix, show each Action as bold with "⚙️ 행동:" prefix and tool name/parameters, show each Observation as indented block with "👁️ 관찰:" prefix and result, final answer displayed normally
-- **FR-065**: System MUST handle tool execution errors gracefully with transparent failure approach: return error description to agent in Observation field (e.g., "문서를 찾을 수 없습니다"), display error in chat interface as part of ReAct flow maintaining visibility, agent must attempt alternative tool/approach OR provide clear guidance to user in Korean explaining limitation and suggesting next steps, all tool errors logged with stack traces for debugging
-- **FR-066**: System MUST log all tool executions to audit trail: timestamp, user_id, conversation_id, tool_name, input_parameters (sanitized to remove PII), output_result (truncated to 500 chars), execution_time_ms, success/failure status, accessible to administrators in admin panel for audit purposes
-- **FR-067**: System MUST allow administrators to enable/disable individual tools: tool management interface shows list of tools with toggle switches, disabled tools return error "이 도구는 현재 사용할 수 없습니다." if agent attempts to use them, tool availability persists across restarts
-- **FR-068**: System MUST load all tool implementations locally: document templates stored as Jinja2 files in `/templates` directory, Korean holiday calendar stored as JSON file locally, no external API calls required for any tool functionality
-- **FR-069**: System MUST provide tool usage statistics in admin panel: per-tool usage counts (daily/weekly/monthly), average execution time per tool, error rate per tool, top users by tool usage, for capacity planning and optimization
+- **FR-060**: System MUST provide a shared tool library accessible to all specialized agents containing six government-specialized tools for domain-specific tasks:
+  1. **Document Search Tool**: searches uploaded documents in current conversation using vector similarity (ChromaDB/FAISS), returns text snippets with source references (filename, page number, section), supports semantic queries in Korean
+  2. **Calculator Tool**: evaluates mathematical expressions (addition, subtraction, multiplication, division, percentages, exponents), handles Korean currency symbols (원), Korean number formats (천 단위 쉼표), returns numeric result with proper formatting
+  3. **Date/Schedule Tool**: calculates business days excluding weekends/Korean public holidays, fiscal year conversions (회계연도), deadline calculations from start date + duration, supports Korean date formats (YYYY년 MM월 DD일)
+  4. **Data Analysis Tool**: loads CSV/Excel files from conversation uploads, provides summary statistics (mean, median, sum, count, std dev), basic filtering and grouping operations, outputs Korean-formatted results (천 단위 쉼표)
+  5. **Document Template Tool**: generates structured Korean government documents (공문서, 보고서, 안내문, 회의록) using Jinja2 templates, includes standard headers, sections (제목, 배경, 내용, 결론), signature blocks, proper formatting per government standards
+  6. **Legal Reference Tool**: searches uploaded regulations/ordinances for specific articles using keyword and semantic search, returns citations with article numbers and full text, supports Korean legal terminology
+- **FR-061**: System MUST implement tool execution safety: 30-second timeout per tool call (configurable by administrator), sandbox tool execution to prevent system access beyond designated directories (`/uploads`, `/templates`, `/data`), track identical tool calls (if same tool + same parameters called 3+ times consecutively, force stop with error "도구 실행이 반복되고 있습니다.")
+- **FR-062**: System MUST handle tool execution errors with transparent failure approach: return error description in Korean (e.g., "문서를 찾을 수 없습니다", "파일 형식이 지원되지 않습니다"), log errors with stack traces for debugging, agent must attempt alternative tool/approach OR provide clear guidance to user explaining limitation and suggesting next steps
+- **FR-063**: System MUST log all tool executions to audit trail: timestamp, user_id, conversation_id, agent_name (which agent invoked tool), tool_name, input_parameters (sanitized to remove PII), output_result (truncated to 500 chars), execution_time_ms, success/failure status, accessible to administrators in admin panel for audit and optimization purposes
+- **FR-064**: System MUST allow administrators to enable/disable individual tools: tool management interface shows list of 6 tools with toggle switches and usage statistics, disabled tools return error "이 도구는 현재 사용할 수 없습니다." if any agent attempts to use them, tool availability configuration persists across server restarts
+- **FR-065**: System MUST load all tool implementations locally for air-gapped operation: document templates stored as Jinja2 files in `/templates/government_docs/` directory (공문서.jinja2, 보고서.jinja2, 안내문.jinja2, 회의록.jinja2), Korean holiday calendar stored as JSON file in `/data/korean_holidays.json` (updated annually), no external API calls required for any tool functionality
 
-#### Multi-Agent System Requirements (FR-070 series)
+#### Orchestrator and Specialized Agent System Requirements (FR-066 series)
 
-- **FR-070**: System MUST implement orchestrator-based multi-agent architecture: orchestrator receives user query, analyzes intent using LLM-based classification (default mode: few-shot prompt with 2-3 example queries per agent + brief agent description for accuracy and flexibility) OR keyword matching (admin-configurable alternative for performance optimization), routes to appropriate specialized agent, returns agent output to user
-- **FR-071**: System MUST provide five specialized agents, each using task-specific LoRA (Low-Rank Adaptation) adapters fine-tuned for optimal performance in their domain:
-  1. Citizen Support Agent (민원 지원 에이전트): analyzes citizen inquiries, generates empathetic draft responses, ensures polite tone (존댓말), checks completeness (answers all parts of inquiry)
-  2. Document Writing Agent (문서 작성 에이전트): generates government documents (보고서, 안내문, 정책 문서) following standard templates, uses formal language, includes proper sections (제목, 배경, 내용, 결론)
-  3. Legal Research Agent (법규 검색 에이전트): searches uploaded regulations/ordinances, cites relevant articles with source references, provides plain-language interpretation (쉬운 설명) alongside legal text
-  4. Data Analysis Agent (데이터 분석 에이전트): analyzes uploaded CSV/Excel data, provides summary statistics with Korean formatting (천 단위 쉼표), identifies trends, suggests visualization types suitable for government reports
-  5. Review Agent (검토 에이전트): reviews drafted content for errors (factual, grammatical, policy compliance), highlights potential issues with explanations, suggests specific improvements with examples
-- **FR-071A** *(Separated from FR-071 as optional performance optimization - LoRA adapters may be removed if fine-tuning shows <10% improvement measured by 3-person blind quality evaluation (0-10 scale) on 50 test queries per agent, per plan.md LoRA Transition Decision Tree)*: System MUST implement dynamic LoRA adapter loading for multi-agent system: base model (Qwen3-4B-Instruct) loaded once on startup, each agent loads its specific LoRA adapter on first invocation with adapter caching to minimize overhead, adapter switching latency must be <3 seconds per agent invocation, LLM service uses HuggingFace PEFT library for adapter management, all LoRA adapter weights bundled locally for air-gapped deployment. **Note**: This requirement may be removed if actual fine-tuning shows <10% improvement per plan.md LoRA Transition Decision Tree
-- **FR-072**: System MUST support sequential multi-agent workflows: orchestrator detects multi-step requests using keyword patterns (e.g., "검색하고... 작성하고... 검토"), creates workflow chain with agent sequence, passes each agent's output as input to next agent, displays progress indicator showing current agent and workflow stage to user
-- **FR-073**: System MUST handle agent failures in workflows: if agent fails, subsequent agents receive failure notification, failed agent displays error "이전 단계가 실패하여 작업을 완료할 수 없습니다." with explanation of what was attempted, user can retry entire workflow or individual failed step
-- **FR-074**: System MUST display multi-agent outputs with clear attribution: each agent's contribution labeled with agent name (e.g., "📋 문서 작성 에이전트:", "⚖️ 법규 검색 에이전트:"), visual separators between agent outputs (horizontal lines), final combined result shown at end for multi-agent workflows
-- **FR-075**: System MUST track agent workflow execution: log each agent invocation with timestamp, user_id, agent_name, input_summary (first 200 chars), output_summary (first 200 chars), execution_time_ms, success/failure, for performance monitoring and debugging
-- **FR-076**: System MUST provide administrator interface for agent management: enable/disable individual agents (disabled agents not available for routing), configure orchestrator routing mode (default: LLM-based classification, alternative: keyword-based rules for performance optimization), edit keyword patterns for each agent's routing rules (used when keyword mode selected), view agent performance metrics (task counts, avg response time, error rate)
-- **FR-077**: System MUST implement agent context sharing: agents in same workflow share conversation context (previous messages, uploaded documents), each agent can reference previous agent outputs in the workflow, context limited to current workflow execution (not persisted across different user requests)
-- **FR-078**: System MUST support parallel agent execution for independent tasks: if orchestrator detects independent sub-tasks (e.g., "Analyze data AND search regulations"), dispatch to multiple agents simultaneously, wait for all agents to complete, combine outputs in final response with clear attribution
-- **FR-079**: System MUST limit agent workflow complexity: maximum 5 agents per workflow chain, maximum 3 parallel agents per request, total workflow execution timeout 5 minutes, display "작업 시간이 초과되었습니다." if timeout reached with partial results shown
-- **FR-080**: System MUST load all agent implementations and routing rules locally: agent prompt templates stored in `/prompts` directory as text files, agent-specific LoRA adapter weights stored in `/models/lora_adapters/{agent_name}` directories (e.g., `/models/lora_adapters/citizen_support/`, `/models/lora_adapters/document_writing/`), routing keyword patterns stored in database or config file, no external API dependencies for agent functionality
+- **FR-066**: System MUST implement orchestrator-based architecture where base LLM model analyzes user query intent and routes to either direct response or specialized agent:
+
+  **Orchestrator Decision Logic**:
+  - Receives user query and analyzes intent using Few-shot LLM-based classification (default) OR keyword matching (admin-configurable alternative)
+  - **Routing Options**:
+    1. **Direct Response**: For general knowledge queries not requiring domain expertise (e.g., "What is photosynthesis?", "Explain gravity") → base model responds without agent routing
+    2. **Specialized Agent**: For domain-specific tasks requiring expert knowledge/tools → route to appropriate agent (RAG, Citizen Support, Document Writing, Legal Research, Data Analysis, Review)
+
+  **LLM-based Classification (Default)**:
+  - Few-shot prompt with 2 example queries per routing option (7 options: direct + 6 agents = 14 examples total)
+  - Brief routing option descriptions (~150 tokens)
+  - **Total prompt budget ≤1000 tokens** to reserve ≥1000 tokens for user query in 2048 context window
+
+  **Token Budget Breakdown**:
+  - Orchestrator system prompt: ~200 tokens
+  - 7 routing options × 2 examples × ~50 tokens: ~700 tokens
+  - Routing option descriptions: ~100 tokens
+  - **Total reserved**: ~1000 tokens
+  - **Available for user query**: 1048 tokens (2048 - 1000)
+
+  **User Query Overflow Handling**:
+  - **If user query ≤1000 tokens**: Process normally
+  - **If user query >1000 tokens AND ≤1500 tokens**:
+    - Truncate query at 1000 tokens (character boundary, not mid-word)
+    - Display warning: "질문이 너무 깁니다. 마지막 부분이 잘렸습니다. 더 짧게 나누어 질문해주세요."
+    - Continue with orchestrator routing
+  - **If user query >1500 tokens**:
+    - Reject query with error 400 Bad Request
+    - Display error: "질문이 너무 깁니다 (최대 약 3000자). 질문을 2-3개로 나누어 주세요."
+    - Return to input state without processing
+
+  **Token Counting**: Use transformers.AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct") for accurate Korean token counting (not character approximation)
+
+  **Keyword Matching Alternative**: Administrator can configure keyword-based routing for performance optimization (lower latency, deterministic routing), with keyword patterns stored in database or config file
+- **FR-067**: System MUST provide six specialized agents using shared base model with agent-specific LoRA adapters, prompt templates, and tool access:
+
+  **1. RAG Agent (문서 검색 및 분석 에이전트)**:
+  - **Purpose**: Advanced document search and analysis using uploaded documents in conversation
+  - **LoRA Specialization**: Trained for document understanding, multi-document reasoning, accurate source citation
+  - **Tools**: Document Search Tool, Legal Reference Tool
+  - **Capabilities**: Semantic document search, cross-document comparison, precise source references (filename, page, section), summarization, key information extraction
+  - **Template**: RAG-specific prompts for citation accuracy and source attribution
+
+  **2. Citizen Support Agent (민원 지원 에이전트)**:
+  - **Purpose**: Generate empathetic, clear responses to citizen inquiries
+  - **LoRA Specialization**: Trained for empathetic tone, polite Korean (존댓말), citizen service best practices
+  - **Tools**: Document Template Tool (for formal response letters)
+  - **Capabilities**: Analyze citizen complaints/inquiries, draft polite responses, ensure completeness (address all concerns), maintain appropriate government-citizen communication tone
+  - **Template**: Citizen service response templates with tone guidelines
+
+  **3. Document Writing Agent (문서 작성 에이전트)**:
+  - **Purpose**: Generate structured government documents following official standards
+  - **LoRA Specialization**: Trained for formal government document writing, structure, official language
+  - **Tools**: Document Template Tool, Date/Schedule Tool
+  - **Capabilities**: Create 보고서 (reports), 안내문 (announcements), 정책 문서 (policy documents), 회의록 (meeting minutes) with proper sections (제목, 배경, 내용, 결론), official formatting, professional language
+  - **Template**: Government document structure templates per document type
+
+  **4. Legal Research Agent (법규 검색 에이전트)**:
+  - **Purpose**: Search regulations/ordinances and provide legal interpretations
+  - **LoRA Specialization**: Trained for Korean legal terminology, citation formats, plain-language explanation
+  - **Tools**: Legal Reference Tool, Document Search Tool
+  - **Capabilities**: Find relevant legal articles, cite with proper format (법률명, 조항, 항), provide plain-language interpretation (쉬운 설명) alongside legal text, reference multiple related regulations
+  - **Template**: Legal citation and interpretation templates
+
+  **5. Data Analysis Agent (데이터 분석 에이전트)**:
+  - **Purpose**: Analyze CSV/Excel data and provide statistical insights
+  - **LoRA Specialization**: Trained for statistical interpretation, Korean data formatting, visualization recommendations
+  - **Tools**: Data Analysis Tool, Calculator Tool
+  - **Capabilities**: Load and analyze uploaded data files, compute summary statistics (mean, median, std dev, percentiles), identify trends and patterns, suggest appropriate visualizations (bar charts, line graphs, pie charts), format numbers in Korean style (천 단위 쉼표)
+  - **Template**: Data analysis report templates with statistical terminology
+
+  **6. Review Agent (검토 에이전트)**:
+  - **Purpose**: Review drafted content for errors and suggest improvements
+  - **LoRA Specialization**: Trained for error detection (factual, grammatical, stylistic), constructive feedback
+  - **Tools**: No specific tools (pure analysis)
+  - **Capabilities**: Check factual accuracy, grammatical correctness, policy compliance, tone appropriateness, highlight specific issues with explanations, suggest concrete improvements with examples
+  - **Template**: Review checklists and feedback templates per content type
+
+- **FR-068**: System MUST implement LoRA adapter management with the following architecture:
+
+  **Phase 10 Implementation (MVP)**:
+  - Implement LoRA loading infrastructure using HuggingFace PEFT library
+  - Base model (PRIMARY: Qwen3-4B-Instruct, FALLBACK: Qwen2.5-1.5B-Instruct) loaded once on application startup
+  - **Identity LoRA or minimal initialization** for all 6 agents (no actual fine-tuning yet)
+  - Agent behavior relies on prompt engineering (few-shot examples, detailed instructions)
+  - LoRA adapter file structure created: `/models/lora_adapters/{agent_name}/` directories for future use
+
+  **Phase 14 Implementation (Post-MVP)**:
+  - Collect training data: 500-1000 samples per agent (total 3000-6000 samples) from government employees or public datasets, estimated 4-6 weeks effort
+  - Fine-tune LoRA adapters for each agent using collected data
+  - Replace identity LoRA with trained adapters
+  - **Improvement Measurement**: Compare LoRA-adapted vs. prompt-only on 50 test queries per agent using 3-person blind evaluation
+  - **Composite Score** = weighted average (Response Quality 50%, Response Time 30%, Task-Specific Accuracy 20%)
+  - **Activation Threshold**: Continue using LoRA only if composite improvement ≥10% AND quality improvement ≥5%
+
+  **LoRA Adapter Switching**:
+  - Each agent invocation dynamically loads its LoRA adapter if not already in memory
+  - **LRU Caching**: Keep 2-3 most recently used adapters loaded (~500MB-1.5GB additional memory)
+  - Adapter loading latency <3 seconds per swap
+  - All LoRA adapter weights bundled locally for air-gapped deployment
+
+  **Memory Management**:
+  - Base model: ~2.5GB (Qwen3-4B-Instruct Q4_K_M)
+  - Per LoRA adapter: ~100-500MB (rank=16 or rank=32)
+  - LRU cache: 2-3 adapters = ~500MB-1.5GB
+  - **Total peak memory**: ~3.0-4.0GB (base + cache)
+- **FR-069**: System MUST display agent outputs with clear attribution: agent responses labeled with agent name and icon (e.g., "📄 RAG Agent:", "👤 Citizen Support Agent:", "📋 Document Writing Agent:", "⚖️ Legal Research Agent:", "📊 Data Analysis Agent:", "✓ Review Agent"), visual separators or cards for multi-agent outputs, clear indication when base model responds directly without agent routing
+- **FR-070**: System MUST track all agent invocations for monitoring and debugging: log each invocation with timestamp, user_id, conversation_id, routing_decision (direct response OR agent_name), query_summary (first 200 chars), response_summary (first 200 chars), lora_adapter_loaded (boolean, which adapter if any), adapter_load_time_ms, total_execution_time_ms, tools_used (list), success/failure status, accessible to administrators in agent analytics dashboard
+- **FR-071**: System MUST provide administrator interface for agent system management:
+  - **Agent Control**: Enable/disable individual agents (disabled agents not available in orchestrator routing), restart required indicator for configuration changes
+  - **Routing Configuration**: Toggle between LLM-based (default, Few-shot classification) and keyword-based routing, edit keyword patterns per agent when in keyword mode
+  - **LoRA Management**: View loaded adapters in cache, manually warm up specific adapters (pre-load), view adapter loading statistics (swap count, average load time)
+  - **Agent Performance Metrics**: Per-agent task counts (daily/weekly/monthly), average response time, LoRA swap overhead, tool usage statistics, error rates, user satisfaction ratings (if implemented)
+  - **Tool Statistics**: Tool usage counts per agent, tool execution times, tool error rates
+- **FR-072**: System MUST implement agent context and resource management:
+  - **Context Sharing**: Current conversation history (last 10 messages per FR-036) available to all agents, uploaded documents in current conversation accessible to all agents
+  - **Resource Limits**: Maximum 5 concurrent agent requests across all users (queue additional requests with estimated wait time), single agent per user query (no parallel agent execution in MVP), total agent execution timeout 2 minutes per query
+  - **Graceful Degradation**: If agent system unavailable (LoRA loading failure, timeout), fallback to base model direct response with warning "전문 에이전트를 사용할 수 없어 기본 모델이 응답합니다."
+- **FR-073**: System MUST handle agent execution errors transparently:
+  - **Tool Errors**: Display tool error messages in Korean (per FR-062), agent attempts alternative approach or provides clear user guidance
+  - **LoRA Loading Errors**: If adapter fails to load, fallback to prompt-only mode for that agent with warning logged, retry adapter loading on next invocation
+  - **Agent Timeout**: If agent exceeds 2-minute timeout, return partial response with message "응답 생성 시간이 초과되었습니다. 질문을 더 구체적으로 나누어 주세요."
+  - **Routing Errors**: If orchestrator fails to classify query, default to base model direct response
+- **FR-074**: System MUST support sequential agent workflows (Phase 11, not MVP):
+  - **Multi-step Detection**: Orchestrator detects multi-step requests using keyword patterns (e.g., "검색하고... 작성하고... 검토")
+  - **Workflow Chaining**: Create agent sequence, pass each agent's output as input to next agent
+  - **Progress Indication**: Display current agent and workflow stage to user
+  - **Failure Handling**: If agent in chain fails, display error "이전 단계가 실패하여 작업을 완료할 수 없습니다." with retry option
+- **FR-075**: System MUST load all agent implementations locally for air-gapped deployment:
+  - **Prompt Templates**: Agent-specific prompt templates stored in `/prompts/agents/{agent_name}.txt` (e.g., `/prompts/agents/rag_agent.txt`, `/prompts/agents/citizen_support.txt`)
+  - **LoRA Adapters**: Stored in `/models/lora_adapters/{agent_name}/` directories (e.g., `/models/lora_adapters/rag_agent/adapter_model.bin`, `/models/lora_adapters/citizen_support/adapter_config.json`)
+  - **Routing Configuration**: Orchestrator few-shot examples and keyword patterns stored in database `agent_routing_config` table or `/config/agent_routing.json` file
+  - **No External Dependencies**: All agent functionality works without internet connectivity
 
 #### Common Air-Gapped Requirements (FR-081 series)
 
-- **FR-081**: System MUST bundle all AI models locally: base LLM model (Qwen2.5-1.5B-Instruct or Meta-Llama-3-8B), agent-specific LoRA adapter weights (~100-500MB per adapter, 5 adapters total for multi-agent system), safety filter model weights (unitary/toxic-bert, ~400MB), sentence-transformers embedding model for tag matching and PII detection, with all models loaded from local disk on startup without internet access
-- **FR-082**: System MUST support CPU-only execution: all safety filter models must support CPU inference with acceptable latency (<2 seconds per check), ReAct tools must not require GPU, multi-agent system uses base LLM with dynamically loaded LoRA adapters (CPU-compatible via PEFT library), with optional GPU acceleration if available for faster inference and adapter switching
-- **FR-083**: System MUST log all agent/tool/filter actions for audit: centralized audit log table with timestamp, user_id, action_type (filter/tool/agent), action_details (JSON), result (success/blocked/error), execution_time_ms, administrators can query logs by date range, user, or action type
-- **FR-084**: System MUST allow administrators to customize all rule-based systems: safety filter keywords (add/edit/delete per category), ReAct tool availability (enable/disable), agent routing rules (keyword patterns), document templates (upload new .jinja2 files), with changes taking effect immediately or after restart (documented per feature)
-- **FR-085**: System MUST provide admin dashboard section for advanced features: safety filter statistics (filter counts by category/day), ReAct tool usage statistics (per tool usage, avg time, error rate), multi-agent performance metrics (per agent task count, response time, success rate), combined into existing admin panel as new tabs
-- **FR-086**: System MUST enforce resource limits for advanced features: max 10 concurrent ReAct sessions (queue additional requests), max 5 concurrent multi-agent workflows (return 503 if exceeded), safety filter timeout 2 seconds (allow message through with warning if timeout), to prevent resource exhaustion
-- **FR-087**: System MUST handle graceful degradation: if safety filter model fails to load, fallback to rule-based only with warning to admin, if ReAct tools unavailable, fallback to standard LLM conversation, if multi-agent orchestrator fails, route all requests to general LLM, system remains functional even if advanced features fail
-- **FR-088**: System MUST document all customization options: administrator guide includes sections for configuring safety filter rules, adding custom document templates, modifying agent routing keywords, adjusting resource limits, stored in `/docs` directory or accessible via admin panel help section
+- **FR-081**: System MUST bundle all AI models locally: base LLM model (**PRIMARY**: Qwen3-4B-Instruct ~2.5GB Q4_K_M, **FALLBACK**: Qwen2.5-1.5B-Instruct ~1GB Q4_K_M for resource-constrained systems), agent-specific LoRA adapter weights (Phase 14: ~100-500MB per adapter, **6 adapters total** for Specialized Agent System - RAG, Citizen Support, Document Writing, Legal Research, Data Analysis, Review), safety filter model weights (unitary/toxic-bert, ~400MB), sentence-transformers embedding model for tag matching and PII detection, with all models loaded from local disk on startup without internet access
+- **FR-082**: System MUST support CPU-only execution: all safety filter models must support CPU inference with maximum 2-second latency per check (measured at P95), shared tool library must not require GPU, Specialized Agent system uses base LLM with prompt engineering (Phase 10 MVP) or dynamically loaded LoRA adapters (Phase 14, CPU-compatible via HuggingFace PEFT library), with optional GPU acceleration if available for faster LLM inference
+- **FR-083**: System MUST log all agent/tool/filter actions for audit: centralized audit log table with timestamp, user_id, action_type (filter/tool/agent/orchestrator), action_details (JSON), result (success/blocked/error/routed), execution_time_ms, administrators can query logs by date range, user, action type, or agent name in admin panel audit log viewer
+- **FR-084**: System MUST allow administrators to customize rule-based systems: safety filter keywords (add/edit/delete per category via admin interface), tool availability (enable/disable individual tools per FR-064), agent routing rules (keyword patterns when in keyword mode per FR-071), document templates (upload new .jinja2 files to `/templates/government_docs/`), with changes taking effect immediately for runtime configs or after restart for file-based configs (documented per feature)
+- **FR-085**: System MUST provide admin dashboard section for advanced features as new tabs in existing admin panel:
+  - **Safety Filter Tab**: Filter event counts by category/day, PII masking statistics, false positive reports, top filtered users
+  - **Tool Library Tab**: Per-tool usage counts (daily/weekly/monthly), average execution time per tool, error rate per tool, top users by tool usage (from FR-063 logs)
+  - **Agent System Tab**: Per-agent task counts, average response time, LoRA swap overhead statistics, routing accuracy metrics (if available), tool usage by agent, error rates per agent (from FR-070 logs)
+- **FR-086**: System MUST enforce resource limits for advanced features to prevent resource exhaustion:
+  - **Agent System**: Maximum 5 concurrent agent requests system-wide (queue additional with estimated wait time per FR-072), 2-minute timeout per agent invocation (per FR-072)
+  - **Tool Library**: 30-second timeout per tool call (per FR-061), maximum 3 identical tool calls consecutively (per FR-061)
+  - **Safety Filter**: 2-second timeout per filter check (allow message through with logged warning if timeout, per FR-082)
+- **FR-087**: System MUST handle graceful degradation when advanced features fail:
+  - **Safety Filter Failure**: If model fails to load, fallback to rule-based keyword filtering only with warning logged to admin dashboard, system continues operating
+  - **Tool Library Failure**: If tool unavailable (disabled or error), agent receives error message and must provide response without tool or explain limitation to user
+  - **Agent System Failure**: If LoRA adapter fails to load, fallback to prompt-only mode for that agent (per FR-073), if orchestrator fails, fallback to base model direct response (per FR-073), system remains functional for basic Q&A
+- **FR-088**: System MUST document all customization options in administrator guide (`/docs/admin/customization-guide.md` or admin panel help section):
+  - Configuring safety filter rules (keywords, PII patterns, category thresholds)
+  - Adding custom document templates (Jinja2 syntax, variable names, template structure)
+  - Modifying agent routing rules (keyword patterns, few-shot examples)
+  - Adjusting resource limits (concurrent requests, timeouts, queue sizes)
+  - Managing LoRA adapters (manual loading, cache management, troubleshooting)
+- **FR-089**: System MUST automatically collect and store dashboard metrics at two levels: hourly snapshots for detailed analysis and daily aggregates for long-term trends (Feature 002: Admin Metrics History)
+- **FR-090**: System MUST store at minimum the following metrics: active user count, total storage usage, active session count, conversation count, document count, tag count
+- **FR-091**: System MUST retain hourly metrics data for at least 30 days and daily aggregate data for at least 90 days
+- **FR-092**: Administrators MUST be able to switch between hourly and daily views when examining metrics
+- **FR-093**: Administrators MUST be able to view historical metrics as line graphs on the dashboard
+- **FR-094**: Administrators MUST be able to select different time ranges for viewing (7 days, 30 days, 90 days)
+- **FR-095**: System MUST display current (real-time) metrics alongside historical trends on the same dashboard
+- **FR-096**: Graphs MUST show data points with tooltips displaying exact values and timestamps when hovered
+- **FR-097**: System MUST handle missing data points by displaying gaps as dotted lines in graphs, with tooltip "이 기간 동안 데이터 수집 실패" when hovered
+- **FR-098**: System MUST preserve metric history even when the underlying data changes (e.g., if users are deleted, historical user counts remain accurate)
+- **FR-099**: System MUST provide time period comparison functionality allowing admins to overlay two date ranges
+- **FR-100**: System MUST calculate and display percentage changes between compared periods
+- **FR-101**: System MUST allow exporting metric data to CSV format with a maximum file size of 10MB, automatically downsampling data using LTTB (Largest Triangle Three Buckets) algorithm if necessary to maintain visual fidelity
+- **FR-102**: System MUST allow exporting dashboard snapshots to PDF format with a maximum file size of 10MB, automatically downsampling embedded graphs using LTTB algorithm if necessary
+- **FR-103**: Metric collection MUST not impact system performance (non-blocking, background task)
+- **FR-104**: System MUST automatically clean up metrics older than the retention period to manage storage
+- **FR-105**: All metric timestamps MUST be stored in UTC and displayed in admin's local timezone
+- **FR-106**: Dashboard MUST show a "Data Collection Status" indicator with the following criteria: **녹색 (정상)** - Last collection completed within 5 minutes AND fewer than 3 failures in the past 24 hours; **노란색 (주의)** - 3-10 collection failures in the past 24 hours OR last collection 5-60 minutes ago; **빨간색 (오류)** - More than 10 failures in the past 24 hours OR no successful collection for over 1 hour; Indicator shows: status color, last successful collection timestamp, recent failure count
+- **FR-107**: System MUST automatically retry failed metric collection in the next collection cycle, with a maximum of 3 retry attempts for any missed data point
+- **FR-108**: When no historical data exists (new installation), system MUST display empty graphs with message "데이터 수집 중입니다. 첫 데이터는 [next collection time]에 표시됩니다"
+- **FR-109**: System MUST automatically downsample data points on the client side to a maximum of 1000 points per graph using LTTB (Largest Triangle Three Buckets) algorithm to ensure responsive rendering while preserving visual characteristics of time-series data
+
+#### Security Hardening Requirements (FR-110 series)
+
+*Note: These requirements address critical security and operational issues discovered during Feature 002 code review (2025-11-04)*
+
+- **FR-110**: System MUST implement CSRF (Cross-Site Request Forgery) protection for all state-changing requests (POST, PUT, DELETE, PATCH) by: generating unique CSRF token per session stored in httpOnly=false cookie (allowing JavaScript read access), validating that CSRF token from cookie matches X-CSRF-Token header on every state-changing request, returning 403 Forbidden with Korean error message "CSRF 토큰이 유효하지 않습니다. 페이지를 새로고침 후 다시 시도해주세요." on validation failure, exempting login (POST /api/v1/auth/login) and initial setup (POST /api/v1/setup) endpoints from CSRF validation to allow initial authentication
+
+- **FR-111**: System MUST register and apply all security middleware in main.py in the following order: CORS middleware → CSRF middleware → Rate Limiting middleware (60 requests/minute per IP) → Resource Limiting middleware (max 10 concurrent ReAct sessions, max 5 concurrent Multi-Agent workflows, return 503 Service Unavailable when limits exceeded) → Performance middleware (track response times) → Metrics middleware, with all middleware active on application startup and properly configured
+
+- **FR-112**: System MUST enhance session token security by: using secure=True for session cookies in production environment (HTTPS-only transmission), using samesite="strict" in production and samesite="lax" in development, adding max_age=1800 (30 minutes) to session cookies, implementing sensitive data filter for all logging that masks session tokens (pattern: `session_token["\']?\s*[:=]\s*["\']?([a-zA-Z0-9_-]+)` → `session_token=***REDACTED***`), Bearer tokens (pattern: `Bearer\s+([A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+)` → `Bearer ***REDACTED***`), and passwords (pattern: `password["\']?\s*[:=]\s*["\']?([^"\']+)` → `password=***REDACTED***`), with environment variable ENVIRONMENT={development|production} controlling security settings
+
+- **FR-113**: System MUST ensure metric collection consistency by: collecting all 6 metrics (active_users, storage_bytes, active_sessions, conversation_count, document_count, tag_count) within a single database transaction to guarantee identical collected_at timestamp for all metrics in same collection cycle, setting database isolation level to READ COMMITTED explicitly in connection configuration, logging transaction start/end timestamps for debugging, handling individual metric failures without rolling back entire transaction (record failures in metric_collection_failures table while committing successful metrics)
+
+- **FR-114**: System MUST provide cross-platform encoding compatibility for CSV exports by: detecting client operating system from User-Agent header, using UTF-8 with BOM (Byte Order Mark) encoding for Windows clients (User-Agent contains "Windows"), using UTF-8 without BOM for Linux/Mac clients, implementing client-side BOM injection as fallback in frontend JavaScript for browsers that don't correctly report OS, validating exported CSV files open correctly in Windows Excel (no encoding dialog), LibreOffice on Linux (correct Korean display), and Python pandas.read_csv() (no BOM artifacts in column names)
+
+#### Quality & Operational Requirements (FR-115 series)
+
+*Note: These requirements address critical quality and operational issues discovered during post-implementation review (2025-11-04)*
+
+- **FR-115** *(CRITICAL)*: System MUST ensure Korean language resource files are correctly encoded in UTF-8 without corruption by: validating that frontend/src/lib/errorMessages.ts contains only valid UTF-8 characters (no mojibake/��������), all Korean strings display correctly in browser console and UI without replacement characters (���), automated test verifies errorMessages object keys and values are readable Korean text (pattern: /^[\uAC00-\uD7A3\s\w\d.,!?'"()]+$/), implementing pre-commit hook to detect non-UTF-8 characters in .ts/.tsx files, documenting standard procedure for editing Korean content (editor must be set to UTF-8, no BOM for .ts files)
+
+- **FR-116** *(CRITICAL)*: System MUST calculate active user metrics accurately using timezone-aware timestamps by: using datetime.now(timezone.utc) consistently instead of datetime.utcnow() (deprecated), counting active users based on Session.expires_at > current_time (not created_at >= now - 30 minutes), ensuring all database timestamp comparisons use timezone-aware datetime objects, logging timezone information in metric collection debug output for verification
+
+- **FR-117** *(HIGH)*: System MUST capture database query performance metrics for async SQLAlchemy operations by: binding event listeners to both sync_engine (for migrations) and async_engine.sync_engine (for application queries), tracking query execution time for SELECT/INSERT/UPDATE/DELETE separately, updating Prometheus db_query_duration and db_queries_total metrics for async queries, monitoring connection pool metrics from async_engine.sync_engine.pool instead of sync_engine.pool only, validating that /metrics endpoint shows non-zero query counts during normal application operation
+
+- **FR-118** *(HIGH)*: System MUST maintain consistent administrator privilege model by: choosing single source of truth (Option A: User.is_admin flag OR Option B: separate Admin table existence check), if using separate Admin table approach then updating get_current_admin() in backend/app/api/deps.py to verify Admin table record exists for user, implementing migration script to sync existing User.is_admin flags with Admin table records, documenting administrator management procedure in docs/admin/user-management.md, ensuring all admin-only endpoints use consistent privilege check method
+
+- **FR-119** *(MEDIUM)*: System MUST optimize CSRF token lifecycle management by: generating CSRF token only on successful login (not every GET request), storing CSRF token in session with 30-minute expiration matching session timeout, validating CSRF token exists before regenerating on GET requests (if missing or expired, then regenerate), returning same token value for multiple GET requests within session lifetime to prevent token rotation confusion, logging CSRF token generation events (not values) for debugging token mismatch issues
+
+- **FR-120** *(MEDIUM)*: System MUST provide flexible CSRF exemption path matching by: supporting both exact path matching (e.g., "/api/v1/auth/login") and prefix matching (e.g., "/api/v1/setup/*" matches all setup sub-routes), implementing CSRF_EXEMPT_PATTERNS list with tuples (path_pattern, match_type) where match_type is "exact" or "prefix", adding common exempt paths: /docs, /openapi.json, /health, /api/v1/health, /metrics (Prometheus), documenting how to add new exempt paths in code comments and admin guide
+
+- **FR-121** *(MEDIUM)*: System MUST align security test scripts with actual implementation by: updating tests/security_audit.py to match backend/app/core/security.py's direct bcrypt usage (not passlib), verifying password hashing test calls bcrypt.hashpw() and bcrypt.checkpw() directly, ensuring test expectations match bcrypt default rounds (12) from FR-029, adding integration test that validates actual /auth/login endpoint uses correct password verification method, documenting security implementation decisions in tests/README.md
+
+- **FR-122** *(MEDIUM)*: System MUST implement data isolation middleware or update test expectations by: either (Option A) creating backend/app/middleware/data_isolation_middleware.py that validates user_id matches session user for GET/PUT/DELETE on /conversations/{id}, /documents/{id}, /messages/{id} routes, returning 403 Forbidden with message "이 리소스에 접근할 권한이 없습니다." on ownership mismatch, OR (Option B) removing data_isolation_middleware expectations from tests/security_audit.py and documenting that data isolation is handled at API dependency level via get_current_user() in backend/app/api/deps.py, registering middleware in main.py if Option A selected
 
 ### Key Entities
 
 - **User**: Government employee who uses the system; has unique credentials, can create conversations, upload documents
-- **Administrator**: IT staff member with elevated privileges; can manage user accounts, view system statistics, monitor system health, manage organization-wide tags, configure safety filters, manage ReAct tools and multi-agent settings
+- **Administrator**: IT staff member with elevated privileges; can manage user accounts, view system statistics, monitor system health, manage organization-wide tags, configure safety filters, manage ReAct tools and Multi-Agent settings
 - **Conversation**: A series of messages between a user and the LLM; has a title, creation timestamp, last modified timestamp, belongs to a single user, can be associated with multiple tags, can contain uploaded documents
 - **Message**: Individual query or response within a conversation; contains text content, timestamp, role (user or assistant), limited to 4,000 characters, passes through safety filter before storage/delivery
 - **Document**: File uploaded by a user for analysis; has filename, file type, upload timestamp, processed content (extracted text + vector embeddings), belongs to a specific conversation (not shared across conversations), automatically deleted when parent conversation is deleted
@@ -422,21 +657,48 @@ Government employees need complex tasks (like responding to citizen inquiries re
 - **FilterEvent**: Log record of safety filter action; has timestamp, user_id, category, filter_type (input/output), action_taken (blocked/masked), confidence_score, does not store actual message content for privacy
 - **Tool**: ReAct agent tool implementation; has name, description, enabled/disabled status, execution timeout, usage statistics (call count, avg execution time, error rate)
 - **ToolExecution**: Audit log of ReAct tool invocation; has timestamp, user_id, conversation_id, tool_name, input_parameters (sanitized), output_result (truncated), execution_time_ms, success/failure status
-- **Agent**: Specialized AI agent for multi-agent system; has name (e.g., CitizenSupportAgent), description, system prompt template, enabled/disabled status, routing keywords, performance metrics
-- **AgentWorkflow**: Record of multi-agent workflow execution; has workflow_id, user_id, conversation_id, orchestrator_decision (which agents/sequence), start_time, end_time, total_execution_time, success/failure status
+- **Agent**: Specialized AI agent for Multi-Agent system; has name (e.g., CitizenSupportAgent), description, system prompt template, enabled/disabled status, routing keywords, performance metrics
+- **AgentWorkflow**: Record of Multi-Agent workflow execution; has workflow_id, user_id, conversation_id, orchestrator_decision (which agents/sequence), start_time, end_time, total_execution_time, success/failure status
 - **AgentWorkflowStep**: Individual agent execution within a workflow; has workflow_id, agent_name, step_number, input_summary, output_summary, execution_time_ms, status, links to parent AgentWorkflow
 - **AuditLog**: Centralized audit trail for all advanced features; has timestamp, user_id, action_type (filter/tool/agent), action_details (JSON), result, execution_time_ms, queryable by administrators
+- **MetricSnapshot**: Represents a point-in-time capture of system metrics (Feature 002); contains timestamp, metric type (active_users/storage_bytes/conversations/documents/tags/sessions), value, granularity (hourly/daily), retry_count; used for time-series graphing and trend analysis
+- **MetricCollectionFailure**: Records failed metric collection attempts; contains timestamp, metric_type, error_message, retry_count; helps administrators monitor data collection health and troubleshoot issues
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
 - **SC-001**: Users can submit a query and receive a relevant response within acceptable time for queries under 500 characters:
-  - **GPU-accelerated environment** (vLLM): Target 3 seconds, maximum acceptable 8 seconds
-  - **CPU-only environment** (llama.cpp with Qwen3-4B GGUF Q4_K_M): Target 8 seconds, maximum acceptable 12 seconds
-  - **Rationale**: CPU-only deployment prioritizes availability over performance (Assumption #2, Constitution Principle IV: Simplicity Over Optimization). Qwen3-4B provides superior quality (Qwen2.5-72B-level) with acceptable latency on modern CPU hardware
+
+  **CPU-only baseline** (llama.cpp + Qwen3-4B-Instruct GGUF Q4_K_M):
+  - **Test hardware specification**:
+    - Minimum: Intel Xeon E5-2680 v4 (14 cores @ 2.4GHz) or AMD EPYC 7302 (16 cores @ 3.0GHz)
+    - Recommended: Intel Xeon Gold 6248R (24 cores @ 3.0GHz) or AMD EPYC 7543 (32 cores @ 2.8GHz)
+    - RAM: 32GB minimum, 64GB recommended
+    - CPU features: AVX2, FMA, F16C support (verified via `lscpu` on Linux or `Get-WmiObject Win32_Processor` on Windows)
+  - **Performance targets**:
+    - Target: 8 seconds P50 (median)
+    - Maximum acceptable: 12 seconds P95 (95th percentile)
+  - **Validation**: T037A task must document actual hardware used + measured performance
+
+  **GPU-accelerated environment** (vLLM + Qwen3-4B-Instruct safetensors):
+  - **Test hardware**: NVIDIA RTX 3090 (24GB) or A100 (40GB)
+  - Target: 3 seconds P50, maximum 8 seconds P95
+  - **Note**: Phase 13 optional upgrade
+
+  **Model variants**:
+  - Primary: Qwen3-4B-Instruct (~2.5GB Q4_K_M)
+  - Fallback: Qwen2.5-1.5B-Instruct (~1GB Q4_K_M) for resource-constrained systems
+
+  **Rationale**: CPU-only deployment prioritizes availability over performance (Assumption #2, Constitution Principle IV). Government procurement typically includes 16+ core Xeon/EPYC servers suitable for this workload.
 - **SC-002**: System supports at least 10 concurrent users without response time degradation exceeding 20% (baseline: single-user average 5 seconds per SC-001, target: ≤6 seconds with 10 concurrent users)
 - **SC-003**: Users can upload and process a 20-page PDF document within 60 seconds
+  - **측정 방법**:
+    1. 테스트 문서: 20페이지 한글 PDF (A4 크기, 평균 500자/페이지, ~10,000자 총계)
+    2. 측정 구간: 파일 선택 후 "업로드" 버튼 클릭 → "문서 분석 완료" 메시지 표시까지
+    3. 처리 단계: 파일 업로드(HTTP) + PDF 텍스트 추출(pdfplumber) + 청킹(500자 단위) + 벡터 임베딩(sentence-transformers) + ChromaDB 저장
+    4. 합격 기준: 5회 반복 측정의 중앙값(P50)이 60초 이하
+  - **테스트 도구**: `scripts/test-document-upload-performance.py` (Phase 7 추가 예정)
 - **SC-004**: 한국어 쿼리의 90%가 문법적으로 정확하고 맥락적으로 적절한 응답을 받음
   - **측정 방법**: 50개 다양한 업무 시나리오 쿼리로 구성된 테스트 세트 사용
   - **평가 기준**: 각 응답을 3가지 차원으로 수동 채점 (각 0-10점)
@@ -445,7 +707,7 @@ Government employees need complex tasks (like responding to citizen inquiries re
     3. 한국어 자연스러움: 어색한 번역체 없이 자연스러운 표현
   - **채점자**: 2-3명의 공무원(또는 한국어 원어민)이 독립적으로 채점
   - **Inter-rater reliability**: 동일 응답에 대한 채점자 간 점수 차이가 3점 이상인 경우 재협의 후 평균 점수 사용
-  - **합격 기준**: 90% 이상의 쿼리가 총 30점 만점에 24점 이상 (80% 점수)
+  - **합격 기준**: 50개 쿼리 중 45개 이상이 총 30점 만점에 24점 이상 (90.0% 합격률, 80% 점수)
   - **테스트 도구**: `scripts/test-korean-quality.py` (채점 인터페이스 제공, 점수 수집 및 통계 계산)
   - **데이터셋 생성**: Phase 12 (T238 실행 전), 2-3명의 공무원 또는 한국어 원어민이 50개 다양한 업무 시나리오 쿼리 작성 (민원 처리, 문서 작성, 정책 질문, 일정 계산 등), `backend/tests/data/korean_quality_test_dataset.json`에 저장
 - **SC-005**: Conversation history retrieval completes within 2 seconds regardless of the number of saved conversations
@@ -459,7 +721,8 @@ Government employees need complex tasks (like responding to citizen inquiries re
     1. 10개 다중 메시지 대화 생성 (각 5-10 메시지)
     2. 24시간 대기 (또는 시스템 시간 조작)
     3. 각 대화를 재개하여 컨텍스트 의존적 질문 제출 (예: "앞서 말한 그 정책은 언제부터 시행되나요?")
-  - **합격 기준**: 10개 대화 중 9개 이상이 모든 메시지를 데이터베이스에 보존하고, 재개 후 질문이 이전 맥락 반영한 답변 생성
+  - **합격 기준**: 10개 대화 중 9개 이상(90.0%)이 모든 메시지를 데이터베이스에 보존하고, 재개 후 질문이 이전 맥락 반영한 답변 생성
+    - 참고: "95% 정확도"는 컨텍스트 보존의 품질 목표를 의미하며, 실제 테스트 합격률은 10개 중 9개(90.0%)로 측정 (SC-004와 동일한 합격률 기준 적용)
   - **테스트 도구**: `scripts/test-context-preservation.py` (Phase 8 추가 예정)
 - **SC-008**: Zero unauthorized access incidents to other users' conversations or documents during testing period
 - **SC-009**: 85% of employees can complete their first query and receive a response without requiring assistance or training
@@ -491,6 +754,26 @@ Government employees need complex tasks (like responding to citizen inquiries re
     2. 각 고급 기능의 대표 시나리오 실행 (안전 필터: 부적절한 내용 차단, ReAct: 도구 3개 사용, 멀티 에이전트: 2-agent 워크플로우)
     3. 모든 시나리오가 성공적으로 완료되는지 확인 (타임아웃, 네트워크 오류 없음)
   - **합격 기준**: 3개 고급 기능 모두 외부 네트워크 없이 정상 동작, 모델 로딩 시간 ≤60초, 기능 실행 시간 정상 범위 내
+- **SC-021**: Administrators can view 7 days of historical metrics within 2 seconds of loading the dashboard (Feature 002: Metrics History)
+- **SC-022**: System successfully collects metrics at configured intervals with 99% reliability (no more than 1% missed collections)
+- **SC-023**: Metric collection completes within 5 seconds and does not impact concurrent user operations
+- **SC-024**: Administrators can identify trends (increasing/decreasing patterns) within 30 seconds of viewing a metric graph
+- **SC-025**: 90% of administrators successfully export metrics data on first attempt without assistance
+- **SC-026**: System maintains metric history for 90 days without data loss or corruption
+- **SC-027**: Dashboard graphs render any time range within 3 seconds through automatic downsampling (maximum 1000 rendered points)
+- **SC-028**: CSRF protection blocks unauthorized state-changing requests with 100% effectiveness: POST/PUT/DELETE requests without X-CSRF-Token header return 403, requests with mismatched CSRF token (cookie ≠ header) return 403, login and setup endpoints function correctly without CSRF token, frontend receives CSRF token in cookie and includes in subsequent requests
+- **SC-029**: Middleware enforcement prevents resource exhaustion: 61st API request within 1 minute from same IP returns 429 Too Many Requests, 11th concurrent ReAct session returns 503 Service Unavailable, response headers include X-RateLimit-Limit and X-RateLimit-Remaining, performance metrics are logged for endpoints with >1 second response time
+- **SC-030**: Session tokens are protected from interception: production environment cookies have secure=True and samesite=strict flags, development environment cookies have secure=False and samesite=lax, session tokens in application logs are masked as "***REDACTED***" with 100% coverage, session cookies expire after exactly 30 minutes (max_age=1800)
+- **SC-031**: Metric data maintains transactional consistency: all 6 metrics collected in same cycle have identical collected_at timestamp (microsecond precision), database connections use READ COMMITTED isolation level, metric dashboard shows mathematically consistent relationships (e.g., active_sessions ≤ active_users × 3 per FR-030), collection transaction logs show <5ms variance between first and last metric within same cycle
+- **SC-032**: CSV exports display Korean text correctly across platforms: Windows Excel opens CSV without encoding selection dialog and displays Korean characters correctly, LibreOffice on Linux displays Korean characters correctly, Python pandas.read_csv() parses column names without BOM artifacts (first column name starts with expected text, not '\ufeff' prefix), User-Agent detection achieves >95% accuracy distinguishing Windows from non-Windows clients
+- **SC-033**: Korean UI text displays without corruption: frontend error messages show correct Korean characters (no ������ or mojibake), browser DevTools console.log(errorMessages) output shows readable Korean, automated regex test passes for all errorMessages values matching Korean Unicode range [\uAC00-\uD7A3], git diff shows UTF-8 encoding for all .ts/.tsx files
+- **SC-034**: Active user metrics match actual session state: active_users count equals number of Session records where expires_at > now (UTC), manual comparison of metrics dashboard value vs direct database query shows 100% match, timezone-aware datetime objects used in all metric calculations (verified by debug logs showing "+00:00" suffix)
+- **SC-035**: Async database queries appear in Prometheus /metrics: db_queries_total{query_type="select",status="success"} shows non-zero count after making API requests, db_query_duration histogram shows data for all query types (select/insert/update/delete), connection pool metrics db_connections_active reflects actual async connection usage
+- **SC-036**: Administrator privilege checks are consistent: all admin-only endpoints use same privilege verification method (either User.is_admin flag OR Admin table lookup, not mixed), attempting to access /admin/users as non-admin returns 403 Forbidden with correct error message, admin audit log shows who performed admin actions with 100% accuracy
+- **SC-037**: CSRF tokens remain stable within session: logging in once generates single CSRF token, making 10 GET requests returns same CSRF token value in cookie (no rotation), CSRF token expires after exactly 30 minutes matching session timeout, token regeneration only occurs on login or expiration (verified by server logs showing <5 token generation events per user session)
+- **SC-038**: CSRF exemption supports common paths: /docs and /openapi.json accessible without CSRF token, /api/v1/setup and all sub-routes (/api/v1/setup/init, /api/v1/setup/complete) work without token, Prometheus /metrics endpoint works without authentication or CSRF token, documented list of all exempt paths accessible in code comments
+- **SC-039**: Security tests match implementation: tests/security_audit.py password hashing test passes using bcrypt.hashpw(), bcrypt rounds set to 12 per FR-029, integration test successfully logs in with hashed password via /api/v1/auth/login endpoint, no import errors for passlib (not used in implementation)
+- **SC-040**: Data isolation prevents unauthorized access: user A cannot access user B's conversations/documents/messages (403 Forbidden returned), admin attempting to read user message content receives appropriate restriction (can view metadata only per FR-032), middleware or dependency-level isolation verified by automated security test suite passing 100% of ownership validation tests
 
 ## Assumptions
 
@@ -498,14 +781,14 @@ This specification is based on the following assumptions:
 
 1. **Network Environment**: The local government has an internal network infrastructure that supports web applications, even though it's isolated from the internet
 2. **Hardware Resources**: Server hardware meeting minimum specifications is available:
-   - **CPU** (Required): 8-core Intel Xeon or equivalent minimum, 16-core recommended for production. CPU-only deployment is the baseline configuration with acceptable performance (8-12 seconds response time per SC-001) using Qwen3-4B-Instruct (~2.5GB Q4_K_M quantization)
+   - **CPU** (Required): 8-core Intel Xeon or equivalent minimum, 16-core recommended for production. CPU-only deployment is the baseline configuration with acceptable performance (8-12 seconds response time per SC-001) using Qwen2.5-1.5B-Instruct (~1GB Q4_K_M) or future Qwen3-4B-Instruct (~2.5GB Q4_K_M)
    - **RAM** (Required): 32GB minimum, 64GB recommended for production
    - **GPU** (Optional): NVIDIA RTX 3090 or A100 with 16GB+ VRAM and CUDA support for acceleration. GPU improves response time (3-8 seconds) and concurrent user capacity (10-16 users vs. 1-3 on CPU), but is NOT required for initial deployment
    - **Storage** (Required): 500GB+ SSD for OS/app/data, NVMe SSD 1TB recommended
    - **Network** (Required): Internal Gigabit Ethernet
 3. **User Devices**: Government employees have access to computers with supported browsers (Chrome 90+, Edge 90+, Firefox 88+, minimum 1280x720 resolution, JavaScript enabled). Internet Explorer is not supported.
 4. **Data Sensitivity**: While the environment is air-gapped for security, the specific classification level of data that can be processed is not defined
-5. **LLM Capabilities**: Qwen3-4B-Instruct will be used as the local LLM model, providing high-quality Korean language support with Qwen2.5-72B-level performance when deployed via HuggingFace Transformers or llama.cpp with 4-bit quantization (CPU-compatible, ~2.5GB memory footprint); Qwen3-4B prioritized for optimal balance of quality and efficiency in CPU-only deployments (April 2025 release, 20-40% improvement in math/coding over Qwen2.5)
+5. **LLM Capabilities**: **Qwen2.5-1.5B-Instruct** will be used for initial implementation (verified available, ~1GB Q4_K_M quantization), providing Korean language support when deployed via HuggingFace Transformers or llama.cpp with 4-bit quantization (CPU-compatible). **Future upgrade path**: Qwen3-4B-Instruct (April 2025 release, ~2.5GB memory footprint, Qwen2.5-72B-level performance with 20-40% improvement in math/coding) when verified available. Both models support CPU-only deployments with acceptable latency (8-12 seconds per SC-001)
 6. **User Volume & Storage**: "Small local government" implies approximately 10-50 employees who might use the system. Storage provisioning assumes 10GB per user (500GB total for 50 users), with monthly growth of 1-5GB total. Administrators responsible for storage expansion when capacity warnings occur.
 7. **Authentication**: Basic username/password authentication is sufficient; advanced methods like SSO or multi-factor authentication are not required
 8. **Maintenance**: Technical staff are available to perform system maintenance, updates, and user management on the local server
@@ -516,26 +799,66 @@ This specification is based on the following assumptions:
 ## Dependencies
 
 - Local server infrastructure with CPU-based deployment as baseline (8-core minimum, 16-core recommended), GPU optional for acceleration (NVIDIA RTX 3090/A100 for improved performance)
-- Qwen3-4B-Instruct model files (Qwen/Qwen3-4B-Instruct, April 2025 release) supporting Korean language and running on local hardware with HuggingFace Transformers + BitsAndBytes 4-bit quantization or llama.cpp GGUF format (~2.5GB Q4_K_M quantization, Qwen2.5-72B-level performance with 20-40% improvement in math/coding tasks)
+- **LLM Model**:
+  - **Primary Model**: Qwen3-4B-Instruct
+    - HuggingFace: `Qwen/Qwen3-4B-Instruct`
+    - Size: ~2.5GB Q4_K_M GGUF quantization
+    - Korean support: Excellent (Qwen2.5-72B-level performance)
+    - Format: HuggingFace Transformers + BitsAndBytes 4-bit quantization OR llama.cpp GGUF
+    - Performance: 20-40% improvement over Qwen2.5-1.5B in math/coding tasks
+  - **Fallback Model (Resource-Constrained)**: Qwen2.5-1.5B-Instruct
+    - HuggingFace: `Qwen/Qwen2.5-1.5B-Instruct`
+    - Size: ~1GB Q4_K_M GGUF quantization
+    - Use case: Systems with limited RAM (<16GB) or storage constraints
 - Vector database (ChromaDB or FAISS) with embedding model for document semantic search
-- **Embedding model**: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (HuggingFace: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, ~420MB, supports Korean, CPU-compatible) pre-downloaded for offline installation, used for both document Q&A (FR-009) and tag auto-matching (FR-043)
+- **Embedding model**: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (HuggingFace: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, **default fp32 variant**, ~420MB, supports Korean, CPU-compatible) pre-downloaded for offline installation using `huggingface-cli download sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --local-dir ./models/embeddings/`, used for both document Q&A (FR-009) and tag auto-matching (FR-043). **Note**: For air-gapped deployment, download includes all files in model repository (pytorch_model.bin, config.json, tokenizer files)
 - **Safety Filter Dependencies**:
   - Lightweight toxic content classification model (HuggingFace: `unitary/toxic-bert`, ~400MB, multilingual including Korean, CPU-compatible) pre-downloaded from HuggingFace for offline installation
   - Regex pattern library for PII detection (주민등록번호, phone, email patterns)
   - Optional: sentence-transformers for advanced PII entity recognition if rule-based insufficient
-- **ReAct Agent Dependencies**:
-  - Korean public holiday calendar (JSON file) for Date/Schedule tool
-  - Government document templates (공문서, 보고서 templates in Jinja2 format) stored in `/templates` directory
-  - Python libraries: pandas (data analysis), openpyxl (Excel support), sympy or numexpr (calculator)
-- **Multi-Agent System Dependencies**:
-  - Agent prompt templates (stored as text files in `/prompts` directory for each specialized agent)
-  - Agent-specific LoRA adapter weights: 5 fine-tuned adapters (~100-500MB each) for Citizen Support, Document Writing, Legal Research, Data Analysis, Review agents optimized for Qwen3-4B, pre-downloaded and stored in `/models/lora_adapters/` directory structure
-  - HuggingFace PEFT (Parameter-Efficient Fine-Tuning) library for LoRA adapter loading and management (CPU-compatible)
-  - Orchestrator routing configuration: LLM-based few-shot prompt file with 2-3 example queries per agent + brief descriptions (default), keyword patterns stored in database or config file (alternative mode)
+- **Shared Tool Library Dependencies**:
+  - Korean public holiday calendar (JSON file `/data/korean_holidays.json`) for Date/Schedule Tool, updated annually
+  - Government document templates (공문서.jinja2, 보고서.jinja2, 안내문.jinja2, 회의록.jinja2) stored in `/templates/government_docs/` directory
+  - Python libraries:
+    - **pandas 2.1+**: Data Analysis Tool (CSV/Excel processing)
+    - **openpyxl 3.1+**: Excel file support
+    - **sympy** or **numexpr**: Calculator Tool expression evaluation
+    - **jinja2 3.1+**: Document Template Tool rendering
+  - ChromaDB or FAISS: Document Search Tool and Legal Reference Tool vector search
+- **Specialized Agent System Dependencies**:
+  - **Agent Prompt Templates** (Phase 10 mandatory): Stored as text files in `/prompts/agents/` directory for each specialized agent:
+    - `/prompts/agents/rag_agent.txt`: RAG Agent prompts for document search and citation
+    - `/prompts/agents/citizen_support.txt`: Citizen Support Agent prompts for empathetic responses
+    - `/prompts/agents/document_writing.txt`: Document Writing Agent prompts for formal document generation
+    - `/prompts/agents/legal_research.txt`: Legal Research Agent prompts for legal interpretation
+    - `/prompts/agents/data_analysis.txt`: Data Analysis Agent prompts for statistical analysis
+    - `/prompts/agents/review.txt`: Review Agent prompts for content review
+  - **LoRA Adapter Weights** (Phase 14 only): **6 fine-tuned adapters** (~100-500MB each, rank=16 or rank=32) optimized for Qwen3-4B-Instruct (primary) or Qwen2.5-1.5B-Instruct (fallback):
+    - `/models/lora_adapters/rag_agent/`: RAG Agent adapter for document understanding
+    - `/models/lora_adapters/citizen_support/`: Citizen Support Agent adapter for empathetic tone
+    - `/models/lora_adapters/document_writing/`: Document Writing Agent adapter for formal writing
+    - `/models/lora_adapters/legal_research/`: Legal Research Agent adapter for legal terminology
+    - `/models/lora_adapters/data_analysis/`: Data Analysis Agent adapter for statistical interpretation
+    - `/models/lora_adapters/review/`: Review Agent adapter for error detection
+  - **HuggingFace PEFT** (Parameter-Efficient Fine-Tuning) library 0.7.0+: LoRA adapter loading, management, and LRU caching (CPU-compatible)
+  - **Orchestrator Routing Configuration**:
+    - **LLM-based (default)**: Few-shot prompt file with **2 example queries per routing option** (7 options: direct response + 6 agents = 14 examples total, ≤1000 token budget per FR-066)
+    - **Keyword-based (alternative)**: Keyword patterns per agent stored in database table `agent_routing_config` or config file `/config/agent_routing.json`
+  - **Memory Requirements**:
+    - Base model: ~2.5GB (Qwen3-4B-Instruct Q4_K_M)
+    - LoRA cache: ~500MB-1.5GB (2-3 adapters cached via LRU)
+    - Total: ~3.0-4.0GB peak memory (per FR-068)
 - Separate storage volume for backups (minimum 1TB recommended, separate from system disk for redundancy)
 - Internal network with stable connectivity between employee workstations and the application server
 - Browser compatibility with modern web standards for the user interface
 - IT staff access to the server for initial deployment, ongoing maintenance, and configuration of advanced features (filter rules, agent settings)
+- **Metrics History Dependencies** (Feature 002):
+  - APScheduler 3.10+ for background task scheduling (metric collection)
+  - pandas 2.1+ for CSV data processing and export
+  - ReportLab 4.0+ for PDF report generation
+  - Chart.js + react-chartjs-2 for frontend time-series visualization
+  - PostgreSQL with sufficient storage for metric history (estimated ~100KB per day, ~3.65MB per year for 6 metrics)
+  - LTTB (Largest Triangle Three Buckets) algorithm implementation for data downsampling
 
 ## Out of Scope
 
@@ -546,9 +869,20 @@ This feature specification explicitly excludes:
 - Advanced analytics or usage reporting dashboards
 - Mobile application support (tablet/smartphone apps)
 - Integration with existing government IT systems (HR, document management, etc.)
-- Custom LLM model training or fine-tuning on government-specific data
+- Full-scale LLM model training from scratch or extensive fine-tuning on government-specific data (Note: Lightweight LoRA adapter fine-tuning is **in scope** for Phase 14 per FR-068, limited to adapters for 6 specialized agents with 500-1000 samples per agent)
 - Voice input/output capabilities
 - Automated compliance checking or policy violation detection in responses
 - Export of conversations to specific government document formats
 - Version control or audit trails for document changes
 - Advanced security features like encryption at rest, detailed access logs, or role-based permissions beyond basic user separation
+- **Metrics History Out of Scope** (Feature 002):
+  - Predictive analytics or forecasting based on historical trends
+  - Real-time streaming metric updates (refresh rate faster than dashboard reload)
+  - Per-admin customizable dashboards or personalized metric views
+  - Metric alerting, notifications, or threshold-based triggers
+  - Integration with external monitoring tools (Prometheus, Grafana, etc.) - Note: Prometheus/Grafana were added separately for performance monitoring, not business metrics
+  - User-level metrics (tracking individual user behavior over time)
+  - Audit trail for who viewed which metrics when
+  - Mobile-optimized metric viewing interface
+  - Multi-timezone support for distributed admin teams (assumes single-location deployment)
+  - Individual metric drill-down (clicking graph to see detailed breakdown)

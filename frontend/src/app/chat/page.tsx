@@ -225,6 +225,11 @@ export default function ChatPage() {
     } else {
       // Use streaming API for standard mode
       try {
+        // Token batching for smoother visual streaming
+        let tokenBuffer = ''
+        let lastUpdateTime = Date.now()
+        const UPDATE_INTERVAL_MS = 150 // Update every 150ms for visible typing effect (slower = more visible)
+
         await chatAPI.streamMessage(
           {
             content: currentInput,
@@ -233,22 +238,45 @@ export default function ChatPage() {
             bypass_filter: currentBypassFlag,
             use_react_agent: false,
           },
-        // onToken: append to assistant message
+        // onToken: append to assistant message with batching
         (token: string) => {
-          console.log('Token received for', assistantMessageId, ':', token)
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.id === assistantMessageId) {
-                console.log('Updating assistant message, current content:', msg.content.length, 'chars')
-                return { ...msg, content: msg.content + token }
-              }
-              return msg
-            })
-          )
+          tokenBuffer += token
+          const now = Date.now()
+
+          // Update UI every UPDATE_INTERVAL_MS or when buffer gets large
+          if (now - lastUpdateTime >= UPDATE_INTERVAL_MS || tokenBuffer.length >= 20) {
+            const bufferedTokens = tokenBuffer
+            tokenBuffer = ''
+            lastUpdateTime = now
+
+            setMessages((prev) =>
+              prev.map((msg) => {
+                if (msg.id === assistantMessageId) {
+                  return { ...msg, content: msg.content + bufferedTokens }
+                }
+                return msg
+              })
+            )
+          }
         },
         // onDone: update conversation info
         (messageData: any) => {
           console.log('Stream completed, message data:', messageData)
+
+          // Flush any remaining tokens in buffer
+          if (tokenBuffer.length > 0) {
+            const remainingTokens = tokenBuffer
+            tokenBuffer = ''
+            setMessages((prev) =>
+              prev.map((msg) => {
+                if (msg.id === assistantMessageId) {
+                  return { ...msg, content: msg.content + remainingTokens }
+                }
+                return msg
+              })
+            )
+          }
+
           setIsLoading(false)
 
           // Update conversation ID if this was a new conversation
@@ -501,6 +529,7 @@ export default function ChatPage() {
 
             {/* Document Selector */}
             <DocumentSelector
+              conversationId={selectedConversationId}
               selectedDocuments={selectedDocuments}
               onSelectionChange={setSelectedDocuments}
             />

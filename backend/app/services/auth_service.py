@@ -92,8 +92,8 @@ class AuthService:
         Create a new session for user.
 
         Per FR-030 and Clarification 2025-10-28:
-        - Maximum 3 concurrent sessions per user
-        - If 4th login, automatically terminate oldest session by last_activity
+        - Maximum MAX_CONCURRENT_SESSIONS (default 3) concurrent sessions per user (T316)
+        - If limit exceeded, automatically terminate oldest session by last_activity
         - Terminated session will receive 401 on next request with message
 
         Args:
@@ -104,6 +104,7 @@ class AuthService:
             Created session
         """
         from sqlalchemy import desc, func
+        from app.core.config import settings
 
         # Count active sessions for this user
         session_count_result = await db.execute(
@@ -111,8 +112,8 @@ class AuthService:
         )
         session_count = session_count_result.scalar() or 0
 
-        # If user has 3+ sessions, delete oldest by last_activity
-        if session_count >= 3:
+        # If user has MAX_CONCURRENT_SESSIONS+, delete oldest by last_activity (T316)
+        if session_count >= settings.MAX_CONCURRENT_SESSIONS:
             # Get oldest session
             oldest_session_result = await db.execute(
                 select(Session)

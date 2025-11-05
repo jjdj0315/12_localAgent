@@ -1,0 +1,23 @@
+# Prometheus configuration for Local LLM Web Application
+
+global:
+  scrape_interval: 15s  # 15초마다 메트릭 수집
+  evaluation_interval: 15s  # 알림 규칙 평가 주기
+  external_labels:
+    monitor: 'llm-webapp-monitor'
+    environment: 'production'
+
+# Scrape configurations
+scrape_configs:
+  # Backend API 메트릭 수집
+  - job_name: 'llm-webapp-backend'
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s  # 백엔드는 더 자주 수집 (10초)
+    scrape_timeout: 5s
+
+  # Prometheus 자체 모니터링
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

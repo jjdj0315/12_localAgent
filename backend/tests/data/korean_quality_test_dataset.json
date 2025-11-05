@@ -1,0 +1,567 @@
+{
+  "metadata": {
+    "title": "Korean Quality Test Dataset for SC-004",
+    "version": "1.0.0",
+    "created_date": "2025-11-04",
+    "description": "50 diverse government work scenario queries for validating Korean language quality (grammar, relevance, naturalness)",
+    "evaluation_criteria": {
+      "grammar_accuracy": "맞춤법, 조사 사용, 문장 구조 (0-10점)",
+      "question_relevance": "질문에 대한 답변 적절성 (0-10점)",
+      "korean_naturalness": "어색한 번역체 없이 자연스러운 표현 (0-10점)"
+    },
+    "pass_threshold": "총 30점 만점에 24점 이상 (80%)",
+    "pass_rate_requirement": "50개 쿼리 중 45개 이상 합격 (90.0%)"
+  },
+  "queries": [
+    {
+      "id": "Q001",
+      "category": "민원_처리",
+      "query": "아파트 단지 내 불법 주차 민원이 접수되었습니다. 어떻게 처리해야 하나요?",
+      "expected_response_characteristics": {
+        "tone": "공손하고 전문적인 존댓말",
+        "content_type": "절차 안내 (step-by-step)",
+        "length": "중간 (200-400자)",
+        "key_elements": ["관련 법규 또는 조례", "처리 절차", "소요 기간", "필요 서류"]
+      }
+    },
+    {
+      "id": "Q002",
+      "category": "민원_처리",
+      "query": "건축 허가 신청서류에는 무엇이 필요한가요?",
+      "expected_response_characteristics": {
+        "tone": "친절한 안내",
+        "content_type": "목록 형식 (checklist)",
+        "length": "중간 (200-400자)",
+        "key_elements": ["필수 서류 목록", "구비 방법", "제출 장소"]
+      }
+    },
+    {
+      "id": "Q003",
+      "category": "민원_처리",
+      "query": "소음 민원이 들어왔는데 측정 기준은 어떻게 되나요?",
+      "expected_response_characteristics": {
+        "tone": "전문적이고 정확한 설명",
+        "content_type": "기술 정보 + 법적 기준",
+        "length": "중간 (200-400자)",
+        "key_elements": ["데시벨 기준", "시간대별 기준", "측정 방법"]
+      }
+    },
+    {
+      "id": "Q004",
+      "category": "민원_처리",
+      "query": "복지 급여 신청 자격 요건을 알려주세요.",
+      "expected_response_characteristics": {
+        "tone": "이해하기 쉬운 설명",
+        "content_type": "자격 요건 안내",
+        "length": "중간 (300-500자)",
+        "key_elements": ["소득 기준", "재산 기준", "나이 또는 가구 조건"]
+      }
+    },
+    {
+      "id": "Q005",
+      "category": "민원_처리",
+      "query": "주민등록 등본을 온라인으로 발급받는 방법을 안내해주세요.",
+      "expected_response_characteristics": {
+        "tone": "친절하고 단계별 안내",
+        "content_type": "온라인 서비스 이용 가이드",
+        "length": "중간 (250-400자)",
+        "key_elements": ["접속 사이트", "인증 방법", "발급 절차"]
+      }
+    },
+    {
+      "id": "Q006",
+      "category": "민원_처리",
+      "query": "쓰레기 무단투기 신고는 어디로 해야 하나요?",
+      "expected_response_characteristics": {
+        "tone": "간결하고 명확한 안내",
+        "content_type": "신고 방법 안내",
+        "length": "짧음 (150-250자)",
+        "key_elements": ["신고 채널 (전화, 온라인)", "필요 정보", "처리 절차"]
+      }
+    },
+    {
+      "id": "Q007",
+      "category": "민원_처리",
+      "query": "농지 전용 허가는 어떤 절차로 진행되나요?",
+      "expected_response_characteristics": {
+        "tone": "전문적이고 정확한 설명",
+        "content_type": "행정 절차 안내",
+        "length": "긴 편 (400-600자)",
+        "key_elements": ["관련 법규", "허가 기준", "제출 서류", "심사 기간"]
+      }
+    },
+    {
+      "id": "Q008",
+      "category": "민원_처리",
+      "query": "반려동물 등록은 어떻게 하나요?",
+      "expected_response_characteristics": {
+        "tone": "친근하고 이해하기 쉬운",
+        "content_type": "등록 절차 안내",
+        "length": "중간 (200-350자)",
+        "key_elements": ["등록 대상", "등록 장소", "필요 서류", "수수료"]
+      }
+    },
+    {
+      "id": "Q009",
+      "category": "민원_처리",
+      "query": "도로 파손 신고를 하려고 하는데 어디로 연락하면 되나요?",
+      "expected_response_characteristics": {
+        "tone": "신속한 대응을 보장하는 어조",
+        "content_type": "신고 방법 + 후속 조치",
+        "length": "짧음 (150-250자)",
+        "key_elements": ["담당 부서 연락처", "신고 방법", "처리 예상 기간"]
+      }
+    },
+    {
+      "id": "Q010",
+      "category": "민원_처리",
+      "query": "재산세 납부 기한 연장이 가능한가요?",
+      "expected_response_characteristics": {
+        "tone": "정확하고 법적 근거를 제시",
+        "content_type": "세금 관련 안내",
+        "length": "중간 (250-400자)",
+        "key_elements": ["연장 가능 조건", "신청 방법", "필요 서류"]
+      }
+    },
+    {
+      "id": "Q011",
+      "category": "문서_작성",
+      "query": "주민 대상 재활용 분리수거 안내문을 작성해주세요.",
+      "expected_response_characteristics": {
+        "tone": "친절하고 이해하기 쉬운",
+        "content_type": "공공 안내문 (formal notice)",
+        "length": "긴 편 (400-600자)",
+        "key_elements": ["제목", "분리수거 방법", "수거 일정", "문의처"]
+      }
+    },
+    {
+      "id": "Q012",
+      "category": "문서_작성",
+      "query": "공문서 기안 형식을 알려주세요.",
+      "expected_response_characteristics": {
+        "tone": "형식적이고 전문적인",
+        "content_type": "문서 양식 설명",
+        "length": "중간 (300-500자)",
+        "key_elements": ["제목 형식", "본문 구조", "결재선", "시행일자"]
+      }
+    },
+    {
+      "id": "Q013",
+      "category": "문서_작성",
+      "query": "예산 집행 보고서 초안을 작성해주세요. 분기별 집행 현황을 포함해야 합니다.",
+      "expected_response_characteristics": {
+        "tone": "객관적이고 정확한",
+        "content_type": "업무 보고서 (formal report)",
+        "length": "긴 편 (500-800자)",
+        "key_elements": ["제목", "보고 목적", "분기별 집행 현황 표", "종합 의견"]
+      }
+    },
+    {
+      "id": "Q014",
+      "category": "문서_작성",
+      "query": "지역 축제 개최 계획서를 작성해주세요.",
+      "expected_response_characteristics": {
+        "tone": "체계적이고 설득력 있는",
+        "content_type": "사업 계획서",
+        "length": "긴 편 (600-900자)",
+        "key_elements": ["사업 개요", "일정", "예산", "기대 효과"]
+      }
+    },
+    {
+      "id": "Q015",
+      "category": "문서_작성",
+      "query": "회의록 작성 시 주의사항을 알려주세요.",
+      "expected_response_characteristics": {
+        "tone": "실용적이고 명확한",
+        "content_type": "가이드라인 (checklist)",
+        "length": "중간 (250-400자)",
+        "key_elements": ["필수 기재 사항", "작성 형식", "보관 방법"]
+      }
+    },
+    {
+      "id": "Q016",
+      "category": "문서_작성",
+      "query": "민원인에게 보낼 처리 완료 통보문을 작성해주세요.",
+      "expected_response_characteristics": {
+        "tone": "공손하고 감사 표현 포함",
+        "content_type": "공식 통보문",
+        "length": "중간 (200-350자)",
+        "key_elements": ["접수 번호", "처리 내용", "문의처", "감사 인사"]
+      }
+    },
+    {
+      "id": "Q017",
+      "category": "문서_작성",
+      "query": "타 부서에 협조를 요청하는 공문을 작성해주세요.",
+      "expected_response_characteristics": {
+        "tone": "정중하고 형식적인",
+        "content_type": "내부 공문",
+        "length": "중간 (300-450자)",
+        "key_elements": ["수신처", "요청 사항", "협조 기한", "담당자 연락처"]
+      }
+    },
+    {
+      "id": "Q018",
+      "category": "문서_작성",
+      "query": "사업 추진 경과 보고서 양식을 알려주세요.",
+      "expected_response_characteristics": {
+        "tone": "객관적이고 체계적인",
+        "content_type": "보고서 양식",
+        "length": "중간 (300-500자)",
+        "key_elements": ["제목", "추진 경과", "애로사항", "향후 계획"]
+      }
+    },
+    {
+      "id": "Q019",
+      "category": "문서_작성",
+      "query": "주민참여 설문조사 안내문을 작성해주세요.",
+      "expected_response_characteristics": {
+        "tone": "참여를 독려하는 친근한",
+        "content_type": "참여 안내문",
+        "length": "중간 (250-400자)",
+        "key_elements": ["설문 목적", "참여 방법", "기간", "인센티브"]
+      }
+    },
+    {
+      "id": "Q020",
+      "category": "문서_작성",
+      "query": "인사 발령 공고문을 작성해주세요.",
+      "expected_response_characteristics": {
+        "tone": "형식적이고 간결한",
+        "content_type": "인사 공고",
+        "length": "짧음 (150-250자)",
+        "key_elements": ["발령일자", "발령 내역 (표 형식)", "시행일"]
+      }
+    },
+    {
+      "id": "Q021",
+      "category": "정책_질문",
+      "query": "지방재정법에 따른 예산 편성 절차를 설명해주세요.",
+      "expected_response_characteristics": {
+        "tone": "전문적이고 법적 근거 명시",
+        "content_type": "법률 해석 + 절차 설명",
+        "length": "긴 편 (500-700자)",
+        "key_elements": ["관련 법조문", "절차 단계", "각 단계별 기한"]
+      }
+    },
+    {
+      "id": "Q022",
+      "category": "정책_질문",
+      "query": "주민자치위원회의 역할과 구성은 어떻게 되나요?",
+      "expected_response_characteristics": {
+        "tone": "명확하고 이해하기 쉬운",
+        "content_type": "제도 설명",
+        "length": "중간 (300-450자)",
+        "key_elements": ["설립 목적", "구성 방법", "주요 역할"]
+      }
+    },
+    {
+      "id": "Q023",
+      "category": "정책_질문",
+      "query": "지역개발채권 매입 의무는 어떤 경우에 발생하나요?",
+      "expected_response_characteristics": {
+        "tone": "정확하고 법적 근거 제시",
+        "content_type": "정책 안내",
+        "length": "중간 (300-450자)",
+        "key_elements": ["매입 대상", "매입 비율", "환급 절차"]
+      }
+    },
+    {
+      "id": "Q024",
+      "category": "정책_질문",
+      "query": "공공기관 정보공개 청구는 어떻게 처리되나요?",
+      "expected_response_characteristics": {
+        "tone": "투명하고 절차 중심",
+        "content_type": "법적 절차 설명",
+        "length": "중간 (350-500자)",
+        "key_elements": ["청구 방법", "공개 결정 기한", "비공개 사유"]
+      }
+    },
+    {
+      "id": "Q025",
+      "category": "정책_질문",
+      "query": "지방세 체납 시 압류 절차는 어떻게 진행되나요?",
+      "expected_response_characteristics": {
+        "tone": "객관적이고 법적 근거 명확",
+        "content_type": "행정 절차 설명",
+        "length": "긴 편 (400-600자)",
+        "key_elements": ["체납 기준", "압류 절차", "이의 신청 방법"]
+      }
+    },
+    {
+      "id": "Q026",
+      "category": "정책_질문",
+      "query": "도시계획시설 결정 고시의 법적 효력은 무엇인가요?",
+      "expected_response_characteristics": {
+        "tone": "전문적이고 법률 용어 사용",
+        "content_type": "법률 해석",
+        "length": "중간 (300-500자)",
+        "key_elements": ["법적 효력", "적용 범위", "이해관계자 권리"]
+      }
+    },
+    {
+      "id": "Q027",
+      "category": "정책_질문",
+      "query": "주민투표 실시 요건은 무엇인가요?",
+      "expected_response_characteristics": {
+        "tone": "명확하고 법적 근거 제시",
+        "content_type": "제도 설명",
+        "length": "중간 (300-450자)",
+        "key_elements": ["대상 사안", "청구 요건", "실시 절차"]
+      }
+    },
+    {
+      "id": "Q028",
+      "category": "정책_질문",
+      "query": "지방의회 조례안 발의 절차를 설명해주세요.",
+      "expected_response_characteristics": {
+        "tone": "체계적이고 절차 중심",
+        "content_type": "입법 절차 설명",
+        "length": "긴 편 (400-600자)",
+        "key_elements": ["발의 주체", "심의 절차", "공포 절차"]
+      }
+    },
+    {
+      "id": "Q029",
+      "category": "정책_질문",
+      "query": "특별교부세 교부 기준은 어떻게 되나요?",
+      "expected_response_characteristics": {
+        "tone": "전문적이고 재정 용어 사용",
+        "content_type": "재정 정책 설명",
+        "length": "중간 (300-450자)",
+        "key_elements": ["교부 목적", "배분 기준", "신청 방법"]
+      }
+    },
+    {
+      "id": "Q030",
+      "category": "정책_질문",
+      "query": "통합재정안정화기금의 용도는 무엇인가요?",
+      "expected_response_characteristics": {
+        "tone": "정확하고 재정 전문성",
+        "content_type": "재정 제도 설명",
+        "length": "중간 (250-400자)",
+        "key_elements": ["기금 목적", "사용 조건", "관리 주체"]
+      }
+    },
+    {
+      "id": "Q031",
+      "category": "일정_계산",
+      "query": "2024년 회계연도는 언제부터 언제까지인가요?",
+      "expected_response_characteristics": {
+        "tone": "간결하고 정확한",
+        "content_type": "날짜 정보",
+        "length": "짧음 (50-150자)",
+        "key_elements": ["시작일", "종료일", "법적 근거"]
+      }
+    },
+    {
+      "id": "Q032",
+      "category": "일정_계산",
+      "query": "오늘부터 30일 후의 영업일은 며칠인가요? (공휴일 제외)",
+      "expected_response_characteristics": {
+        "tone": "명확한 날짜 제시",
+        "content_type": "날짜 계산 결과",
+        "length": "짧음 (50-150자)",
+        "key_elements": ["계산 결과 날짜", "제외된 공휴일 수"]
+      }
+    },
+    {
+      "id": "Q033",
+      "category": "일정_계산",
+      "query": "2024년 설 연휴는 언제인가요?",
+      "expected_response_characteristics": {
+        "tone": "간결한 정보 제공",
+        "content_type": "공휴일 정보",
+        "length": "짧음 (50-100자)",
+        "key_elements": ["연휴 기간", "대체 공휴일 여부"]
+      }
+    },
+    {
+      "id": "Q034",
+      "category": "일정_계산",
+      "query": "근무일 기준으로 14일 후는 며칠인가요?",
+      "expected_response_characteristics": {
+        "tone": "정확한 계산 결과",
+        "content_type": "날짜 계산",
+        "length": "짧음 (50-150자)",
+        "key_elements": ["계산 기준 (토/일/공휴일 제외)", "결과 날짜"]
+      }
+    },
+    {
+      "id": "Q035",
+      "category": "일정_계산",
+      "query": "2024년 추석은 양력으로 몇 월 며칠인가요?",
+      "expected_response_characteristics": {
+        "tone": "간결한 정보",
+        "content_type": "음력/양력 변환",
+        "length": "짧음 (50-100자)",
+        "key_elements": ["양력 날짜", "연휴 기간"]
+      }
+    },
+    {
+      "id": "Q036",
+      "category": "일정_계산",
+      "query": "지금부터 연말까지 남은 영업일은 며칠인가요?",
+      "expected_response_characteristics": {
+        "tone": "계산 근거와 함께 제시",
+        "content_type": "날짜 계산",
+        "length": "짧음 (100-200자)",
+        "key_elements": ["영업일 수", "제외된 주말/공휴일 수"]
+      }
+    },
+    {
+      "id": "Q037",
+      "category": "일정_계산",
+      "query": "2분기 시작일은 언제인가요?",
+      "expected_response_characteristics": {
+        "tone": "명확하고 간결한",
+        "content_type": "분기 정보",
+        "length": "짧음 (50-100자)",
+        "key_elements": ["시작일", "종료일"]
+      }
+    },
+    {
+      "id": "Q038",
+      "category": "일정_계산",
+      "query": "현충일이 포함된 주의 근무일은 며칠인가요?",
+      "expected_response_characteristics": {
+        "tone": "계산 과정 포함",
+        "content_type": "날짜 계산",
+        "length": "짧음 (100-150자)",
+        "key_elements": ["해당 주 기간", "근무일 수", "공휴일 제외"]
+      }
+    },
+    {
+      "id": "Q039",
+      "category": "일정_계산",
+      "query": "3.1절부터 광복절까지 며칠인가요?",
+      "expected_response_characteristics": {
+        "tone": "정확한 계산",
+        "content_type": "날짜 차이 계산",
+        "length": "짧음 (50-100자)",
+        "key_elements": ["총 일수", "시작일/종료일 명시"]
+      }
+    },
+    {
+      "id": "Q040",
+      "category": "일정_계산",
+      "query": "이번 달 마지막 근무일은 언제인가요?",
+      "expected_response_characteristics": {
+        "tone": "명확한 날짜 제시",
+        "content_type": "날짜 정보",
+        "length": "짧음 (50-100자)",
+        "key_elements": ["마지막 근무일 날짜", "월말 공휴일 고려"]
+      }
+    },
+    {
+      "id": "Q041",
+      "category": "일반_업무",
+      "query": "회의록 작성 시 주의사항을 요약해주세요.",
+      "expected_response_characteristics": {
+        "tone": "실용적이고 명확한",
+        "content_type": "체크리스트",
+        "length": "중간 (200-350자)",
+        "key_elements": ["필수 기재 사항", "형식", "보관 방법"]
+      }
+    },
+    {
+      "id": "Q042",
+      "category": "일반_업무",
+      "query": "민원인 응대 시 유의사항을 알려주세요.",
+      "expected_response_characteristics": {
+        "tone": "친절하고 실무 중심",
+        "content_type": "행동 지침",
+        "length": "중간 (250-400자)",
+        "key_elements": ["친절한 태도", "정확한 정보 제공", "개인정보 보호"]
+      }
+    },
+    {
+      "id": "Q043",
+      "category": "일반_업무",
+      "query": "업무 인수인계서 작성 요령을 알려주세요.",
+      "expected_response_characteristics": {
+        "tone": "체계적이고 실용적인",
+        "content_type": "작성 가이드",
+        "length": "중간 (300-450자)",
+        "key_elements": ["필수 항목", "작성 형식", "첨부 서류"]
+      }
+    },
+    {
+      "id": "Q044",
+      "category": "일반_업무",
+      "query": "공문서 보안 등급 분류 기준은 무엇인가요?",
+      "expected_response_characteristics": {
+        "tone": "전문적이고 명확한",
+        "content_type": "분류 기준",
+        "length": "중간 (300-450자)",
+        "key_elements": ["보안 등급 종류", "분류 기준", "관리 방법"]
+      }
+    },
+    {
+      "id": "Q045",
+      "category": "일반_업무",
+      "query": "메일 답변 시 유의해야 할 점을 알려주세요.",
+      "expected_response_characteristics": {
+        "tone": "실무 중심의 조언",
+        "content_type": "커뮤니케이션 가이드",
+        "length": "중간 (200-350자)",
+        "key_elements": ["신속성", "정확성", "존댓말 사용", "첨부 파일 확인"]
+      }
+    },
+    {
+      "id": "Q046",
+      "category": "일반_업무",
+      "query": "전화 응대 매뉴얼의 핵심 내용은 무엇인가요?",
+      "expected_response_characteristics": {
+        "tone": "친절하고 실용적인",
+        "content_type": "응대 매뉴얼",
+        "length": "중간 (250-400자)",
+        "key_elements": ["인사 멘트", "경청", "정확한 정보 전달", "마무리 인사"]
+      }
+    },
+    {
+      "id": "Q047",
+      "category": "일반_업무",
+      "query": "업무 우선순위를 정하는 방법을 알려주세요.",
+      "expected_response_characteristics": {
+        "tone": "조언적이고 실용적인",
+        "content_type": "업무 관리 팁",
+        "length": "중간 (250-400자)",
+        "key_elements": ["긴급성/중요성 매트릭스", "마감일 관리", "위임 고려"]
+      }
+    },
+    {
+      "id": "Q048",
+      "category": "일반_업무",
+      "query": "회의 준비 체크리스트를 알려주세요.",
+      "expected_response_characteristics": {
+        "tone": "체계적이고 실무 중심",
+        "content_type": "준비 체크리스트",
+        "length": "중간 (250-400자)",
+        "key_elements": ["안건 준비", "참석자 확인", "회의실 예약", "자료 배포"]
+      }
+    },
+    {
+      "id": "Q049",
+      "category": "일반_업무",
+      "query": "문서 보존 기한은 어떻게 정해지나요?",
+      "expected_response_characteristics": {
+        "tone": "전문적이고 법적 근거 제시",
+        "content_type": "문서 관리 규정",
+        "length": "중간 (300-450자)",
+        "key_elements": ["보존 기한 종류", "분류 기준", "폐기 절차"]
+      }
+    },
+    {
+      "id": "Q050",
+      "category": "일반_업무",
+      "query": "출장 복명서 작성 요령을 알려주세요.",
+      "expected_response_characteristics": {
+        "tone": "실무적이고 명확한",
+        "content_type": "보고서 작성 가이드",
+        "length": "중간 (250-400자)",
+        "key_elements": ["출장 목적", "주요 내용", "향후 조치사항", "증빙 서류"]
+      }
+    }
+  ]
+}

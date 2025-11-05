@@ -1,5 +1,10 @@
 /**
  * API client for communicating with backend
+ *
+ * CSRF Protection (FR-110):
+ * - CSRF token is stored in csrf_token cookie (httpOnly=false)
+ * - All state-changing requests (POST/PUT/DELETE/PATCH) include X-CSRF-Token header
+ * - Login and setup endpoints are exempt from CSRF validation
  */
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
@@ -16,25 +21,69 @@ export class APIError extends Error {
 }
 
 /**
- * Make API request with credentials
+ * Get CSRF token from cookie
+ */
+function getCSRFToken(): string | null {
+  if (typeof document === 'undefined') {
+    return null // SSR safety
+  }
+
+  const name = 'csrf_token'
+  const value = `; ${document.cookie}`
+  const parts = value.split(`; ${name}=`)
+
+  if (parts.length === 2) {
+    return parts.pop()?.split(';').shift() || null
+  }
+
+  return null
+}
+
+/**
+ * Make API request with credentials and CSRF protection
  */
 async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   const url = `${API_URL}${endpoint}`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {}),
+  }
+
+  // Add CSRF token for state-changing requests (FR-110)
+  const method = options.method?.toUpperCase() || 'GET'
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    const csrfToken = getCSRFToken()
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken
+    }
+  }
 
   const response = await fetch(url, {
     ...options,
     credentials: 'include', // Include cookies for session
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
   })
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({
       message: 'An error occurred',
     }))
+
+    // Handle CSRF errors with user-friendly message (FR-110)
+    if (response.status === 403 && error.message?.includes('CSRF')) {
+      throw new APIError(
+        403,
+        'CSRF 토큰이 유효하지 않습니다. 페이지를 새로고침 후 다시 시도해주세요.',
+        error
+      )
+    }
+
     throw new APIError(response.status, error.message || 'Request failed', error)
+  }
+
+  // Handle 204 No Content responses (e.g., DELETE requests)
+  if (response.status === 204) {
+    return null
   }
 
   return response.json()
@@ -92,12 +141,19 @@ export const chatAPI = {
     const url = `${API_URL}/chat/stream`
 
     try {
+      // Include CSRF token for POST request (FR-110)
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      const csrfToken = getCSRFToken()
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken
+      }
+
       const response = await fetch(url, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(data),
       })
 
@@ -206,10 +262,18 @@ export const documentsAPI = {
     const formData = new FormData()
     formData.append('file', file)
 
+    // Include CSRF token for POST request (FR-110)
+    const headers: Record<string, string> = {}
+    const csrfToken = getCSRFToken()
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken
+    }
+
     const response = await fetch(`${API_URL}/documents`, {
       method: 'POST',
       body: formData,
       credentials: 'include',
+      headers,
     })
 
     if (!response.ok) {

@@ -1,0 +1,131 @@
+apiVersion: 1
+
+groups:
+  - name: LLM Performance Alerts
+    interval: 1m
+    rules:
+      - uid: llm_slow_response
+        title: LLM 응답 시간 지연
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'rate(llm_request_duration_seconds_sum[5m]) / rate(llm_request_duration_seconds_count[5m]) > 10'
+              refId: A
+        annotations:
+          description: 'LLM 평균 응답 시간이 10초를 초과했습니다.'
+          summary: 'LLM 성능 저하 감지'
+        labels:
+          severity: warning
+          component: llm
+        for: 5m
+
+      - uid: llm_high_error_rate
+        title: LLM 에러율 증가
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'rate(llm_requests_total{status="error"}[5m]) / rate(llm_requests_total[5m]) > 0.05'
+              refId: A
+        annotations:
+          description: 'LLM 요청 에러율이 5%를 초과했습니다.'
+          summary: 'LLM 에러율 증가 감지'
+        labels:
+          severity: critical
+          component: llm
+        for: 5m
+
+  - name: Database Performance Alerts
+    interval: 1m
+    rules:
+      - uid: db_slow_queries
+        title: 데이터베이스 쿼리 지연
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'rate(db_query_duration_seconds_sum[5m]) / rate(db_query_duration_seconds_count[5m]) > 1'
+              refId: A
+        annotations:
+          description: '데이터베이스 평균 쿼리 시간이 1초를 초과했습니다.'
+          summary: '데이터베이스 성능 저하 감지'
+        labels:
+          severity: warning
+          component: database
+        for: 5m
+
+      - uid: db_connection_high
+        title: DB 연결 수 과다
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'db_connections_active > 15'
+              refId: A
+        annotations:
+          description: '활성 DB 연결 수가 15개를 초과했습니다. 연결 누수를 확인하세요.'
+          summary: 'DB 연결 수 과다'
+        labels:
+          severity: warning
+          component: database
+        for: 2m
+
+  - name: HTTP API Alerts
+    interval: 1m
+    rules:
+      - uid: http_high_error_rate
+        title: HTTP 에러율 증가
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'rate(http_requests_total{status_code=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05'
+              refId: A
+        annotations:
+          description: 'HTTP 5xx 에러율이 5%를 초과했습니다.'
+          summary: 'HTTP 에러율 증가 감지'
+        labels:
+          severity: critical
+          component: api
+        for: 3m
+
+      - uid: http_slow_response
+        title: HTTP API 응답 시간 지연
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2'
+              refId: A
+        annotations:
+          description: 'HTTP API P95 응답 시간이 2초를 초과했습니다.'
+          summary: 'API 성능 저하 감지'
+        labels:
+          severity: warning
+          component: api
+        for: 5m

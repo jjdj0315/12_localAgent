@@ -1,17 +1,19 @@
 """
-Structured logging with correlation IDs (T228)
+Structured logging with correlation IDs (T228) and sensitive data filtering (FR-112)
 
 Provides:
 - Request correlation IDs
 - Structured JSON logging
 - Log levels per component
 - Performance tracking
+- Sensitive data filtering (session tokens, passwords, CSRF tokens)
 """
 
 import logging
 import sys
 import json
 import uuid
+import re
 from datetime import datetime
 from typing import Any, Dict, Optional
 from contextvars import ContextVar
@@ -19,10 +21,57 @@ from contextvars import ContextVar
 # Context variable for request correlation ID
 correlation_id_var: ContextVar[Optional[str]] = ContextVar('correlation_id', default=None)
 
+# Sensitive field patterns (FR-112)
+SENSITIVE_FIELDS = [
+    'session_token',
+    'password',
+    'csrf_token',
+    'secret',
+    'api_key',
+    'authorization',
+    'token',
+]
+
+# Regex patterns for sensitive data
+SENSITIVE_PATTERNS = [
+    (re.compile(r'session_token["\s:=]+([a-zA-Z0-9_-]+)', re.IGNORECASE), 'session_token'),
+    (re.compile(r'password["\s:=]+(.+?)["\'}\s,]', re.IGNORECASE), 'password'),
+    (re.compile(r'csrf[_-]?token["\s:=]+([a-zA-Z0-9_-]+)', re.IGNORECASE), 'csrf_token'),
+    (re.compile(r'Bearer\s+([a-zA-Z0-9_\-\.]+)', re.IGNORECASE), 'bearer_token'),
+]
+
+
+def filter_sensitive_data(data: Any) -> Any:
+    """
+    Recursively filter sensitive data from logs (FR-112)
+
+    Args:
+        data: Data to filter (str, dict, list, or primitive)
+
+    Returns:
+        Filtered data with sensitive values replaced with [REDACTED]
+    """
+    if isinstance(data, dict):
+        return {
+            key: '[REDACTED]' if any(field in key.lower() for field in SENSITIVE_FIELDS)
+            else filter_sensitive_data(value)
+            for key, value in data.items()
+        }
+    elif isinstance(data, list):
+        return [filter_sensitive_data(item) for item in data]
+    elif isinstance(data, str):
+        # Apply regex patterns to redact sensitive data in strings
+        filtered = data
+        for pattern, name in SENSITIVE_PATTERNS:
+            filtered = pattern.sub(f'{name}=[REDACTED]', filtered)
+        return filtered
+    else:
+        return data
+
 
 class StructuredFormatter(logging.Formatter):
     """
-    JSON formatter for structured logging
+    JSON formatter for structured logging with sensitive data filtering (FR-112)
     """
 
     def format(self, record: logging.LogRecord) -> str:
@@ -54,6 +103,9 @@ class StructuredFormatter(logging.Formatter):
         # Add stack trace for errors
         if record.levelno >= logging.ERROR and record.stack_info:
             log_data["stack_trace"] = self.formatStack(record.stack_info)
+
+        # Filter sensitive data before serializing (FR-112)
+        log_data = filter_sensitive_data(log_data)
 
         return json.dumps(log_data, ensure_ascii=False)
 
