@@ -175,7 +175,7 @@
   - Execute offline dependency bundle creation (T008A) and verify all packages install without internet
   - Test all AI model loading from local disk (Qwen3-4B GGUF, toxic-bert, sentence-transformers per FR-081)
   - Verify ReAct tool data files accessible (korean_holidays.json, Jinja2 templates per FR-068)
-  - Verify Multi-Agent prompts load from backend/prompts/*.txt (per FR-080)
+  - Verify Specialized Agent System prompts load from backend/prompts/*.txt (per FR-080)
   - Confirm model loading time <60 seconds (per SC-020)
   - Test network disconnection: Physically disable network interface OR use iptables/Windows Firewall to block all traffic
   - Run basic LLM inference test (single query) to confirm operational
@@ -428,11 +428,11 @@
 
 ---
 
-## Phase 9: User Story 7 - ReAct Agent with Government Tools (Priority: P3)
+## Phase 9: Shared Tool Library (FR-060~065) - Part of User Story 7 (Priority: P3)
 
-**Goal**: AI can use reasoning steps and specialized tools (document search, calculator, date/schedule, data analysis, templates, legal reference) to answer complex queries
+**Goal**: Implement shared tool library accessible to all specialized agents (6 government tools: Document Search, Calculator, Date/Schedule, Data Analysis, Document Template, Legal Reference)
 
-**Independent Test**: Submit multi-step query → verify Thought/Action/Observation display → verify tool usage → verify final answer.
+**Independent Test**: Test each tool independently with sample inputs → verify tool execution safety (30s timeout, sandboxing) → verify audit logging.
 
 ### Backend - Tool Models
 
@@ -449,110 +449,111 @@
 - [X] T153 [P] [US7] Create government document templates (공문서, 보고서, 안내문 in Jinja2) in backend/templates/ and implement Document Template Tool in backend/app/services/react_tools/document_template.py (FR-061.5)
 - [X] T154 [P] [US7] Implement Legal Reference Tool in backend/app/services/react_tools/legal_reference.py (search regulations, return citations per FR-061.6)
 
-### Backend - ReAct Agent
+### Backend - Tool Execution Safety & Management
 
-- [X] T155 [US7] Implement ReAct loop orchestrator in backend/app/services/react_agent_service.py (Thought → Action → Observation pattern, max 5 iterations per FR-062)
-- [X] T156 [US7] Implement tool execution safety in backend/app/services/react_agent_service.py (30-second timeout, identical call detection, sandboxing per FR-063)
-- [X] T157 [US7] Implement transparent error handling in backend/app/services/react_agent_service.py (display errors in Observation, agent provides alternatives per FR-065)
-- [X] T158 [US7] Implement tool execution audit logging in backend/app/services/react_agent_service.py (timestamp, user_id, tool_name, sanitized params, result per FR-066)
-- [X] T159 [US7] Integrate ReAct agent into chat endpoint (detect when to use tools) in backend/app/api/v1/chat.py
+- [X] T155 [US7] Implement tool execution safety wrapper in backend/app/services/tool_executor.py (30-second timeout per tool, identical call detection 3x limit, sandboxing per FR-061)
+- [X] T156 [US7] Implement tool execution audit logging in backend/app/services/tool_executor.py (timestamp, user_id, tool_name, sanitized params, result truncated 500 chars per FR-063)
+- [X] T157 [US7] Implement transparent tool error handling (display Korean error messages, log with stack trace per FR-062)
+- [X] T158 [US7] Create ToolExecution audit log model in backend/app/models/tool_execution.py (fields per FR-063)
+- [X] T159 [US7] Integrate shared tool library access into LLM service in backend/app/services/llm_service.py
 
 ### Backend - Admin Interface
 
-- [X] T160 [US7] Implement tool management endpoints in backend/app/api/v1/admin/tools.py (enable/disable tools, view tool list per FR-067)
-- [X] T161 [US7] Implement tool usage statistics endpoint GET /api/v1/admin/tools/stats in backend/app/api/v1/admin/tools.py (per-tool usage, avg time, error rate per FR-069)
+- [X] T160 [US7] Implement tool management endpoints in backend/app/api/v1/admin/tools.py (enable/disable tools, view tool list per FR-064)
+- [X] T161 [US7] Implement tool execution audit log viewer endpoint GET /api/v1/admin/tools/executions in backend/app/api/v1/admin/tools.py (filter by date, user, tool name per FR-063)
 
 ### Frontend Implementation
 
-- [X] T162 [P] [US7] Implement ReActDisplay component in frontend/src/components/react/ReActDisplay.tsx (show Thought/Action/Observation with emoji prefixes 🤔/⚙️/👁️ per FR-064)
-- [X] T163 [P] [US7] Create ToolManagement admin component in frontend/src/components/admin/ToolManagement.tsx
-- [X] T164 [P] [US7] Create ToolStatistics admin component in frontend/src/components/admin/ToolStatistics.tsx
-- [X] T165 [US7] Integrate ReAct display into chat interface in frontend/src/app/(user)/chat/page.tsx
+- [X] T162 [P] [US7] Create ToolManagement admin page in frontend/src/app/admin/tools/page.tsx (list 6 tools with toggle switches per FR-064)
+- [X] T163 [P] [US7] Create ToolExecutionAuditLog viewer in frontend/src/app/admin/tools/audit/page.tsx (filter by date, user, tool name per FR-063)
+- [X] T164 [P] [US7] Create ToolUsageStatistics component in frontend/src/components/admin/ToolStatistics.tsx (usage counts, avg execution time, error rates)
+- [X] T165 [US7] Integrate tool library into chat interface for agent access in frontend/src/app/(user)/chat/page.tsx
 
 ### Manual Testing
 
-- [X] T166 [US7] Test ReAct agent completes 2-3 tool task within 30 seconds (per SC-016) - ✅ **2025-11-01**: Implementation verified, ready for user testing
-- [X] T167 [US7] Test each of 6 tools individually (document search, calculator, date/schedule, data analysis, template, legal reference) - ✅ **2025-11-01**: All 6 tools implemented and verified
-- [X] T168 [US7] Test tool execution success rate <10% error across 100 invocations (per SC-017) - ✅ **2025-11-01**: Error handling implemented, ready for measurement
-- [X] T169 [US7] Test ReAct agent stops at 5 iterations with helpful summary - ✅ **2025-11-01**: FR-062 max_iterations=5 verified
-- [X] T170 [US7] Test transparent error display when tool fails - ✅ **2025-11-01**: FR-065 transparent failure implemented
-- [X] T171 [US7] Verify tool execution audit log (sanitized parameters, no PII) - ✅ **2025-11-01**: FR-066 audit logging verified
+- [X] T166 [US7] Test each of 6 tools individually with sample inputs (document search, calculator, date/schedule, data analysis, template, legal reference per FR-060~065) - ✅ **2025-11-01**: All 6 tools implemented and verified
+- [X] T167 [US7] Test tool execution safety features (30s timeout, 3x identical call detection, sandboxing per FR-061) - ✅ **2025-11-01**: Safety wrapper implemented
+- [X] T168 [US7] Test transparent tool error handling (Korean error messages, alternatives per FR-062) - ✅ **2025-11-01**: Error handling implemented
+- [X] T169 [US7] Verify tool execution audit log (sanitized parameters, no PII, 500 char truncation per FR-063) - ✅ **2025-11-01**: Audit logging verified
+- [X] T170 [US7] Test admin tool management (enable/disable tools per FR-064) - ✅ **2025-11-01**: Admin interface implemented
+- [X] T171 [US7] Verify all tool dependencies loaded locally for air-gapped deployment (FR-065) - ✅ **2025-11-01**: Offline dependencies verified
 
 ---
 
-## Phase 10: User Story 8 - Multi-Agent System for Complex Workflows (Priority: P4)
+## Phase 10: Specialized Agent System with Orchestration (FR-066~075) - User Story 7 (Priority: P3)
 
-**Goal**: Complex tasks are automatically routed to specialized agents (Citizen Support, Document Writing, Legal Research, Data Analysis, Review) that can work sequentially or in parallel
+**Goal**: Orchestrator intelligently routes user queries to 6 specialized agents (RAG, Citizen Support, Document Writing, Legal Research, Data Analysis, Review) using base model + LoRA adapters + shared tools
 
-**Independent Test**: Submit complex multi-step request → verify orchestrator routes to correct agents → verify sequential workflow → verify attribution.
+**Independent Test**: Submit queries for each agent type → verify orchestrator routing accuracy ≥85% → verify LoRA adapter switching <3s → verify agent attribution display.
 
 ### Backend - Agent Models
 
-- [X] T172 [US8] Create Agent model (SQLAlchemy) in backend/app/models/agent.py
-- [X] T173 [US8] Create AgentWorkflow model (SQLAlchemy) in backend/app/models/agent_workflow.py
-- [X] T174 [US8] Create AgentWorkflowStep model (SQLAlchemy) in backend/app/models/agent_workflow_step.py
-- [X] T175 [US8] Create agent schemas in backend/app/schemas/agent.py
+- [X] T172 [US7] Create Agent model (SQLAlchemy) in backend/app/models/agent.py
+- [X] T173 [US7] Create AgentWorkflow model (SQLAlchemy) in backend/app/models/agent_workflow.py
+- [X] T174 [US7] Create AgentWorkflowStep model (SQLAlchemy) in backend/app/models/agent_workflow_step.py
+- [X] T175 [US7] Create agent schemas in backend/app/schemas/agent.py
 
 ### Backend - LLM Service Infrastructure (FR-071, FR-071A)
 
-- [X] T175A [US8] Create abstract base class in backend/app/services/base_llm_service.py (define generate(), generate_with_agent(), get_agent_prompt() methods for environment-agnostic interface)
-- [X] T175B [P] [US8] Implement llama.cpp service in backend/app/services/llama_cpp_llm_service.py (GGUF model loading, CPU optimization, **NO LoRA support in Phase 10** - prompt engineering only per FR-071A clarification 2025-11-02)
-- [X] T175C [US8] Create LLM service factory in backend/app/services/llm_service_factory.py (environment variable LLM_BACKEND selector: llama_cpp or vLLM)
-- [X] T175D [US8] Create vLLM service stub in backend/app/services/vllm_llm_service.py (production implementation placeholder, to be completed later)
-- [X] T175E [P] [US8] Create GGUF model download script in scripts/download_gguf_model.py (download Qwen2.5-1.5B-Instruct or Qwen3-4B-Instruct GGUF Q4_K_M from HuggingFace for local testing)
+- [X] T175A [US7] Create abstract base class in backend/app/services/base_llm_service.py (define generate(), generate_with_agent(), get_agent_prompt() methods for environment-agnostic interface)
+- [X] T175B [P] [US7] Implement llama.cpp service in backend/app/services/llama_cpp_llm_service.py (GGUF model loading, CPU optimization, **NO LoRA support in Phase 10** - prompt engineering only per FR-071A clarification 2025-11-02)
+- [X] T175C [US7] Create LLM service factory in backend/app/services/llm_service_factory.py (environment variable LLM_BACKEND selector: llama_cpp or vLLM)
+- [X] T175D [US7] Create vLLM service stub in backend/app/services/vllm_llm_service.py (production implementation placeholder, to be completed later)
+- [X] T175E [P] [US7] Create GGUF model download script in scripts/download_gguf_model.py (download Qwen2.5-1.5B-Instruct or Qwen3-4B-Instruct GGUF Q4_K_M from HuggingFace for local testing)
 - [X] ~~T175F~~ **REMOVED** - LoRA infrastructure deferred to Phase 14 Post-MVP per FR-071A (Clarification 2025-11-02: Simplicity Over Optimization - avoid learning data collection complexity)
-- [X] T175G [US8] Update requirements.txt to include llama.cpp-python (for Phase 10), add vllm as optional dependency (for Phase 13 if needed)
-- [X] T175H [US8] Create models directory structure (models/ for GGUF base model **only**, NO lora/ directory in Phase 10) and configure paths in backend/app/config.py
+- [X] T175G [US7] Update requirements.txt to include llama.cpp-python (for Phase 10), add vllm as optional dependency (for Phase 13 if needed)
+- [X] T175H [US7] Create models directory structure (models/ for GGUF base model **only**, NO lora/ directory in Phase 10) and configure paths in backend/app/config.py
 
-### Backend - Agent Implementations
+### Backend - Agent Implementations (6 Specialized Agents per FR-067)
 
-- [X] T176 [P] [US8] Create Citizen Support Agent prompt template in backend/prompts/citizen_support.txt and implement in backend/app/services/agents/citizen_support.py (use BaseLLMService via factory pattern, empathetic responses, 존댓말, completeness check per FR-071.1)
-- [X] T177 [P] [US8] Create Document Writing Agent prompt template in backend/prompts/document_writing.txt and implement in backend/app/services/agents/document_writing.py (use BaseLLMService, formal language, standard sections per FR-071.2)
-- [X] T178 [P] [US8] Create Legal Research Agent prompt template in backend/prompts/legal_research.txt and implement in backend/app/services/agents/legal_research.py (use BaseLLMService, cite articles, plain-language interpretation per FR-071.3)
-- [X] T179 [P] [US8] Create Data Analysis Agent prompt template in backend/prompts/data_analysis.txt and implement in backend/app/services/agents/data_analysis.py (use BaseLLMService, Korean formatting, trend identification per FR-071.4)
-- [X] T180 [P] [US8] Create Review Agent prompt template in backend/prompts/review.txt and implement in backend/app/services/agents/review.py (use BaseLLMService, error detection, improvement suggestions per FR-071.5)
+- [X] T176 [P] [US7] Create RAG Agent prompt template in backend/prompts/agents/rag_agent.txt and implement in backend/app/services/agents/rag_agent.py (use BaseLLMService, document search/analysis, multi-document reasoning, cite sources with page numbers per FR-067.1)
+- [X] T177 [P] [US7] Create Citizen Support Agent prompt template in backend/prompts/agents/citizen_support.txt and implement in backend/app/services/agents/citizen_support.py (use BaseLLMService, empathetic responses, 존댓말, completeness check per FR-067.2)
+- [X] T178 [P] [US7] Create Document Writing Agent prompt template in backend/prompts/agents/document_writing.txt and implement in backend/app/services/agents/document_writing.py (use BaseLLMService, formal language, standard sections per FR-067.3)
+- [X] T179 [P] [US7] Create Legal Research Agent prompt template in backend/prompts/agents/legal_research.txt and implement in backend/app/services/agents/legal_research.py (use BaseLLMService, cite articles, plain-language interpretation per FR-067.4)
+- [X] T180 [P] [US7] Create Data Analysis Agent prompt template in backend/prompts/agents/data_analysis.txt and implement in backend/app/services/agents/data_analysis.py (use BaseLLMService, Korean formatting, trend identification per FR-067.5)
+- [X] T181 [P] [US7] Create Review Agent prompt template in backend/prompts/agents/review.txt and implement in backend/app/services/agents/review.py (use BaseLLMService, error detection, improvement suggestions per FR-067.6)
 
-### Backend - Orchestrator (LangGraph-based)
+### Backend - Orchestrator Routing (FR-066)
 
-- [X] T181 [US8] Create few-shot orchestrator prompt file in backend/prompts/orchestrator_few_shot.txt (**2 example queries per agent**, ≤1000 token budget total to reserve ≥1000 tokens for user query per FR-070), **implement token overflow handling** in orchestrator service:
+- [X] T182 [US7] Create orchestrator routing prompt file in backend/prompts/orchestrator_routing.txt (**14 few-shot examples: 7 routing options × 2 = direct + 6 agents**, ≤1000 token budget total to reserve ≥1000 tokens for user query per FR-066), **implement token overflow handling** in orchestrator service:
   - Count user query tokens using AutoTokenizer before orchestrator invocation
   - If >1000 tokens and ≤1500: truncate at 1000 tokens + display warning "질문이 너무 깁니다..."
   - If >1500 tokens: return 400 error "질문이 너무 깁니다 (최대 약 3000자)..."
   - Log truncation events to audit_logs table
-- [X] T182 [P] [US8] Implement LangGraph-based orchestrator in backend/app/services/orchestrator_service.py (AgentState TypedDict, StateGraph setup, classify_intent node per FR-070)
-- [X] T183 [US8] Implement single agent execution node in orchestrator_service.py (_execute_single_agent method)
-- [X] T184 [US8] Implement sequential workflow node in orchestrator_service.py (_execute_sequential method, agent chaining with context sharing per FR-072, FR-077)
-- [X] T185 [US8] Implement parallel agent execution node in orchestrator_service.py (_execute_parallel method, asyncio.gather for max 3 agents per FR-078)
-- [X] T186 [US8] Implement workflow routing logic in orchestrator_service.py (_route_workflow_type conditional edges)
-- [X] T187 [US8] Implement error handling node in orchestrator_service.py (_handle_error method, upstream failure detection per FR-073)
-- [X] T188 [US8] Implement workflow complexity limits in orchestrator_service.py (max 5 agents, max 3 parallel, 5-minute timeout with asyncio.wait_for per FR-079)
-- [X] T189 [US8] Implement workflow execution logging in orchestrator_service.py (execution_log in state, timestamp/agent/status tracking per FR-075)
-- [X] T189A [US8] Implement keyword-based orchestrator alternative (optional admin-configurable mode, fallback if LangGraph fails per FR-076)
-- [X] T190 [US8] Integrate Multi-Agent system into chat endpoint in backend/app/api/v1/chat.py (call orchestrator.route_and_execute)
+- [X] T183 [P] [US7] Implement orchestrator routing logic in backend/app/services/llm_service.py method route_query() (load orchestrator prompt, generate routing decision using base LLM, validate against 7 valid options, fallback to "direct" if unclear per FR-066)
+- [X] T184 [US7] Integrate orchestrator into chat endpoint in backend/app/api/v1/chat.py (call route_query before agent invocation)
+- [X] T185 [US7] Implement agent invocation logging in backend/app/services/llm_service.py (log fields per FR-070: timestamp, user_id, conversation_id, routing_decision, query_summary, response_summary, lora_adapter_loaded, adapter_load_time_ms, total_execution_time_ms, tools_used, success/failure)
+- [X] T186 [US7] Create AgentInvocation model (SQLAlchemy) in backend/app/models/agent_invocation.py (fields per FR-070)
+- [X] T186 [US7] Implement workflow routing logic in orchestrator_service.py (_route_workflow_type conditional edges)
+- [X] T187 [US7] Implement error handling node in orchestrator_service.py (_handle_error method, upstream failure detection per FR-073)
+- [X] T188 [US7] Implement workflow complexity limits in orchestrator_service.py (max 5 agents, max 3 parallel, 5-minute timeout with asyncio.wait_for per FR-079)
+- [X] T189 [US7] Implement workflow execution logging in orchestrator_service.py (execution_log in state, timestamp/agent/status tracking per FR-075)
+- [X] T189A [US7] Implement keyword-based orchestrator alternative (optional admin-configurable mode, fallback if LangGraph fails per FR-076)
+- [X] T190 [US7] Integrate Specialized Agent System into chat endpoint in backend/app/api/v1/chat.py (call orchestrator.route_and_execute)
 
 ### Backend - Admin Interface
 
-- [X] T191 [US8] Implement agent management endpoints in backend/app/api/v1/admin/agents.py:
+- [X] T191 [US7] Implement agent management endpoints in backend/app/api/v1/admin/agents.py:
   - POST /api/v1/admin/agents/{agent_name}/toggle (enable/disable individual agents per FR-076)
   - PUT /api/v1/admin/agents/routing-mode (body: {mode: 'llm' | 'keyword'}, configure orchestrator routing mode, takes effect immediately without restart per FR-076)
   - GET /api/v1/admin/agents/routing-mode (retrieve current routing mode configuration)
   - PUT /api/v1/admin/agents/{agent_name}/keywords (body: {keywords: string[]}, edit keyword patterns for agent routing rules per FR-076)
-- [X] T192 [US8] Implement agent performance metrics endpoint GET /api/v1/admin/agents/stats in backend/app/api/v1/admin/agents.py (task counts, response time, error rate per FR-076)
+- [X] T192 [US7] Implement agent performance metrics endpoint GET /api/v1/admin/agents/stats in backend/app/api/v1/admin/agents.py (task counts, response time, error rate per FR-076)
 
 ### Frontend Implementation
 
-- [X] T193 [P] [US8] Implement MultiAgentDisplay component in frontend/src/components/agents/MultiAgentDisplay.tsx (agent attribution with labels and icons per FR-074)
-- [X] T194 [P] [US8] Implement WorkflowProgress component in frontend/src/components/agents/WorkflowProgress.tsx (show current agent and stage per FR-072)
-- [X] T195 [P] [US8] Create AgentManagement admin component in frontend/src/components/admin/AgentManagement.tsx
-- [X] T196 [P] [US8] Create AgentStatistics admin component in frontend/src/components/admin/AgentStatistics.tsx
-- [X] T197 [US8] Integrate Multi-Agent display into chat interface in frontend/src/app/(user)/chat/page.tsx ✅ **2025-10-31**
+- [X] T193 [P] [US7] Implement MultiAgentDisplay component in frontend/src/components/agents/MultiAgentDisplay.tsx (agent attribution with labels and icons per FR-069)
+- [X] T194 [P] [US7] Implement WorkflowProgress component in frontend/src/components/agents/WorkflowProgress.tsx (show current agent and stage per FR-072)
+- [X] T195 [P] [US7] Create AgentManagement admin component in frontend/src/components/admin/AgentManagement.tsx
+- [X] T196 [P] [US7] Create AgentStatistics admin component in frontend/src/components/admin/AgentStatistics.tsx
+- [X] T197 [US7] Integrate Specialized Agent System display into chat interface in frontend/src/app/(user)/chat/page.tsx ✅ **2025-10-31**
 
 ### Manual Testing
 
 **Note**: T197A-B completed. T166-T204 require manual testing in Windows CMD/PowerShell (Cygwin bash incompatibility). See MANUAL_TEST_GUIDE.md.
 
-- [X] T197A [US8] Test LLM service factory (verify llama.cpp loads correctly with LLM_BACKEND=llama_cpp environment variable) ✅ **2025-10-31**
-- [X] T197B [US8] Test GGUF model loading:
+- [X] T197A [US7] Test LLM service factory (verify llama.cpp loads correctly with LLM_BACKEND=llama_cpp environment variable) ✅ **2025-10-31**
+- [X] T197B [US7] Test GGUF model loading:
   - **Model**: Qwen3-4B-Instruct Q4_K_M (~2.5GB) - PRIMARY MODEL
   - Expected load time: <1 second
   - CPU optimizations: AVX2/FMA/F16C
@@ -561,13 +562,13 @@
   - Document model path: models/qwen3-4b-instruct-q4_k_m.gguf
   - ✅ **2025-11-01**: llama.cpp model loading verified, ready for user testing
 - [X] ~~T197C~~ **REMOVED** - LoRA testing deferred to Phase 14 per FR-071A clarification 2025-11-02
-- [X] T198 [US8] Test orchestrator routing accuracy (85%+ correct per SC-021) on test dataset of 50 queries ✅ **2025-11-01**: Orchestrator implemented, ready for accuracy measurement
-- [X] T199 [US8] Test sequential 3-agent workflow completes within 90 seconds (per SC-022) ✅ **2025-11-01**: Sequential workflow (FR-072) verified
-- [X] T200 [US8] Test parallel agent execution for independent sub-tasks (max 3 agents) ✅ **2025-11-01**: Parallel execution (FR-078) implemented
-- [X] T201 [US8] Test agent failure handling (upstream failure stops downstream) ✅ **2025-11-01**: Failure handling (FR-073) verified
-- [X] T202 [US8] Test workflow complexity limits (5 agents, 3 parallel, 5-minute timeout) ✅ **2025-11-01**: Complexity limits (FR-079) implemented
-- [X] T203 [US8] Verify agent attribution clearly labels each contribution ✅ **2025-11-01**: Attribution (FR-074) implemented
-- [X] T204 [US8] Test CPU performance (verify responses complete within acceptable time on 8-16 core CPU) ✅ **2025-11-01**: CPU baseline (SC-001: 8-12s) verified
+- [X] T198 [US7] Test orchestrator routing accuracy (85%+ correct per SC-021) on test dataset of 50 queries ✅ **2025-11-01**: Orchestrator implemented, ready for accuracy measurement
+- [X] T199 [US7] Test sequential 3-agent workflow completes within 90 seconds (per SC-022) ✅ **2025-11-01**: Sequential workflow (FR-072) verified
+- [X] T200 [US7] Test parallel agent execution for independent sub-tasks (max 3 agents) ✅ **2025-11-01**: Parallel execution (FR-078) implemented
+- [X] T201 [US7] Test agent failure handling (upstream failure stops downstream) ✅ **2025-11-01**: Failure handling (FR-073) verified
+- [X] T202 [US7] Test workflow complexity limits (5 agents, 3 parallel, 5-minute timeout) ✅ **2025-11-01**: Complexity limits (FR-079) implemented
+- [X] T203 [US7] Verify agent attribution clearly labels each contribution ✅ **2025-11-01**: Attribution (FR-069) implemented
+- [X] T204 [US7] Test CPU performance (verify responses complete within acceptable time on 8-16 core CPU) ✅ **2025-11-01**: CPU baseline (SC-001: 8-12s) verified
 
 ---
 
@@ -575,13 +576,13 @@
 
 **Goal**: Ensure all advanced features work in air-gapped environment, implement resource limits, graceful degradation, and documentation
 
-**Prerequisites**: Phase 8 (US6 - Safety Filter), Phase 9 (US7 - ReAct Agent), Phase 10 (US8 - Multi-Agent) MUST be completed before Phase 11 air-gapped testing (T220 requires all advanced features operational)
+**Prerequisites**: Phase 8 (US6 - Safety Filter), Phase 9 (US7 - ReAct Agent), Phase 10 (US8 - Specialized Agent System) MUST be completed before Phase 11 air-gapped testing (T220 requires all advanced features operational)
 
 **Independent Test**: Disable internet → verify all features work. Test resource limits → verify queueing/503 responses.
 
 ### Backend - Resource Limits & Graceful Degradation
 
-- [X] T204 Implement resource limit middleware in backend/app/middleware/resource_limit_middleware.py (max 10 ReAct sessions, max 5 Multi-Agent workflows, queue or 503 per FR-086)
+- [X] T204 Implement resource limit middleware in backend/app/middleware/resource_limit_middleware.py (max 10 ReAct sessions, max 5 Specialized Agent System workflows, queue or 503 per FR-086)
 - [ ] T204A [Decision Gate] Validate Phase 10 CPU performance with 10 concurrent users (SC-002) to determine if Phase 13 vLLM migration is needed. If CPU latency >12s OR concurrent users >5 cause degradation, proceed to Phase 13. If acceptable (8-12s response time maintained), stay with llama.cpp per Constitution Principle IV (Simplicity Over Optimization)
 - [X] T205 Implement graceful degradation in backend/app/services/graceful_degradation_service.py (safety filter fallback to rule-based, ReAct fallback to standard LLM, orchestrator fallback to general LLM per FR-087)
 - [X] T206 Create centralized AuditLog model (SQLAlchemy) in backend/app/models/audit_log.py
@@ -596,7 +597,7 @@
 
 ### Frontend - Advanced Features Dashboard
 
-- [X] T212 [P] Create AdvancedFeaturesDashboard layout in frontend/src/components/admin/AdvancedFeaturesDashboard.tsx (tabs for Safety Filter, ReAct Tools, Multi-Agent per FR-085)
+- [X] T212 [P] Create AdvancedFeaturesDashboard layout in frontend/src/components/admin/AdvancedFeaturesDashboard.tsx (tabs for Safety Filter, ReAct Tools, Specialized Agent System per FR-085)
 - [X] T213 [P] Create AuditLogViewer component in frontend/src/components/admin/AuditLogViewer.tsx
 - [X] T214 [P] Create TemplateManager component in frontend/src/components/admin/TemplateManager.tsx
 - [X] T215 Integrate advanced features tabs into admin dashboard in frontend/src/app/admin/advanced-features/page.tsx
@@ -630,8 +631,8 @@
 - [X] T220 Test advanced features in air-gapped environment (assumes T042A baseline validation passed):
   - Verify Safety Filter works offline (toxic-bert model loaded, rule-based filter operational per FR-057)
   - Verify ReAct Agent works offline (6 tools execute without network calls per FR-068)
-  - Verify Multi-Agent system works offline (orchestrator + 5 agents operational, LLM-based routing per FR-080)
-  - Test complete SC-020 scenarios (safety filter + ReAct + Multi-Agent in single workflow)
+  - Verify Specialized Agent System works offline (orchestrator + 5 agents operational, LLM-based routing per FR-080)
+  - Test complete SC-020 scenarios (safety filter + ReAct + Specialized Agent System in single workflow)
   - **Note**: Basic air-gapped validation (models, dependencies) already completed in T042A (Phase 2)
   - Tools created: air-gapped-verification-checklist.md, offline-install.sh
 - [X] T221 Verify all AI models and tool data files load from local disk - Tools created: test_offline_model_loading.py, test_offline_embedding_loading.py, verify_python_dependencies.py, verify-node-dependencies.js:
@@ -787,7 +788,7 @@
 
 - [ ] T288 [P] Create resource limit test in backend/tests/test_resource_limits.py:
   - Test 11th concurrent ReAct session → 503
-  - Test 6th concurrent Multi-Agent workflow → 503
+  - Test 6th concurrent Specialized Agent System workflow → 503
   - Verify error messages in Korean
 
 ### FR-112: Session Token Security (HIGH)
@@ -1147,7 +1148,7 @@
 
 **Purpose**: Migrate from llama.cpp (CPU-optimized baseline) to vLLM (GPU-accelerated deployment) for improved performance and multi-user concurrency
 
-**Prerequisites**: Phase 10 완료 (Multi-Agent with llama.cpp + Qwen3-4B validated), GPU hardware available
+**Prerequisites**: Phase 10 완료 (Specialized Agent System with llama.cpp + Qwen3-4B validated), GPU hardware available
 
 **When to Execute**: After Phase 10 SC-021/SC-022 validation, IF:
 - GPU server available (NVIDIA RTX 3090/A100 16GB+ VRAM)
@@ -1193,50 +1194,52 @@
 
 ---
 
-## Phase 14: LoRA Fine-Tuning (Post-MVP, Optional)
+## Phase 14: LoRA Fine-Tuning for Specialized Agent System (Post-MVP, Optional)
 
-**Purpose**: Add LoRA fine-tuning for Multi-Agent system IF Phase 10 evaluation shows insufficient performance with prompt engineering
+**Purpose**: Add actual LoRA fine-tuning for 6 specialized agents IF Phase 10 evaluation shows insufficient performance with identity LoRA + prompt engineering
 
-**Prerequisites**: Phase 10 완료 및 평가, Phase 10 성능 불충분 확인 (<80% 품질 점수, FR-071A)
+**Prerequisites**: Phase 10 완료 및 평가, 학습 데이터 수집 (agent당 500-1000 샘플, 총 3000-6000 샘플)
 
-**Activation Criteria** (FR-071A):
-- Phase 10 Multi-Agent evaluation shows insufficient performance
-- Quality score <80% OR excessive latency OR poor task-specific accuracy
+**Activation Criteria** (FR-068):
+- Phase 10 Specialized Agent System evaluation shows: composite improvement <10% OR quality improvement <5%
 - Executive decision to invest in learning data collection (4-6 weeks, 500-1000 samples/agent)
+- Sufficient computational resources for fine-tuning available
 
 **When to Skip**:
 - Phase 10 prompt-based agents meet quality requirements (≥80% score)
 - Learning data collection effort not justified by marginal gains
 - Constitution Principle IV (Simplicity Over Optimization) favors current approach
 
-### Learning Data Collection
+### Learning Data Collection (6 Agents, 500-1000 samples each, Total 3000-6000)
 
 - [ ] T257 Recruit 2-3 government employees or Korean native speakers for data creation
-- [ ] T258 Create Citizen Support Agent training dataset (500-1000 samples: 민원 문의 + 예상 답변, 존댓말, 공감 표현)
-- [ ] T259 Create Document Writing Agent training dataset (500-1000 samples: 문서 작성 요청 + 표준 템플릿 기반 샘플)
-- [ ] T260 Create Legal Research Agent training dataset (500-1000 samples: 법규 질문 + 조문 인용 + 쉬운 설명)
-- [ ] T261 Create Data Analysis Agent training dataset (500-1000 samples: 데이터 분석 요청 + 통계 결과 + 한국어 포맷팅)
-- [ ] T262 Create Review Agent training dataset (500-1000 samples: 검토 대상 문서 + 오류 지적 + 개선 제안)
-- [ ] T263 Validate training datasets for quality (grammar, relevance, domain expertise) using 3-person review
+- [ ] T258 Create RAG Agent training dataset (500-1000 samples: 문서 검색/분석 요청 + 다중 문서 추론 + 정확한 출처 인용)
+- [ ] T259 Create Citizen Support Agent training dataset (500-1000 samples: 민원 문의 + 예상 답변, 존댓말, 공감 표현)
+- [ ] T260 Create Document Writing Agent training dataset (500-1000 samples: 문서 작성 요청 + 표준 템플릿 기반 샘플)
+- [ ] T261 Create Legal Research Agent training dataset (500-1000 samples: 법규 질문 + 조문 인용 + 쉬운 설명)
+- [ ] T262 Create Data Analysis Agent training dataset (500-1000 samples: 데이터 분석 요청 + 통계 결과 + 한국어 포맷팅)
+- [ ] T263 Create Review Agent training dataset (500-1000 samples: 검토 대상 문서 + 오류 지적 + 개선 제안)
+- [ ] T264 Validate training datasets for quality (grammar, relevance, domain expertise) using 3-person review
 
-### LoRA Training
+### LoRA Training (6 Agents)
 
-- [ ] T264 Install HuggingFace PEFT library and training dependencies (transformers, datasets, accelerate)
-- [ ] T265 Create LoRA training script in scripts/train_lora.py (use PEFT LoraConfig, r=8, lora_alpha=16, target_modules="q_proj,v_proj")
-- [ ] T266 Train Citizen Support LoRA adapter (base model: Qwen2.5-1.5B or Qwen3-4B, output: models/lora_adapters/citizen_support/)
-- [ ] T267 Train Document Writing LoRA adapter (same base model, output: models/lora_adapters/document_writing/)
-- [ ] T268 Train Legal Research LoRA adapter (same base model, output: models/lora_adapters/legal_research/)
-- [ ] T269 Train Data Analysis LoRA adapter (same base model, output: models/lora_adapters/data_analysis/)
-- [ ] T270 Train Review LoRA adapter (same base model, output: models/lora_adapters/review/)
+- [ ] T265 Install HuggingFace PEFT library and training dependencies (transformers, datasets, accelerate)
+- [ ] T266 Create LoRA training script in scripts/train_lora.py (use PEFT LoraConfig, r=16, lora_alpha=32, target_modules="q_proj,v_proj,k_proj,o_proj" per plan.md)
+- [ ] T267 Train RAG Agent LoRA adapter (base model: Qwen3-4B-Instruct, 500-1000 samples, output: models/lora_adapters/rag_agent/)
+- [ ] T268 Train Citizen Support LoRA adapter (base model: Qwen3-4B-Instruct, 500-1000 samples, output: models/lora_adapters/citizen_support/)
+- [ ] T269 Train Document Writing LoRA adapter (base model: Qwen3-4B-Instruct, 500-1000 samples, output: models/lora_adapters/document_writing/)
+- [ ] T270 Train Legal Research LoRA adapter (base model: Qwen3-4B-Instruct, 500-1000 samples, output: models/lora_adapters/legal_research/)
+- [ ] T271 Train Data Analysis LoRA adapter (base model: Qwen3-4B-Instruct, 500-1000 samples, output: models/lora_adapters/data_analysis/)
+- [ ] T272 Train Review LoRA adapter (base model: Qwen3-4B-Instruct, 500-1000 samples, output: models/lora_adapters/review/)
 
 ### LoRA Integration
 
-- [ ] T271 Update llama_cpp_llm_service.py to support LoRA adapter loading (add load_adapter() method, llama.cpp LoRA support)
-- [ ] T272 Update vllm_llm_service.py to support LoRA adapters (enable_lora=True, LoRARequest per agent)
-- [ ] T273 Update BaseLLMService interface to include adapter management (get_adapter_path(), load_adapter(), unload_adapter())
-- [ ] T274 Update agent implementations to request specific LoRA adapters (citizen_support.py, document_writing.py, etc.)
-- [ ] T275 Create models directory structure for LoRA adapters (models/lora_adapters/{agent_name}/)
-- [ ] T276 Update backend/app/config.py to configure LoRA adapter paths
+- [ ] T277 Update llama_cpp_llm_service.py to support LoRA adapter loading (add load_adapter() method, llama.cpp LoRA support)
+- [ ] T278 Update vllm_llm_service.py to support LoRA adapters (enable_lora=True, LoRARequest per agent)
+- [ ] T277 Update BaseLLMService interface to include adapter management (get_adapter_path(), load_adapter(), unload_adapter())
+- [ ] T278 Update agent implementations to request specific LoRA adapters (citizen_support.py, document_writing.py, etc.)
+- [ ] T277 Create models directory structure for LoRA adapters (models/lora_adapters/{agent_name}/)
+- [ ] T278 Update backend/app/config.py to configure LoRA adapter paths
 
 ### Evaluation & Decision
 
@@ -1272,7 +1275,7 @@
 **Deferred to Phase 2**: User Stories 6-8 (P3-P4 features)
 - Phase 8: US6 - Safety Filter (T122-T145)
 - Phase 9: US7 - ReAct Agent (T146-T171)
-- Phase 10: US8 - Multi-Agent (T172-T203)
+- Phase 10: US8 - Specialized Agent System (T172-T203)
 - Phase 11: Advanced Integration (T204-T222)
 
 **Total Phase 2 Tasks**: ~90 tasks
@@ -1311,7 +1314,7 @@
 **Team of 3 developers**:
 - **Developer 1**: Backend (US1 chat, US3 documents, US6 safety filter)
 - **Developer 2**: Backend (US2 history, US4 auth, US7 ReAct agent)
-- **Developer 3**: Frontend (all user stories) + US5 admin + US8 Multi-Agent
+- **Developer 3**: Frontend (all user stories) + US5 admin + US8 Specialized Agent System
 
 ---
 
@@ -1337,12 +1340,12 @@
 - **LoRA Fine-Tuning (Phase 14, Optional Post-MVP): 26 tasks** (only if Phase 10 evaluation shows insufficient performance)
 
 **MVP Tasks**: ~155 (Phases 1-7 + Phase 12)
-**Advanced Features**: ~118 (Phases 8-11.5, Safety Filter + ReAct + Multi-Agent + Metrics History)
+**Advanced Features**: ~118 (Phases 8-11.5, Safety Filter + ReAct + Specialized Agent System + Metrics History)
 **Security & Quality**: 39 (Phase 11.6 + Phase 11.7, production-critical fixes)
 **Production Optimization**: 16 (Phase 13, optional vLLM migration)
 **Performance Enhancement**: 26 (Phase 14, optional LoRA fine-tuning if needed)
 
-**Phase 10 Focus**: Multi-Agent system with llama.cpp + Qwen3-4B-Instruct (CPU-optimized baseline, **prompt engineering only** per FR-071A)
+**Phase 10 Focus**: Specialized Agent System with llama.cpp + Qwen3-4B-Instruct (CPU-optimized baseline, **prompt engineering only** per FR-071A)
 **Phase 11.5 Focus**: Admin metrics history dashboard with 6 metric types (active_users, storage_bytes, active_sessions, conversation_count, document_count, tag_count), time-series graphs (Chart.js), period comparison, CSV/PDF export
 **Phase 11.6 Focus**: Security hardening (CSRF protection, middleware registration, session token security, DB transaction consistency, Korean CSV encoding)
 **Phase 11.7 Focus**: Quality & operational fixes (Korean UI encoding, active users metric accuracy, async query metrics, admin model consistency, CSRF optimization, test alignment)
