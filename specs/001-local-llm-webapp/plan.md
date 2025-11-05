@@ -5,7 +5,7 @@
 
 ## Summary
 
-Build an air-gapped Local LLM web application for small local government employees to use AI assistance for administrative tasks without internet connectivity. The system provides conversational AI, document analysis, conversation history management, multi-user support with administrative oversight, **plus advanced features: Safety Filter (content moderation + PII masking), ReAct Agent (tool-augmented reasoning), and Multi-Agent System (task-specialized agents with prompt engineering in Phase 10, optional LoRA fine-tuning in Phase 14)** - all running on local infrastructure using Qwen2.5-1.5B-Instruct (current) or Qwen3-4B-Instruct (future upgrade) with llama.cpp for CPU-compatible deployment.
+Build an air-gapped Local LLM web application for small local government employees to use AI assistance for administrative tasks without internet connectivity. The system provides conversational AI, document analysis, conversation history management, multi-user support with administrative oversight, **plus advanced features: Safety Filter (content moderation + PII masking), Specialized Agent System with Orchestration (intelligent routing to 6 domain-expert agents using LoRA adapters and shared tool library)** - all running on local infrastructure using Qwen3-4B-Instruct with llama.cpp for CPU-compatible deployment.
 
 **Key Value**: Replace unavailable cloud-based AI services (ChatGPT, Gemini) with a secure, locally-hosted alternative that maintains data privacy in a closed network environment, while providing government-specific safety controls and task automation.
 
@@ -73,56 +73,56 @@ Build an air-gapped Local LLM web application for small local government employe
 - **Logging** (FR-056): Filter events logged (timestamp, user_id, category, action) WITHOUT message content
 - **False Positive Handling** (FR-058): Retry option with rule-based filter bypass, ML filter still applied
 
-**ReAct Agent System** (FR-060 series):
-- **Architecture**: Thought → Action → Observation loop (max 5 iterations, FR-062)
-- **Six Government Tools** (FR-061): Document Search, Calculator, Date/Schedule, Data Analysis, Document Template, Legal Reference. See spec.md FR-061 for detailed tool descriptions and parameter specifications
-- **Safety Features** (FR-063): 30-second timeout per tool, identical call detection (3x limit), sandboxed execution
-- **UX Display** (FR-064): Real-time Thought/Action/Observation with emoji prefixes (🤔/⚙️/👁️)
-- **Error Handling** (FR-065): Transparent failure display, agent provides alternative or guidance
-- **Audit Trail** (FR-066): All tool executions logged with sanitized parameters
+**Shared Tool Library** (FR-060~065):
+- **Six Government Tools** (FR-060~065): Document Search, Calculator, Date/Schedule, Data Analysis, Document Template, Legal Reference. See spec.md FR-060~065 for detailed tool descriptions and parameter specifications
+- **Accessibility**: All tools available to all specialized agents
+- **Safety Features**: 30-second timeout per tool invocation, identical call detection (3x limit), sandboxed execution
+- **Audit Trail**: All tool executions logged with sanitized parameters (timestamp, agent_id, tool_name, status)
 
-**Multi-Agent System** (FR-070 series):
-- **Orchestrator**: LLM-based intent classification (default, few-shot prompt with **2 examples per agent**, ≤1000 token budget to reserve ≥1000 tokens for user query in 2048 context window per FR-070) OR keyword-based routing (admin-configurable alternative)
-- **Five Specialized Agents** (FR-071):
-  1. Citizen Support Agent: Empathetic citizen inquiry responses (존댓말, completeness check) + **Prompt Engineering (Phase 10)**
-  2. Document Writing Agent: Government document generation (formal language, standard sections) + **Prompt Engineering (Phase 10)**
-  3. Legal Research Agent: Regulation search + plain-language interpretation + **Prompt Engineering (Phase 10)**
-  4. Data Analysis Agent: Statistical analysis with Korean formatting (천 단위 쉼표) + **Prompt Engineering (Phase 10)**
-  5. Review Agent: Content review for errors (factual, grammatical, policy compliance) + **Prompt Engineering (Phase 10)**
-- **LoRA Adapter Architecture** (FR-071A) - **DEFERRED TO PHASE 14 POST-MVP**:
-  - **Phase 10 Implementation**: Prompt engineering only (Zero/Few-shot learning) for all 5 specialized agents
-  - **Rationale**: Avoid learning data collection complexity (500-1000 samples/agent, 4-6 weeks effort) per Constitution Principle IV (Simplicity Over Optimization)
-  - **Phase 14 Activation Criteria**: IF Phase 10 evaluation shows insufficient performance (<80% quality score), THEN proceed with LoRA fine-tuning
-  - **LoRA Implementation (if activated in Phase 14)**:
-    - Base model: Qwen2.5-1.5B-Instruct (current) or Qwen3-4B-Instruct (future)
-    - Dynamic adapter loading: Each agent loads task-specific LoRA adapter on first invocation
-    - Adapter caching: Loaded adapters cached in memory to minimize switching overhead
-    - Switching latency: <3 seconds per agent invocation (adapter load + inference)
-    - Implementation: HuggingFace PEFT library for CPU-compatible adapter management
-    - Storage: LoRA weights in `/models/lora_adapters/{agent_name}/` directories (~100-500MB per adapter)
-    - Learning data collection: 500-1000 samples per agent (total 2500-5000 samples) from government employees or public datasets
-- **Workflow Support** (FR-072-079):
-  - Sequential workflows: Multi-step tasks with agent chaining (Phase 10: prompt context switching; Phase 14: adapter switches if LoRA activated)
-  - Parallel execution: Independent sub-tasks dispatched simultaneously (max 3 parallel)
-  - Complexity limits: Max 5 agents per chain, 5-minute total timeout
-- **Context Sharing** (FR-077): Agents in same workflow share conversation context and previous outputs
-- **Admin Management** (FR-076): Enable/disable agents, configure routing mode, edit keyword patterns, view performance metrics
+**Specialized Agent System with Orchestration** (FR-066~075):
+- **Architecture**: Single base model + dynamic LoRA adapter swapping + shared tool library
+- **Orchestrator Routing** (FR-066):
+  - LLM-based intent classification with few-shot prompting (14 examples: 7 routing options × 2)
+  - Token budget: ≤1000 tokens for orchestrator prompt, ≥1000 tokens for user query (2048 total context)
+  - Routing options: Direct response OR 6 specialized agents (RAG, Citizen Support, Document Writing, Legal Research, Data Analysis, Review)
+- **Six Specialized Agents** (FR-067):
+  1. **RAG Agent** (문서 검색 및 분석): Advanced document search/analysis with multi-document reasoning
+  2. **Citizen Support Agent** (민원 지원): Empathetic citizen inquiry responses with formal Korean (존댓말)
+  3. **Document Writing Agent** (문서 작성): Government document generation with standard sections
+  4. **Legal Research Agent** (법규 검색): Regulation search + plain-language interpretation
+  5. **Data Analysis Agent** (데이터 분석): Statistical analysis with Korean number formatting (천 단위 쉼표)
+  6. **Review Agent** (검토): Content review for factual/grammatical/policy compliance errors
+- **LoRA Adapter Management** (FR-068):
+  - **Base Model**: Qwen3-4B-Instruct (~2.5GB) loaded once on startup, shared by all agents
+  - **Phase 10 Implementation (MVP)**: Identity LoRA or minimal initialization for infrastructure testing + prompt engineering
+  - **Phase 14 Implementation (Post-MVP)**: Actual fine-tuning (500-1000 samples/agent, 3000-6000 total)
+  - **LRU Caching**: Keep 2-3 most recently used adapters in memory (~500MB-1.5GB)
+  - **Adapter Switching**: <3 seconds per swap (load adapter + inference)
+  - **Memory Budget**: Base 2.5GB + LoRA cache 1.5GB = ~4GB peak
+  - **Technology**: HuggingFace PEFT 0.7.0+ for CPU-compatible adapter loading and management
+  - **Storage**: LoRA weights in `/models/lora_adapters/{agent_name}/` directories (~100-500MB per adapter)
+- **Agent Operations** (FR-069~075):
+  - Tool access: Each agent can invoke tools from shared library based on task requirements
+  - Context sharing: Agents in same workflow share conversation context and previous outputs
+  - Error handling: Transparent failure messages with alternative suggestions
+  - Admin management: Enable/disable agents, configure routing thresholds, view performance metrics per agent
 
-**LoRA Adapter Evaluation Protocol** (FR-071A) - **PHASE 14 ONLY**:
+**LoRA Adapter Evaluation Protocol** (FR-068) - **PHASE 14 ONLY**:
 
-**Goal**: Determine if agent-specific LoRA adapters provide meaningful quality improvement (≥10%) over base Qwen3-4B model.
+**Goal**: Determine if agent-specific LoRA adapters provide meaningful quality improvement (composite ≥10% AND quality ≥5%) over base Qwen3-4B model with prompt engineering only.
 
 **Evaluation Setup**:
 1. **Evaluators**: 3명의 공무원 (또는 한국어 원어민, 업무 맥락 이해 필수)
-2. **Test Queries**: 각 에이전트당 50개 (총 250개)
+2. **Test Queries**: 각 에이전트당 50개 (총 300개)
+   - RAG Agent: 문서 검색/분석 요청 50개
    - Citizen Support Agent: 민원 문의 50개
    - Document Writing Agent: 공문서 작성 요청 50개
    - Legal Research Agent: 법규 검색 질문 50개
    - Data Analysis Agent: 데이터 분석 요청 50개
    - Review Agent: 검토 대상 문서 50개
 3. **Blind Comparison**:
-   - Response A: Base model (Qwen3-4B, no adapter)
-   - Response B: Agent-specific LoRA adapter
+   - Response A: Base model + prompt engineering only (Phase 10 approach)
+   - Response B: Base model + agent-specific LoRA adapter + prompt
    - Evaluator는 A/B 구분 모름 (랜덤 순서)
 
 **Evaluation Criteria** (0-10 scale, 각 응답에 대해):
@@ -133,20 +133,22 @@ Build an air-gapped Local LLM web application for small local government employe
 **Total Score**: 3개 차원 합계 (최대 30점)
 
 **Statistical Analysis**:
-- **Mean Score Difference**: `mean(LoRA) - mean(Base)`
-- **Improvement %**: `(mean(LoRA) - mean(Base)) / mean(Base) * 100`
+- **Composite Score**: (Task Completion + Quality + Government Context) / 3
+- **Quality-only Score**: Quality dimension score
+- **Composite Improvement %**: `(mean_composite(LoRA) - mean_composite(Base)) / mean_composite(Base) * 100`
+- **Quality Improvement %**: `(mean_quality(LoRA) - mean_quality(Base)) / mean_quality(Base) * 100`
 - **Significance Test**: Paired t-test (p < 0.05 required)
 - **Inter-rater Reliability**: Krippendorff's alpha > 0.7 required
 
 **Decision Criteria**:
 | Condition | Action |
 |-----------|--------|
-| Improvement < 5% | **Remove LoRA** - Not worth complexity |
-| Improvement 5-10% AND p > 0.05 | **Remove LoRA** - Not statistically significant |
-| Improvement ≥10% AND p < 0.05 | **Keep LoRA** - Meaningful benefit |
+| Composite improvement <10% | **Remove LoRA** - Not worth complexity |
+| Composite improvement ≥10% BUT quality improvement <5% | **Remove LoRA** - Insufficient quality gain |
+| Composite improvement ≥10% AND quality improvement ≥5% AND p < 0.05 | **Keep LoRA** - Meaningful benefit |
 
 **Implementation**:
-- **When**: After Phase 11 (Multi-Agent System) implementation complete
+- **When**: After Phase 10 (Specialized Agent System) implementation complete and 3000-6000 training samples collected
 - **Tool**: `scripts/evaluate-lora-agents.py` (evaluation interface)
 - **Duration**: 2-3 days (evaluator availability)
 - **Fallback**: If LoRA removed, use base model with **agent-specific system prompts only** (simpler architecture, easier maintenance per Constitution Principle IV)
@@ -264,8 +266,8 @@ LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
 - Korean language support mandatory
 - Maintainability: Priority over performance optimization
 - **Advanced Features Resource Limits** (FR-086):
-  - Max 10 concurrent ReAct sessions (queue additional)
-  - Max 5 concurrent Multi-Agent workflows (return 503 if exceeded)
+  - Max 10 concurrent tool invocations across all agents (queue additional)
+  - Max 5 concurrent Specialized Agent requests (return 503 if exceeded)
   - Safety filter timeout: 2 seconds (allow message through with warning if exceeded)
 
 **Scale/Scope**:
@@ -284,8 +286,8 @@ LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
 
 ✅ **I. Air-Gap Compatibility (NON-NEGOTIABLE)**
 - All ML models bundled locally: Qwen3-4B-Instruct, unitary/toxic-bert, sentence-transformers
-- No external API calls: All safety filters, ReAct tools, and agents operate offline
-- Dependencies: All Python packages in requirements.txt for offline pip install
+- No external API calls: All safety filters, shared tools, and specialized agents operate offline
+- Dependencies: All Python packages (including HuggingFace PEFT) in requirements.txt for offline pip install
 - Documentation: Deployment procedures documented in quickstart.md
 
 ✅ **II. Korean Language Support (MANDATORY)**
@@ -330,16 +332,16 @@ LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
 
 ### Potential Complexity Concerns
 
-⚠️ **Safety Filter + ReAct + Multi-Agent adds significant complexity**
+⚠️ **Safety Filter + Specialized Agent System adds significant complexity**
 - **Justification**:
   - These are P3/P4 features (lower priority than core P1/P2)
-  - Can be implemented incrementally: Safety Filter → ReAct → Multi-Agent
+  - Can be implemented incrementally: Safety Filter → Shared Tool Library → Specialized Agent System
   - Each has clear boundaries and can be disabled independently (FR-087 graceful degradation)
   - Government use case requires these for safety and productivity
 - **Mitigation**:
   - Phase implementation: Deliver core features first, then advanced features
   - Comprehensive error handling and logging for debugging
-  - Admin controls to enable/disable features (FR-067, FR-076)
+  - Admin controls to enable/disable agents and configure routing (FR-069~075)
 
 ⚠️ **CPU-only deployment may have performance limitations**
 - **Justification**:
@@ -350,7 +352,7 @@ LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
   - Target 8 seconds (maximum acceptable 12 seconds) response time on 16-core CPU per SC-001 (acceptable for administrative tasks)
 - **Mitigation**:
   - Resource limits prevent system overload (FR-086)
-  - Queueing for ReAct/Multi-Agent sessions
+  - Queueing for tool invocations and specialized agent requests
   - Performance validation with 10 concurrent users (SC-002, recommended for production deployment, not MVP-blocking)
 
 **GATE STATUS**: ✅ PASS - All core principles satisfied, complexity justified for government requirements
@@ -936,28 +938,42 @@ function TagManagement() {
 - Prompt: "다음 대화 내용을 분석하여 가장 관련성 높은 태그를 선택하세요: [태그 목록]. 대화 내용: [내용]"
 - Return top 3 tags with confidence scores
 
-### Multi-Agent LLM Service Architecture (FR-071A)
+### Specialized Agent System Architecture (FR-066~075)
 
-**Dual Strategy**: Test environment (llama.cpp) → Production environment (vLLM)
+**Architecture Overview**: Orchestrator + 6 Specialized Agents with Shared Tool Library
 
-**Design Goals**:
-1. Local testing with CPU-optimized llama.cpp (Phase 10)
-2. Production deployment with GPU-optimized vLLM (later)
-3. Unified interface - agent code remains unchanged between environments
-4. LoRA infrastructure testing with dummy adapters (actual fine-tuning later)
+**Core Design Principles**:
+1. **Single Base Model**: Qwen3-4B-Instruct loaded once, shared by all agents via LoRA adapter swapping
+2. **Intelligent Routing**: Orchestrator analyzes intent → direct response OR route to specialized agent
+3. **Domain Expertise**: Each agent has dedicated LoRA adapter (Phase 14) + prompt template + tool access
+4. **Memory Efficiency**: LRU caching for 2-3 most recent LoRA adapters (~4GB peak memory)
+5. **Shared Tools**: 6-tool library accessible to all agents (Document Search, Calculator, Date/Schedule, Data Analysis, Document Template, Legal Reference)
+
+**Implementation Strategy**:
+- **Phase 10 (MVP)**: LoRA infrastructure + identity/random init adapters + prompt engineering
+- **Phase 14 (Post-MVP)**: Collect training data (500-1000 samples/agent) + actual LoRA fine-tuning
 
 ---
 
-### Phase 10: Local Test Environment (llama.cpp + GGUF)
+### Phase 10: Specialized Agent System Implementation
 
-**Purpose**: Validate Multi-Agent functionality with minimal setup
+**Purpose**: Implement Orchestrator + 6 Specialized Agents + Shared Tool Library
 
 **Technology Stack**:
-- **Library**: llama.cpp-python
-- **Model Format**: GGUF (Q4_K_M quantization)
-- **Runtime**: CPU-optimized (8-16 threads)
-- **LoRA Support**: GGUF LoRA adapters (infrastructure testing only)
-- **Concurrency**: Single user (developer testing)
+- **Base Model**: Qwen3-4B-Instruct (GGUF Q4_K_M, ~2.5GB)
+- **LoRA Management**: HuggingFace PEFT 0.7.0+ (identity/random init adapters for infrastructure)
+- **Model Backend**: llama.cpp-python OR transformers + BitsAndBytes (CPU-optimized)
+- **Orchestrator**: LLM-based Few-shot classification (14 examples: 7 routing options × 2)
+- **Tool Library**: Python functions (pandas, jinja2, sympy, ChromaDB/FAISS)
+- **Concurrency**: Max 5 concurrent agent requests, LoRA LRU cache (2-3 adapters)
+
+**6 Specialized Agents**:
+1. **RAG Agent**: Document search/analysis (NEW - upgraded from basic FR-009)
+2. **Citizen Support Agent**: Empathetic responses to citizen inquiries
+3. **Document Writing Agent**: Formal government document generation
+4. **Legal Research Agent**: Legal interpretation and citation
+5. **Data Analysis Agent**: Statistical analysis and visualization recommendations
+6. **Review Agent**: Content review and error detection
 
 **Architecture Overview**:
 ```python
@@ -1023,28 +1039,35 @@ class LlamaCppLLMService(BaseLLMService):
             verbose=False
         )
 
-        # LoRA adapter paths (optional, for infrastructure testing)
-        # Dummy adapters for now, actual fine-tuned adapters later
+        # LoRA adapter paths (Phase 10: identity/random init, Phase 14: actual fine-tuned)
         self.lora_adapters = {
-            "citizen_support": "/models/lora/citizen_support_dummy.gguf",
-            "document_writing": "/models/lora/document_writing_dummy.gguf",
-            "legal_research": "/models/lora/legal_research_dummy.gguf",
-            "data_analysis": "/models/lora/data_analysis_dummy.gguf",
-            "review": "/models/lora/review_dummy.gguf",
+            "rag_agent": "/models/lora_adapters/rag_agent/adapter_model.bin",
+            "citizen_support": "/models/lora_adapters/citizen_support/adapter_model.bin",
+            "document_writing": "/models/lora_adapters/document_writing/adapter_model.bin",
+            "legal_research": "/models/lora_adapters/legal_research/adapter_model.bin",
+            "data_analysis": "/models/lora_adapters/data_analysis/adapter_model.bin",
+            "review": "/models/lora_adapters/review/adapter_model.bin",
         }
 
+        # LRU cache for loaded LoRA adapters (keep 2-3 most recent)
+        from collections import OrderedDict
+        self.lora_cache = OrderedDict()  # {agent_name: adapter_object}
+        self.max_cache_size = 3
         self.current_lora = None
 
         # Load agent prompts from files
         self.agent_prompts = self._load_agent_prompts()
 
+        # Load orchestrator routing prompt
+        self.orchestrator_prompt = self._load_orchestrator_prompt()
+
     def _load_agent_prompts(self) -> dict:
         """Load agent system prompts from text files"""
         import os
         prompts = {}
-        prompt_dir = "/backend/prompts"
+        prompt_dir = "/backend/prompts/agents"
 
-        for agent_name in ["citizen_support", "document_writing",
+        for agent_name in ["rag_agent", "citizen_support", "document_writing",
                           "legal_research", "data_analysis", "review"]:
             prompt_file = os.path.join(prompt_dir, f"{agent_name}.txt")
             if os.path.exists(prompt_file):
@@ -1052,6 +1075,15 @@ class LlamaCppLLMService(BaseLLMService):
                     prompts[agent_name] = f.read().strip()
 
         return prompts
+
+    def _load_orchestrator_prompt(self) -> str:
+        """Load orchestrator routing prompt with few-shot examples"""
+        import os
+        prompt_file = "/backend/prompts/orchestrator_routing.txt"
+        if os.path.exists(prompt_file):
+            with open(prompt_file, 'r', encoding='utf-8') as f:
+                return f.read().strip()
+        return ""
 
     async def generate(
         self,
@@ -1088,36 +1120,94 @@ class LlamaCppLLMService(BaseLLMService):
 
     def _switch_lora_adapter(self, agent_name: str):
         """
-        Switch LoRA adapter for agent (optional)
+        Switch LoRA adapter with LRU caching (Phase 10: identity LoRA, Phase 14: fine-tuned)
 
-        Note: This is for infrastructure testing only.
-        Dummy adapters used initially, replaced with fine-tuned adapters later.
+        LRU Cache Strategy:
+        - Keep 2-3 most recently used adapters in memory
+        - Evict least recently used when cache full
+        - Target: <3 second adapter load time
         """
-        # Check if LoRA adapter exists for this agent
+        # Check if adapter already in cache (cache hit)
+        if agent_name in self.lora_cache:
+            # Move to end (most recently used)
+            self.lora_cache.move_to_end(agent_name)
+            self.current_lora = agent_name
+            print(f"✓ LoRA cache hit: {agent_name}")
+            return
+
+        # Check if LoRA adapter path exists
         if agent_name not in self.lora_adapters:
             return
 
         lora_path = self.lora_adapters[agent_name]
 
-        # Skip if file doesn't exist (LoRA is optional)
+        # Skip if file doesn't exist (Phase 10 may use identity LoRA)
         import os
         if not os.path.exists(lora_path):
+            print(f"ℹ LoRA adapter not found for {agent_name}, using base model")
             return
 
-        # Unload previous LoRA if any
-        if self.current_lora:
-            # llama.cpp LoRA unloading (if supported)
-            pass
-
-        # Load new LoRA adapter
+        # Cache miss: Load new LoRA adapter
         try:
-            # Note: llama.cpp-python LoRA support may vary by version
-            # Check documentation for exact API
-            # self.model.load_lora(lora_path)
+            # Load LoRA using PEFT (HuggingFace) or llama.cpp API
+            # adapter = load_lora_adapter(lora_path)  # Actual implementation depends on backend
+
+            # Add to cache
+            self.lora_cache[agent_name] = f"LoRA_{agent_name}"  # Placeholder for actual adapter object
+
+            # Evict least recently used if cache full
+            if len(self.lora_cache) > self.max_cache_size:
+                evicted_agent, _ = self.lora_cache.popitem(last=False)
+                print(f"↓ Evicted LoRA from cache: {evicted_agent}")
+
             self.current_lora = agent_name
-            print(f"✓ Loaded LoRA adapter for {agent_name}")
+            print(f"✓ Loaded LoRA adapter for {agent_name} (cache size: {len(self.lora_cache)}/{self.max_cache_size})")
         except Exception as e:
-            print(f"⚠ LoRA loading skipped for {agent_name}: {e}")
+            print(f"⚠ LoRA loading failed for {agent_name}: {e}")
+
+    async def route_query(self, user_query: str) -> dict:
+        """
+        Orchestrator: Route query to direct response or specialized agent
+
+        Returns:
+          {
+            "routing_decision": "direct" | "rag_agent" | "citizen_support" | ...,
+            "confidence": 0.0-1.0
+          }
+        """
+        # Prepare orchestrator prompt with few-shot examples
+        routing_prompt = f"""{self.orchestrator_prompt}
+
+사용자 쿼리: {user_query}
+
+위 쿼리를 분석하여 다음 중 하나로 라우팅하세요:
+- direct: 일반 지식 질문 (특별한 전문성 불필요)
+- rag_agent: 업로드된 문서 검색/분석 필요
+- citizen_support: 민원 응대/시민 질의 응답
+- document_writing: 공문서/보고서 작성
+- legal_research: 법규/조례 검색 및 해석
+- data_analysis: 데이터 분석/통계
+- review: 문서 검토/오류 확인
+
+답변 형식: [routing_decision]
+"""
+
+        # Generate routing decision using base model
+        routing_decision = await self.generate(routing_prompt, max_tokens=50, temperature=0.3)
+        routing_decision = routing_decision.strip().lower()
+
+        # Validate routing decision
+        valid_routes = ["direct", "rag_agent", "citizen_support", "document_writing",
+                       "legal_research", "data_analysis", "review"]
+
+        if routing_decision not in valid_routes:
+            # Fallback to direct response if routing unclear
+            routing_decision = "direct"
+
+        return {
+            "routing_decision": routing_decision,
+            "confidence": 0.8  # Placeholder, could be extracted from LLM output
+        }
 
     def get_agent_prompt(self, agent_name: str) -> str:
         """Get agent system prompt"""
@@ -1544,42 +1634,48 @@ LLM_BACKEND=llama_cpp  → LLM_BACKEND=vllm
 **LoRA File Structure**:
 ```
 models/
-├── qwen3-4b-instruct-q4_k_m.gguf              # Base model (GGUF)
-└── lora/
-    ├── citizen_support_dummy.gguf              # Phase 10: Dummy
-    ├── citizen_support_v1.gguf                 # Later: Fine-tuned
-    ├── document_writing_dummy.gguf
-    ├── document_writing_v1.gguf
-    └── ...
+├── qwen3-4b-instruct-q4_k_m.gguf              # Base model (GGUF, ~2.5GB)
+└── lora_adapters/                              # Phase 10: identity LoRA, Phase 14: fine-tuned
+    ├── rag_agent/
+    │   ├── adapter_model.bin                   # Phase 10: identity, Phase 14: fine-tuned
+    │   └── adapter_config.json
+    ├── citizen_support/
+    │   ├── adapter_model.bin
+    │   └── adapter_config.json
+    ├── document_writing/
+    ├── legal_research/
+    ├── data_analysis/
+    └── review/
 ```
 
-**LoRA is Optional**: If fine-tuning doesn't improve performance significantly, we can skip it and rely on prompt engineering alone
+**Phase 10 Strategy**: Use identity LoRA (no-op transformation) or random initialization to test infrastructure without actual fine-tuning
+**Phase 14 Strategy**: Collect training data (500-1000 samples/agent) and fine-tune if evaluation shows benefit
 
 ---
 
 ### LoRA Transition Decision Tree
 
-**When to transition from dummy to actual LoRA adapters**:
+**When to transition from Phase 10 (identity LoRA) to Phase 14 (fine-tuned LoRA)**:
 
 ```
-Phase 10 완료 (Multi-Agent with dummy LoRA)
+Phase 10 완료 (Specialized Agent System with identity LoRA + prompt engineering)
     ↓
-SC-021/SC-022 검증 (Routing accuracy ≥85%, Workflow time ≤90s)
+Agent System 검증 (Orchestrator routing, LoRA switching, Tool Library)
     ↓
-    ├─ FAIL → Fix orchestrator/agent logic first (LoRA 전환 연기)
-    └─ PASS → LoRA 전환 평가 시작GIL
+    ├─ FAIL → Fix orchestrator/agent/tool logic first (LoRA 전환 연기)
+    └─ PASS → LoRA 전환 평가 시작
             ↓
         Training data 수집 가능 여부 확인
             ↓
-            ├─ NO (100 examples/agent 미달) → Prompt engineering으로 진행, LoRA 제거
-            └─ YES → Fine-tuning 진행
+            ├─ NO (500 examples/agent 미달) → Prompt engineering으로 진행, LoRA infrastructure 유지 (identity LoRA)
+            └─ YES → Fine-tuning 진행 (Phase 14)
                     ↓
-                Fine-tune 5 agents (LoRA rank 16-32, 100-1000 examples each)
+                Fine-tune 6 agents (LoRA rank 16-32, 500-1000 examples each, total 3000-6000 samples)
                     ↓
-                A/B Test: Prompt-only vs Prompt+LoRA (50 queries per agent)
+                A/B Test: Prompt-only vs Prompt+LoRA (50 queries per agent, 300 total)
                     ↓
                     ├─ Improvement <10% → LoRA 제거, Prompt-only 유지
-                    ├─ Improvement 10-20% → Cost-benefit 분석 (LoRA 유지 고려)
+                    ├─ Improvement 10-20% → Cost-benefit 분석 (메모리/성능 tradeoff)
                     └─ Improvement >20% → LoRA 유지, production 배포
 ```
 
@@ -1657,9 +1753,9 @@ def create_dummy_gguf_lora(output_path: str, rank: int = 16):
         f.write(b'DUMMY_LORA')  # Placeholder
     print(f"Created dummy LoRA: {output_path}")
 
-# Create dummy adapters for all 5 agents
-for agent in ["citizen_support", "document_writing", "legal_research",
-              "data_analysis", "review"]:
+# Create dummy adapters for all 6 agents
+for agent in ["rag_agent", "citizen_support", "document_writing",
+              "legal_research", "data_analysis", "review"]:
     create_dummy_gguf_lora(f"/models/lora/{agent}_dummy.gguf")
 ```
 
@@ -1669,14 +1765,15 @@ for agent in ["citizen_support", "document_writing", "legal_research",
 
 ### Success Criteria Update
 
-**Phase 10 (Multi-Agent with llama.cpp)**:
-- **SC-021**: Agent routing accuracy ≥85% on test dataset of 50 queries
-- **SC-022**: Sequential 3-agent workflow completes within 90 seconds
-- **SC-023** (Optional): LoRA dummy adapters load successfully without errors
+**Phase 10 (Specialized Agent System with llama.cpp)**:
+- **SC-021**: Orchestrator routing accuracy ≥85% on test dataset of 50 queries (7 routing options)
+- **SC-022**: Sequential specialized agent workflow (3 agents) completes within 90 seconds
+- **SC-023**: LoRA identity adapters load successfully for all 6 agents without errors
+- **SC-024**: LoRA adapter switching (LRU cache) completes in <3 seconds per swap
 
 **Later (After vLLM deployment)**:
-- **SC-024**: Multi-user concurrent access (10-16 users) with <5 second response time
-- **SC-025**: vLLM PagedAttention reduces memory usage by 30% vs naive implementation
+- **SC-025**: Multi-user concurrent access (10-16 users) with <5 second response time
+- **SC-026**: vLLM PagedAttention reduces memory usage by 30% vs naive implementation
 
 ---
 
