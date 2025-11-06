@@ -16,6 +16,38 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: llm-webapp-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: llm-webapp-qdrant
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC (optional)
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -28,8 +60,15 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-llm_webapp}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      QDRANT_GRPC_PORT: 6334
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       SESSION_TIMEOUT_MINUTES: ${SESSION_TIMEOUT_MINUTES:-30}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-4}
       LLM_BACKEND: llama_cpp
       GGUF_MODEL_PATH: /models/qwen3-0.6b-q8_0.gguf
       LLAMA_N_THREADS: 8
@@ -55,9 +94,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
     command: >
       sh -c "
-        echo 'Waiting for PostgreSQL...' &&
+        echo 'Waiting for services...' &&
         sleep 5 &&
         echo 'Running database migrations...' &&
         alembic upgrade head &&
@@ -65,8 +108,8 @@ services:
         python scripts/create_admin.py --username admin --password admin123! 2>/dev/null || true &&
         echo 'Verifying GGUF model...' &&
         ls -lh /models/qwen3-0.6b-q8_0.gguf &&
-        echo 'Starting backend server with llama.cpp (Qwen3-0.6B Q8_0)...' &&
-        uvicorn app.main:app --host 0.0.0.0 --port 8000
+        echo 'Starting backend with Gunicorn (4 workers)...' &&
+        gunicorn app.main:app -c gunicorn_conf.py
       "
 
   frontend:
@@ -123,6 +166,8 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
+  qdrant_data:
   uploads_data:
   prometheus_data:
   grafana_data:

@@ -1060,6 +1060,199 @@
 
 ---
 
+## Phase 11.8: Multiprocess Deployment & Redis Integration
+
+**Purpose**: Enable production-grade horizontal scalability with multiprocess deployment and distributed state management
+
+**Requirements**: FR-123 (Multiprocess), FR-124 (Redis), FR-125 (Distributed Rate Limiting), FR-126 (LLM Cache), FR-127 (Observability), FR-128 (Session Affinity)
+**Success Criteria**: SC-041 (Concurrent load), SC-042 (Distributed rate limiting), SC-043 (Worker lifecycle), SC-044 (LLM cache), SC-045 (Observability)
+
+### Infrastructure Setup (CRITICAL)
+
+- [ ] **T322** [CRITICAL] Create Gunicorn configuration file `backend/gunicorn_conf.py`
+  - Worker count formula: `workers = (2 * cpu_count) + 1` with default 4
+  - Worker class: `uvicorn.workers.UvicornWorker` for FastAPI async support
+  - Graceful shutdown timeout: 120 seconds for LLM inference completion
+  - Enable preload_app=True for Copy-on-Write memory sharing
+  - Configure max_requests=1000, max_requests_jitter=50 for worker recycling
+  - Log worker lifecycle events (spawn, restart, abort) to console
+  - Bind to 0.0.0.0:8000, enable access logging
+  - **Acceptance**: `gunicorn -c gunicorn_conf.py app.main:app` starts 4 workers without errors
+
+- [ ] **T323** [CRITICAL] Update `backend/requirements.txt` with multiprocess dependencies
+  - Add: `gunicorn>=21.2.0`
+  - Add: `redis>=5.0.1`
+  - Add: `hiredis>=2.3.2` (high-performance Redis protocol parser)
+  - Verify: APScheduler 3.10+ already present (required for Feature 002)
+  - **Acceptance**: `pip install -r requirements.txt` installs all dependencies without conflicts
+
+- [ ] **T324** [CRITICAL] Verify Docker Compose Redis configuration (already added in previous work)
+  - Confirm redis service exists in `docker-compose.yml`
+  - Verify: image: redis:7-alpine
+  - Verify: command includes `--appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru`
+  - Verify: healthcheck with `redis-cli ping` every 10s
+  - Verify: backend environment includes `REDIS_HOST=redis`, `REDIS_PORT=6379`, `REDIS_DB=0`
+  - Verify: backend command uses `gunicorn app.main:app -c gunicorn_conf.py`
+  - **Acceptance**: `docker-compose up -d redis` starts Redis successfully, `docker-compose logs redis | grep "Ready to accept connections"`
+
+### Redis Client Implementation (HIGH)
+
+- [ ] **T325** [HIGH] Create Redis client module `backend/app/core/redis_client.py`
+  - Implement `get_redis_pool()` function with connection pooling (pool size: 10)
+  - Implement circuit breaker pattern for graceful degradation (3 failures → open circuit for 60s)
+  - Add Redis health check function `check_redis_health() -> bool`
+  - Handle connection errors gracefully with logging (fallback to None, not raising exceptions)
+  - Support optional Redis (system works without Redis for non-critical features)
+  - Document key patterns in module docstring: `ratelimit:{client_ip}`, `llm_cache:{sha256(prompt)}`
+  - **Acceptance**: `from app.core.redis_client import get_redis_pool` works, connection pool created successfully
+
+- [ ] **T326** [HIGH] Integrate Redis client into FastAPI lifecycle
+  - Update `backend/app/main.py` to initialize Redis connection pool on startup
+  - Add lifespan context manager for Redis connection lifecycle
+  - Close Redis connections gracefully on shutdown
+  - Log Redis connection status (connected/degraded mode) on startup
+  - **Acceptance**: `docker-compose logs backend | grep "Redis"` shows connection status on startup
+
+### Distributed Rate Limiting (HIGH)
+
+- [ ] **T327** [HIGH] Migrate rate limiting to Redis in `backend/app/middleware/rate_limit_middleware.py`
+  - Replace in-memory `self.requests: Dict[str, deque]` with Redis sorted sets
+  - Implement Redis key pattern: `ratelimit:{client_ip}` with 60-second TTL
+  - Use sliding window algorithm: ZADD (add timestamp), ZREMRANGEBYSCORE (remove old), ZCARD (count)
+  - Ensure atomic operations using Redis MULTI/EXEC transactions
+  - Implement fallback to in-memory rate limiting if Redis unavailable (backward compatibility)
+  - Log warning if falling back to in-memory mode
+  - **Acceptance**: Rate limiting works across multiple workers (request from worker 1 counted by worker 2)
+
+- [ ] **T328** [HIGH] Create integration test `backend/tests/test_distributed_rate_limiting.py`
+  - Test: 61 requests from same IP within 60s → 1 request returns 429 (across workers)
+  - Test: Redis failure triggers fallback to in-memory with warning log
+  - Test: Rate limit counters persist across worker restarts
+  - Test: Atomic operations prevent race conditions (concurrent requests don't exceed limit)
+  - Use pytest-asyncio for async tests
+  - Mock Redis connection for failure scenarios
+  - **Acceptance**: All 4 tests pass with 100% coverage of rate_limit_middleware.py
+
+### LLM Response Caching (MEDIUM - Optional)
+
+- [ ] **T329** [MEDIUM] Implement LLM cache service `backend/app/services/llm_cache_service.py`
+  - Function: `get_cached_response(prompt: str) -> Optional[str]`
+  - Function: `set_cached_response(prompt: str, response: str, ttl: int = 3600)`
+  - Function: `invalidate_cache()` to clear all LLM cache entries
+  - Use SHA256 hash of normalized prompt (lowercased, whitespace trimmed) as cache key
+  - Key pattern: `llm_cache:{sha256_hash}`
+  - Limit cache entry size to 50KB to prevent memory bloat
+  - Return None if cache miss or Redis unavailable
+  - **Acceptance**: Caching repeated prompt returns cached response within 500ms
+
+- [ ] **T330** [MEDIUM] Integrate LLM cache into chat endpoint `backend/app/api/v1/chat.py`
+  - Check cache before LLM inference in `send_message()` endpoint
+  - Store completed LLM responses in cache with 1-hour TTL
+  - Support `?nocache=1` query parameter to bypass cache
+  - Log cache hit/miss events for monitoring
+  - Do not cache if prompt contains document context (personalized responses)
+  - **Acceptance**: Second identical query returns cached response in <1s vs 8s for first query
+
+- [ ] **T331** [MEDIUM] Add LLM cache metrics to Prometheus `backend/app/core/metrics.py`
+  - Counter: `llm_cache_hits_total` (incremented on cache hit)
+  - Counter: `llm_cache_misses_total` (incremented on cache miss)
+  - Gauge: `llm_cache_size_bytes` (total size of cached entries)
+  - Histogram: `llm_cache_response_time_seconds` (time to retrieve from cache)
+  - Export via `/metrics` endpoint
+  - **Acceptance**: Prometheus scrapes metrics, cache hit rate visible in Grafana
+
+### Multiprocess Observability (HIGH)
+
+- [ ] **T332** [HIGH] Add per-worker metrics to Prometheus
+  - Add `worker_id` label to all application metrics (http_requests_total, db_queries_total, etc.)
+  - Extract worker ID from Gunicorn environment variable or process ID
+  - Ensure metrics aggregate correctly: `sum(rate(http_requests_total[5m])) by (endpoint)`
+  - Add worker lifecycle metrics: `worker_restarts_total`, `worker_age_seconds`
+  - **Acceptance**: `/metrics` shows worker_id labels, Prometheus aggregates correctly
+
+- [ ] **T333** [HIGH] Implement worker health check endpoint `backend/app/api/v1/health.py`
+  - New endpoint: `GET /api/v1/health/worker`
+  - Return JSON: `{"worker_id": 1, "pid": 12345, "uptime_seconds": 3600, "status": "healthy"}`
+  - Include Redis connection status in health response
+  - Include LLM model loaded status
+  - **Acceptance**: `curl http://localhost:8000/api/v1/health/worker` returns worker-specific status
+
+- [ ] **T334** [HIGH] Add worker ID to application logs
+  - Update logging configuration to include worker_id in all log entries
+  - Format: `[worker-1] [INFO] Request received...`
+  - Extract worker ID from Gunicorn worker process name
+  - Ensure logs are written to stdout for Docker logging
+  - **Acceptance**: `docker-compose logs backend | grep "worker-"` shows worker IDs in logs
+
+### Testing & Validation (CRITICAL)
+
+- [ ] **T335** [CRITICAL] Create multiprocess load test `backend/tests/test_multiprocess_load.py`
+  - Test: 20 concurrent requests complete within 15 seconds (4 workers × 5 requests avg)
+  - Test: No worker timeout errors during load test
+  - Test: Graceful shutdown completes in-progress requests (send SIGTERM, verify 200 responses)
+  - Test: Memory usage remains stable (no memory leaks after 1000 requests)
+  - Use `pytest-benchmark` or `locust` for load testing
+  - **Acceptance**: All 4 tests pass, no worker crashes or timeouts
+
+- [ ] **T336** [CRITICAL] Create Redis integration test suite `backend/tests/test_redis_integration.py`
+  - Test: Redis connection pool created successfully
+  - Test: Circuit breaker opens after 3 consecutive failures
+  - Test: Circuit breaker closes after 60s recovery period
+  - Test: Graceful degradation when Redis unavailable (fallback mode)
+  - Test: Redis keys expire correctly (TTL enforcement)
+  - Use pytest fixtures to mock Redis for failure scenarios
+  - **Acceptance**: All 5 tests pass with 100% coverage of redis_client.py
+
+- [ ] **T337** [HIGH] Validate memory sharing via preload_app
+  - Measure memory before: 4 workers without preload_app (expected ~10GB = 4 × 2.5GB)
+  - Measure memory after: 4 workers with preload_app (expected ~4.5GB = 2.5GB base + 4 × 0.5GB)
+  - Verify Copy-on-Write sharing via `/proc/{pid}/smaps` (Linux) or Activity Monitor (macOS)
+  - Calculate memory savings: (10GB - 4.5GB) / 10GB = 45% reduction
+  - **Acceptance**: Memory usage reduced by >40% per SC-041
+
+### Documentation (MEDIUM)
+
+- [ ] **T338** [MEDIUM] Create Redis schema documentation `docs/architecture/redis-schema.md`
+  - Document all key patterns: `ratelimit:{client_ip}`, `llm_cache:{sha256(prompt)}`
+  - Document data structures: sorted sets (rate limiting), strings (LLM cache)
+  - Document TTL values: 60s (rate limit), 3600s (LLM cache)
+  - Document eviction policy: allkeys-lru (maxmemory=512mb)
+  - Document backup strategy: AOF persistence enabled
+  - **Acceptance**: Documentation reviewed and merged
+
+- [ ] **T339** [MEDIUM] Create multiprocess troubleshooting guide `docs/deployment/multiprocess-troubleshooting.md`
+  - Section: Worker timeout (increase graceful_timeout, check LLM inference time)
+  - Section: Memory leak (check worker recycling, monitor RSS over time)
+  - Section: Uneven load distribution (check Nginx upstream config, consider ip_hash)
+  - Section: Redis connection errors (check network, verify Redis health)
+  - Section: Cache stampede (implement cache warming, use probabilistic early expiration)
+  - Include example commands for debugging (docker-compose logs, curl /metrics, etc.)
+  - **Acceptance**: Documentation reviewed and merged
+
+### Deployment Configuration (HIGH)
+
+- [ ] **T340** [HIGH] Update deployment documentation `docs/deployment/production-deployment.md`
+  - Add section: "Multiprocess Deployment with Gunicorn"
+  - Document worker count tuning: `GUNICORN_WORKERS` environment variable
+  - Document Redis configuration: maxmemory, eviction policy, AOF persistence
+  - Document monitoring: Prometheus metrics, Grafana dashboards
+  - Document rollback procedure: revert docker-compose.yml, restart without Redis
+  - **Acceptance**: Deployment guide includes multiprocess setup instructions
+
+**Phase 11.8 Validation Checklist**:
+- [ ] All 19 tasks completed (T322-T340)
+- [ ] SC-041: 20 concurrent requests complete within 15 seconds (no worker timeout)
+- [ ] SC-042: Distributed rate limiting enforces 60 req/min across workers (61st request → 429)
+- [ ] SC-043: Graceful shutdown completes in-progress requests (120s timeout)
+- [ ] SC-044: LLM cache hit rate >30% for FAQ queries (1-hour load test)
+- [ ] SC-045: Prometheus shows per-worker metrics with worker_id labels
+- [ ] All integration tests pass (test_distributed_rate_limiting.py, test_multiprocess_load.py, test_redis_integration.py)
+- [ ] Memory usage reduced by >40% via Copy-on-Write sharing
+- [ ] Redis schema documentation complete
+- [ ] Multiprocess troubleshooting guide complete
+
+---
+
 ## Phase 12: Polish & Cross-Cutting Concerns
 
 **Purpose**: Final touches, optimization, and production readiness
