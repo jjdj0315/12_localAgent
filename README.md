@@ -163,6 +163,24 @@ npm run lint
 npm run format
 ```
 
+### Git Hooks 설정
+
+프로젝트에는 UTF-8 인코딩 검증을 위한 pre-commit hook이 포함되어 있습니다 (T303, FR-115).
+한글 텍스트 인코딩 손상을 방지하여 코드 품질을 유지합니다.
+
+```bash
+# Git hooks 설치
+./.githooks/install.sh
+```
+
+**제공되는 hooks:**
+- `pre-commit`: 커밋 전 UTF-8 인코딩 검증
+  - 검증 대상: `.py`, `.ts`, `.tsx`, `.js`, `.jsx`, `.md`, `.json` 파일
+  - UTF-8이 아닌 파일이 있으면 커밋 차단
+  - 한글 깨짐(mojibake) 패턴 감지
+
+hook 설치 후 자동으로 인코딩 검증이 수행됩니다.
+
 ## 문서
 
 - **요구사항 명세**: [specs/001-local-llm-webapp/spec.md](specs/001-local-llm-webapp/spec.md)

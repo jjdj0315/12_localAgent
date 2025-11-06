@@ -5,7 +5,7 @@
 
 ## Summary
 
-Build an air-gapped Local LLM web application for small local government employees to use AI assistance for administrative tasks without internet connectivity. The system provides conversational AI, document analysis, conversation history management, multi-user support with administrative oversight, **plus advanced features: Safety Filter (content moderation + PII masking), ReAct Agent (tool-augmented reasoning), and Multi-Agent System (task-specialized agents)** - all running on local infrastructure using Qwen3-4B-Instruct with HuggingFace Transformers or llama.cpp for CPU-compatible deployment (~2.5GB Q4, Qwen2.5-72B-level performance).
+Build an air-gapped Local LLM web application for small local government employees to use AI assistance for administrative tasks without internet connectivity. The system provides conversational AI, document analysis, conversation history management, multi-user support with administrative oversight, **plus advanced features: Safety Filter (content moderation + PII masking), Specialized Agent System with Orchestration (intelligent routing to 6 domain-expert agents using LoRA adapters and shared tool library)** - all running on local infrastructure using Qwen3-4B-Instruct with llama.cpp for CPU-compatible deployment.
 
 **Key Value**: Replace unavailable cloud-based AI services (ChatGPT, Gemini) with a secure, locally-hosted alternative that maintains data privacy in a closed network environment, while providing government-specific safety controls and task automation.
 
@@ -26,10 +26,16 @@ Build an air-gapped Local LLM web application for small local government employe
 - SQLAlchemy ORM with Alembic migrations
 
 **LLM Infrastructure**:
-- **Model Choice**: Qwen3-4B-Instruct (April 2025 release, ~2.5GB Q4_K_M, Qwen2.5-72B-level performance, 20-40% improvement in math/coding)
+- **Primary Model (All Phases)**: Qwen3-4B-Instruct
+  - GGUF Q4_K_M: ~2.5GB
+  - Performance: SC-001 CPU baseline 8-12s response time (acceptable for government use)
+  - Qwen2.5-72B-level quality, 20-40% improvement in math/coding
+- **Fallback Option**: Qwen2.5-1.5B-Instruct
+  - GGUF Q4_K_M: ~1GB
+  - Use case: Resource-constrained systems (<16GB RAM)
 - **Model Format Strategy**:
-  - **Phase 10 (CPU-optimized baseline)**: GGUF format (Qwen3-4B-Instruct Q4_K_M) via llama.cpp for CPU-optimized local deployment
-  - **Phase 13 (GPU-accelerated, Optional)**: HuggingFace safetensors (Qwen/Qwen3-4B-Instruct) via vLLM for GPU-accelerated multi-user deployment
+  - **Phase 10 (CPU-optimized baseline)**: GGUF format (Qwen2.5-1.5B or Qwen3-4B Q4_K_M) via llama.cpp for CPU-optimized local deployment
+  - **Phase 13 (GPU-accelerated, Optional)**: HuggingFace safetensors via vLLM for GPU-accelerated multi-user deployment
 - **Inference Engine**: Dual backend via factory pattern (BaseLLMService):
   - llama.cpp (CPU-optimized, 1-3 concurrent users, baseline deployment)
   - vLLM (GPU-accelerated, 10-16 concurrent users, optional migration per Phase 13)
@@ -67,57 +73,56 @@ Build an air-gapped Local LLM web application for small local government employe
 - **Logging** (FR-056): Filter events logged (timestamp, user_id, category, action) WITHOUT message content
 - **False Positive Handling** (FR-058): Retry option with rule-based filter bypass, ML filter still applied
 
-**ReAct Agent System** (FR-060 series):
-- **Architecture**: Thought → Action → Observation loop (max 5 iterations, FR-062)
-- **Six Government Tools** (FR-061):
-  1. Document Search: Vector similarity search on uploaded docs (ChromaDB/FAISS)
-  2. Calculator: Mathematical expressions with Korean currency support (sympy/numexpr)
-  3. Date/Schedule: Business days, Korean holidays (JSON calendar), fiscal year conversions
-  4. Data Analysis: CSV/Excel loading (pandas, openpyxl), summary statistics
-  5. Document Template: Jinja2-based government document generation (공문서, 보고서, 안내문)
-  6. Legal Reference: Regulation/ordinance article search with citations
-- **Safety Features** (FR-063): 30-second timeout per tool, identical call detection (3x limit), sandboxed execution
-- **UX Display** (FR-064): Real-time Thought/Action/Observation with emoji prefixes (🤔/⚙️/👁️)
-- **Error Handling** (FR-065): Transparent failure display, agent provides alternative or guidance
-- **Audit Trail** (FR-066): All tool executions logged with sanitized parameters
+**Shared Tool Library** (FR-060~065):
+- **Six Government Tools** (FR-060~065): Document Search, Calculator, Date/Schedule, Data Analysis, Document Template, Legal Reference. See spec.md FR-060~065 for detailed tool descriptions and parameter specifications
+- **Accessibility**: All tools available to all specialized agents
+- **Safety Features**: 30-second timeout per tool invocation, identical call detection (3x limit), sandboxed execution
+- **Audit Trail**: All tool executions logged with sanitized parameters (timestamp, agent_id, tool_name, status)
 
-**Multi-Agent System** (FR-070 series):
-- **Orchestrator**: LLM-based intent classification (default, few-shot prompt with 2-3 examples per agent) OR keyword-based routing (admin-configurable alternative)
-- **Five Specialized Agents** (FR-071, FR-071A):
-  1. Citizen Support Agent: Empathetic citizen inquiry responses (존댓말, completeness check) + LoRA adapter
-  2. Document Writing Agent: Government document generation (formal language, standard sections) + LoRA adapter
-  3. Legal Research Agent: Regulation search + plain-language interpretation + LoRA adapter
-  4. Data Analysis Agent: Statistical analysis with Korean formatting (천 단위 쉼표) + LoRA adapter
-  5. Review Agent: Content review for errors (factual, grammatical, policy compliance) + LoRA adapter
-- **LoRA Adapter Architecture** (FR-071A):
-  - Base model: Qwen3-4B-Instruct (loaded once on startup, ~2.5GB Q4_K_M)
-  - Dynamic adapter loading: Each agent loads task-specific LoRA adapter on first invocation
-  - Adapter caching: Loaded adapters cached in memory to minimize switching overhead
-  - Switching latency: <3 seconds per agent invocation (adapter load + inference)
-  - Implementation: HuggingFace PEFT library for CPU-compatible adapter management
-  - Storage: LoRA weights in `/models/lora_adapters/{agent_name}/` directories (~100-500MB per adapter, optimized for Qwen3-4B)
-- **Workflow Support** (FR-072-079):
-  - Sequential workflows: Multi-step tasks with agent chaining (adapter switches between agents)
-  - Parallel execution: Independent sub-tasks dispatched simultaneously (max 3 parallel, multiple adapters loaded concurrently)
-  - Complexity limits: Max 5 agents per chain, 5-minute total timeout (includes adapter switching time)
-- **Context Sharing** (FR-077): Agents in same workflow share conversation context and previous outputs
-- **Admin Management** (FR-076): Enable/disable agents, configure routing mode, edit keyword patterns, view performance metrics (includes adapter loading times)
+**Specialized Agent System with Orchestration** (FR-066~075):
+- **Architecture**: Single base model + dynamic LoRA adapter swapping + shared tool library
+- **Orchestrator Routing** (FR-066):
+  - LLM-based intent classification with few-shot prompting (14 examples: 7 routing options × 2)
+  - Token budget: ≤1000 tokens for orchestrator prompt, ≥1000 tokens for user query (2048 total context)
+  - Routing options: Direct response OR 6 specialized agents (RAG, Citizen Support, Document Writing, Legal Research, Data Analysis, Review)
+- **Six Specialized Agents** (FR-067):
+  1. **RAG Agent** (문서 검색 및 분석): Advanced document search/analysis with multi-document reasoning
+  2. **Citizen Support Agent** (민원 지원): Empathetic citizen inquiry responses with formal Korean (존댓말)
+  3. **Document Writing Agent** (문서 작성): Government document generation with standard sections
+  4. **Legal Research Agent** (법규 검색): Regulation search + plain-language interpretation
+  5. **Data Analysis Agent** (데이터 분석): Statistical analysis with Korean number formatting (천 단위 쉼표)
+  6. **Review Agent** (검토): Content review for factual/grammatical/policy compliance errors
+- **LoRA Adapter Management** (FR-068):
+  - **Base Model**: Qwen3-4B-Instruct (~2.5GB) loaded once on startup, shared by all agents
+  - **Phase 10 Implementation (MVP)**: Identity LoRA or minimal initialization for infrastructure testing + prompt engineering
+  - **Phase 14 Implementation (Post-MVP)**: Actual fine-tuning (500-1000 samples/agent, 3000-6000 total)
+  - **LRU Caching**: Keep 2-3 most recently used adapters in memory (~500MB-1.5GB)
+  - **Adapter Switching**: <3 seconds per swap (load adapter + inference)
+  - **Memory Budget**: Base 2.5GB + LoRA cache 1.5GB = ~4GB peak
+  - **Technology**: HuggingFace PEFT 0.7.0+ for CPU-compatible adapter loading and management
+  - **Storage**: LoRA weights in `/models/lora_adapters/{agent_name}/` directories (~100-500MB per adapter)
+- **Agent Operations** (FR-069~075):
+  - Tool access: Each agent can invoke tools from shared library based on task requirements
+  - Context sharing: Agents in same workflow share conversation context and previous outputs
+  - Error handling: Transparent failure messages with alternative suggestions
+  - Admin management: Enable/disable agents, configure routing thresholds, view performance metrics per agent
 
-**LoRA Adapter Evaluation Protocol** (FR-071A Removal Criteria):
+**LoRA Adapter Evaluation Protocol** (FR-068) - **PHASE 14 ONLY**:
 
-**Goal**: Determine if agent-specific LoRA adapters provide meaningful quality improvement (≥10%) over base Qwen3-4B model.
+**Goal**: Determine if agent-specific LoRA adapters provide meaningful quality improvement (composite ≥10% AND quality ≥5%) over base Qwen3-4B model with prompt engineering only.
 
 **Evaluation Setup**:
 1. **Evaluators**: 3명의 공무원 (또는 한국어 원어민, 업무 맥락 이해 필수)
-2. **Test Queries**: 각 에이전트당 50개 (총 250개)
+2. **Test Queries**: 각 에이전트당 50개 (총 300개)
+   - RAG Agent: 문서 검색/분석 요청 50개
    - Citizen Support Agent: 민원 문의 50개
    - Document Writing Agent: 공문서 작성 요청 50개
    - Legal Research Agent: 법규 검색 질문 50개
    - Data Analysis Agent: 데이터 분석 요청 50개
    - Review Agent: 검토 대상 문서 50개
 3. **Blind Comparison**:
-   - Response A: Base model (Qwen3-4B, no adapter)
-   - Response B: Agent-specific LoRA adapter
+   - Response A: Base model + prompt engineering only (Phase 10 approach)
+   - Response B: Base model + agent-specific LoRA adapter + prompt
    - Evaluator는 A/B 구분 모름 (랜덤 순서)
 
 **Evaluation Criteria** (0-10 scale, 각 응답에 대해):
@@ -128,20 +133,22 @@ Build an air-gapped Local LLM web application for small local government employe
 **Total Score**: 3개 차원 합계 (최대 30점)
 
 **Statistical Analysis**:
-- **Mean Score Difference**: `mean(LoRA) - mean(Base)`
-- **Improvement %**: `(mean(LoRA) - mean(Base)) / mean(Base) * 100`
+- **Composite Score**: (Task Completion + Quality + Government Context) / 3
+- **Quality-only Score**: Quality dimension score
+- **Composite Improvement %**: `(mean_composite(LoRA) - mean_composite(Base)) / mean_composite(Base) * 100`
+- **Quality Improvement %**: `(mean_quality(LoRA) - mean_quality(Base)) / mean_quality(Base) * 100`
 - **Significance Test**: Paired t-test (p < 0.05 required)
 - **Inter-rater Reliability**: Krippendorff's alpha > 0.7 required
 
 **Decision Criteria**:
 | Condition | Action |
 |-----------|--------|
-| Improvement < 5% | **Remove LoRA** - Not worth complexity |
-| Improvement 5-10% AND p > 0.05 | **Remove LoRA** - Not statistically significant |
-| Improvement ≥10% AND p < 0.05 | **Keep LoRA** - Meaningful benefit |
+| Composite improvement <10% | **Remove LoRA** - Not worth complexity |
+| Composite improvement ≥10% BUT quality improvement <5% | **Remove LoRA** - Insufficient quality gain |
+| Composite improvement ≥10% AND quality improvement ≥5% AND p < 0.05 | **Keep LoRA** - Meaningful benefit |
 
 **Implementation**:
-- **When**: After Phase 11 (Multi-Agent System) implementation complete
+- **When**: After Phase 10 (Specialized Agent System) implementation complete and 3000-6000 training samples collected
 - **Tool**: `scripts/evaluate-lora-agents.py` (evaluation interface)
 - **Duration**: 2-3 days (evaluator availability)
 - **Fallback**: If LoRA removed, use base model with **agent-specific system prompts only** (simpler architecture, easier maintenance per Constitution Principle IV)
@@ -259,8 +266,8 @@ LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
 - Korean language support mandatory
 - Maintainability: Priority over performance optimization
 - **Advanced Features Resource Limits** (FR-086):
-  - Max 10 concurrent ReAct sessions (queue additional)
-  - Max 5 concurrent multi-agent workflows (return 503 if exceeded)
+  - Max 10 concurrent tool invocations across all agents (queue additional)
+  - Max 5 concurrent Specialized Agent requests (return 503 if exceeded)
   - Safety filter timeout: 2 seconds (allow message through with warning if exceeded)
 
 **Scale/Scope**:
@@ -273,14 +280,14 @@ LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-**Constitution Loaded**: `.specify/memory/constitution.md` v1.0.0 (Ratified: 2025-10-22)
+**Constitution Loaded**: `.specify/memory/constitution.md` v1.1.0 (Ratified: 2025-10-22, Last Amended: 2025-11-01)
 
 ### Core Principles Compliance
 
 ✅ **I. Air-Gap Compatibility (NON-NEGOTIABLE)**
 - All ML models bundled locally: Qwen3-4B-Instruct, unitary/toxic-bert, sentence-transformers
-- No external API calls: All safety filters, ReAct tools, and agents operate offline
-- Dependencies: All Python packages in requirements.txt for offline pip install
+- No external API calls: All safety filters, shared tools, and specialized agents operate offline
+- Dependencies: All Python packages (including HuggingFace PEFT) in requirements.txt for offline pip install
 - Documentation: Deployment procedures documented in quickstart.md
 
 ✅ **II. Korean Language Support (MANDATORY)**
@@ -311,18 +318,30 @@ LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
   - **Unit/integration tests**: Optional - constitution prioritizes deployment speed over test coverage for small-scale government use
   - **Rationale**: Small IT team, limited resources, air-gapped deployment challenges favor manual validation over automated test infrastructure
 
+✅ **VI. Windows 개발 환경 호환성** *(Added in Constitution v1.1.0, 2025-11-01)*
+- **Path handling**: Uses `os.path.join()` for cross-platform compatibility, no hardcoded Unix paths (/)
+- **Command compatibility**: Dual script support:
+  - Bash scripts for Linux production deployment (`scripts/bundle-offline-deps.sh`)
+  - PowerShell scripts for Windows development environment (`scripts/bundle-offline-deps.ps1`, `scripts/backup-daily.ps1`, `scripts/register-backup-task.ps1`)
+- **File encoding**: UTF-8 without BOM for all source files (Korean character support)
+- **Line endings**: Git configured to handle CRLF (Windows) ↔ LF (Linux) conversion automatically
+- **Docker**: Development uses Docker Desktop for Windows with WSL2 backend
+- **Environment variables**: `.env` file supports Windows path format (backslashes)
+- **Development tools**: VSCode/PyCharm on Windows, Python 3.11+ Windows installer, Git for Windows
+- **Prohibited**: No Unix-only commands (`chmod`, `ln -s`) in application code, no hardcoded Unix paths (`/usr/local/bin`), no Bash-only build processes
+
 ### Potential Complexity Concerns
 
-⚠️ **Safety Filter + ReAct + Multi-Agent adds significant complexity**
+⚠️ **Safety Filter + Specialized Agent System adds significant complexity**
 - **Justification**:
   - These are P3/P4 features (lower priority than core P1/P2)
-  - Can be implemented incrementally: Safety Filter → ReAct → Multi-Agent
+  - Can be implemented incrementally: Safety Filter → Shared Tool Library → Specialized Agent System
   - Each has clear boundaries and can be disabled independently (FR-087 graceful degradation)
   - Government use case requires these for safety and productivity
 - **Mitigation**:
   - Phase implementation: Deliver core features first, then advanced features
   - Comprehensive error handling and logging for debugging
-  - Admin controls to enable/disable features (FR-067, FR-076)
+  - Admin controls to enable/disable agents and configure routing (FR-069~075)
 
 ⚠️ **CPU-only deployment may have performance limitations**
 - **Justification**:
@@ -333,7 +352,7 @@ LLM 모델은 맥락에 따라 다음과 같이 참조됩니다:
   - Target 8 seconds (maximum acceptable 12 seconds) response time on 16-core CPU per SC-001 (acceptable for administrative tasks)
 - **Mitigation**:
   - Resource limits prevent system overload (FR-086)
-  - Queueing for ReAct/Multi-Agent sessions
+  - Queueing for tool invocations and specialized agent requests
   - Performance validation with 10 concurrent users (SC-002, recommended for production deployment, not MVP-blocking)
 
 **GATE STATUS**: ✅ PASS - All core principles satisfied, complexity justified for government requirements
@@ -587,13 +606,22 @@ def build_context(conversation_id: int, db: Session) -> list[dict]:
     # Convert to LLM format
     context = [{"role": msg.role, "content": msg.content} for msg in messages]
 
-    # Count tokens (approximate: 1 token ≈ 4 chars for Korean)
-    total_tokens = sum(len(msg["content"]) // 4 for msg in context)
+    # Count tokens using actual tokenizer (DO NOT use character approximation for Korean)
+    # Load tokenizer once and cache for performance
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-1.5B-Instruct")  # or Qwen3-4B when available
+
+    def count_tokens(messages):
+        # Concatenate all message content and count tokens
+        combined_text = " ".join(msg["content"] for msg in messages)
+        return len(tokenizer.encode(combined_text))
+
+    total_tokens = count_tokens(context)
 
     # Trim if exceeds 2048 tokens
     while total_tokens > 2048 and len(context) > 2:
-        removed = context.pop(0)  # FIFO
-        total_tokens -= len(removed["content"]) // 4
+        context.pop(0)  # FIFO - remove oldest message
+        total_tokens = count_tokens(context)
 
     return context
 ```
@@ -910,28 +938,42 @@ function TagManagement() {
 - Prompt: "다음 대화 내용을 분석하여 가장 관련성 높은 태그를 선택하세요: [태그 목록]. 대화 내용: [내용]"
 - Return top 3 tags with confidence scores
 
-### Multi-Agent LLM Service Architecture (FR-071A)
+### Specialized Agent System Architecture (FR-066~075)
 
-**Dual Strategy**: Test environment (llama.cpp) → Production environment (vLLM)
+**Architecture Overview**: Orchestrator + 6 Specialized Agents with Shared Tool Library
 
-**Design Goals**:
-1. Local testing with CPU-optimized llama.cpp (Phase 10)
-2. Production deployment with GPU-optimized vLLM (later)
-3. Unified interface - agent code remains unchanged between environments
-4. LoRA infrastructure testing with dummy adapters (actual fine-tuning later)
+**Core Design Principles**:
+1. **Single Base Model**: Qwen3-4B-Instruct loaded once, shared by all agents via LoRA adapter swapping
+2. **Intelligent Routing**: Orchestrator analyzes intent → direct response OR route to specialized agent
+3. **Domain Expertise**: Each agent has dedicated LoRA adapter (Phase 14) + prompt template + tool access
+4. **Memory Efficiency**: LRU caching for 2-3 most recent LoRA adapters (~4GB peak memory)
+5. **Shared Tools**: 6-tool library accessible to all agents (Document Search, Calculator, Date/Schedule, Data Analysis, Document Template, Legal Reference)
+
+**Implementation Strategy**:
+- **Phase 10 (MVP)**: LoRA infrastructure + identity/random init adapters + prompt engineering
+- **Phase 14 (Post-MVP)**: Collect training data (500-1000 samples/agent) + actual LoRA fine-tuning
 
 ---
 
-### Phase 10: Local Test Environment (llama.cpp + GGUF)
+### Phase 10: Specialized Agent System Implementation
 
-**Purpose**: Validate Multi-Agent functionality with minimal setup
+**Purpose**: Implement Orchestrator + 6 Specialized Agents + Shared Tool Library
 
 **Technology Stack**:
-- **Library**: llama-cpp-python
-- **Model Format**: GGUF (Q4_K_M quantization)
-- **Runtime**: CPU-optimized (8-16 threads)
-- **LoRA Support**: GGUF LoRA adapters (infrastructure testing only)
-- **Concurrency**: Single user (developer testing)
+- **Base Model**: Qwen3-4B-Instruct (GGUF Q4_K_M, ~2.5GB)
+- **LoRA Management**: HuggingFace PEFT 0.7.0+ (identity/random init adapters for infrastructure)
+- **Model Backend**: llama.cpp-python OR transformers + BitsAndBytes (CPU-optimized)
+- **Orchestrator**: LLM-based Few-shot classification (14 examples: 7 routing options × 2)
+- **Tool Library**: Python functions (pandas, jinja2, sympy, ChromaDB/FAISS)
+- **Concurrency**: Max 5 concurrent agent requests, LoRA LRU cache (2-3 adapters)
+
+**6 Specialized Agents**:
+1. **RAG Agent**: Document search/analysis (NEW - upgraded from basic FR-009)
+2. **Citizen Support Agent**: Empathetic responses to citizen inquiries
+3. **Document Writing Agent**: Formal government document generation
+4. **Legal Research Agent**: Legal interpretation and citation
+5. **Data Analysis Agent**: Statistical analysis and visualization recommendations
+6. **Review Agent**: Content review and error detection
 
 **Architecture Overview**:
 ```python
@@ -997,28 +1039,35 @@ class LlamaCppLLMService(BaseLLMService):
             verbose=False
         )
 
-        # LoRA adapter paths (optional, for infrastructure testing)
-        # Dummy adapters for now, actual fine-tuned adapters later
+        # LoRA adapter paths (Phase 10: identity/random init, Phase 14: actual fine-tuned)
         self.lora_adapters = {
-            "citizen_support": "/models/lora/citizen_support_dummy.gguf",
-            "document_writing": "/models/lora/document_writing_dummy.gguf",
-            "legal_research": "/models/lora/legal_research_dummy.gguf",
-            "data_analysis": "/models/lora/data_analysis_dummy.gguf",
-            "review": "/models/lora/review_dummy.gguf",
+            "rag_agent": "/models/lora_adapters/rag_agent/adapter_model.bin",
+            "citizen_support": "/models/lora_adapters/citizen_support/adapter_model.bin",
+            "document_writing": "/models/lora_adapters/document_writing/adapter_model.bin",
+            "legal_research": "/models/lora_adapters/legal_research/adapter_model.bin",
+            "data_analysis": "/models/lora_adapters/data_analysis/adapter_model.bin",
+            "review": "/models/lora_adapters/review/adapter_model.bin",
         }
 
+        # LRU cache for loaded LoRA adapters (keep 2-3 most recent)
+        from collections import OrderedDict
+        self.lora_cache = OrderedDict()  # {agent_name: adapter_object}
+        self.max_cache_size = 3
         self.current_lora = None
 
         # Load agent prompts from files
         self.agent_prompts = self._load_agent_prompts()
 
+        # Load orchestrator routing prompt
+        self.orchestrator_prompt = self._load_orchestrator_prompt()
+
     def _load_agent_prompts(self) -> dict:
         """Load agent system prompts from text files"""
         import os
         prompts = {}
-        prompt_dir = "/backend/prompts"
+        prompt_dir = "/backend/prompts/agents"
 
-        for agent_name in ["citizen_support", "document_writing",
+        for agent_name in ["rag_agent", "citizen_support", "document_writing",
                           "legal_research", "data_analysis", "review"]:
             prompt_file = os.path.join(prompt_dir, f"{agent_name}.txt")
             if os.path.exists(prompt_file):
@@ -1026,6 +1075,15 @@ class LlamaCppLLMService(BaseLLMService):
                     prompts[agent_name] = f.read().strip()
 
         return prompts
+
+    def _load_orchestrator_prompt(self) -> str:
+        """Load orchestrator routing prompt with few-shot examples"""
+        import os
+        prompt_file = "/backend/prompts/orchestrator_routing.txt"
+        if os.path.exists(prompt_file):
+            with open(prompt_file, 'r', encoding='utf-8') as f:
+                return f.read().strip()
+        return ""
 
     async def generate(
         self,
@@ -1062,36 +1120,94 @@ class LlamaCppLLMService(BaseLLMService):
 
     def _switch_lora_adapter(self, agent_name: str):
         """
-        Switch LoRA adapter for agent (optional)
+        Switch LoRA adapter with LRU caching (Phase 10: identity LoRA, Phase 14: fine-tuned)
 
-        Note: This is for infrastructure testing only.
-        Dummy adapters used initially, replaced with fine-tuned adapters later.
+        LRU Cache Strategy:
+        - Keep 2-3 most recently used adapters in memory
+        - Evict least recently used when cache full
+        - Target: <3 second adapter load time
         """
-        # Check if LoRA adapter exists for this agent
+        # Check if adapter already in cache (cache hit)
+        if agent_name in self.lora_cache:
+            # Move to end (most recently used)
+            self.lora_cache.move_to_end(agent_name)
+            self.current_lora = agent_name
+            print(f"✓ LoRA cache hit: {agent_name}")
+            return
+
+        # Check if LoRA adapter path exists
         if agent_name not in self.lora_adapters:
             return
 
         lora_path = self.lora_adapters[agent_name]
 
-        # Skip if file doesn't exist (LoRA is optional)
+        # Skip if file doesn't exist (Phase 10 may use identity LoRA)
         import os
         if not os.path.exists(lora_path):
+            print(f"ℹ LoRA adapter not found for {agent_name}, using base model")
             return
 
-        # Unload previous LoRA if any
-        if self.current_lora:
-            # llama.cpp LoRA unloading (if supported)
-            pass
-
-        # Load new LoRA adapter
+        # Cache miss: Load new LoRA adapter
         try:
-            # Note: llama-cpp-python LoRA support may vary by version
-            # Check documentation for exact API
-            # self.model.load_lora(lora_path)
+            # Load LoRA using PEFT (HuggingFace) or llama.cpp API
+            # adapter = load_lora_adapter(lora_path)  # Actual implementation depends on backend
+
+            # Add to cache
+            self.lora_cache[agent_name] = f"LoRA_{agent_name}"  # Placeholder for actual adapter object
+
+            # Evict least recently used if cache full
+            if len(self.lora_cache) > self.max_cache_size:
+                evicted_agent, _ = self.lora_cache.popitem(last=False)
+                print(f"↓ Evicted LoRA from cache: {evicted_agent}")
+
             self.current_lora = agent_name
-            print(f"✓ Loaded LoRA adapter for {agent_name}")
+            print(f"✓ Loaded LoRA adapter for {agent_name} (cache size: {len(self.lora_cache)}/{self.max_cache_size})")
         except Exception as e:
-            print(f"⚠ LoRA loading skipped for {agent_name}: {e}")
+            print(f"⚠ LoRA loading failed for {agent_name}: {e}")
+
+    async def route_query(self, user_query: str) -> dict:
+        """
+        Orchestrator: Route query to direct response or specialized agent
+
+        Returns:
+          {
+            "routing_decision": "direct" | "rag_agent" | "citizen_support" | ...,
+            "confidence": 0.0-1.0
+          }
+        """
+        # Prepare orchestrator prompt with few-shot examples
+        routing_prompt = f"""{self.orchestrator_prompt}
+
+사용자 쿼리: {user_query}
+
+위 쿼리를 분석하여 다음 중 하나로 라우팅하세요:
+- direct: 일반 지식 질문 (특별한 전문성 불필요)
+- rag_agent: 업로드된 문서 검색/분석 필요
+- citizen_support: 민원 응대/시민 질의 응답
+- document_writing: 공문서/보고서 작성
+- legal_research: 법규/조례 검색 및 해석
+- data_analysis: 데이터 분석/통계
+- review: 문서 검토/오류 확인
+
+답변 형식: [routing_decision]
+"""
+
+        # Generate routing decision using base model
+        routing_decision = await self.generate(routing_prompt, max_tokens=50, temperature=0.3)
+        routing_decision = routing_decision.strip().lower()
+
+        # Validate routing decision
+        valid_routes = ["direct", "rag_agent", "citizen_support", "document_writing",
+                       "legal_research", "data_analysis", "review"]
+
+        if routing_decision not in valid_routes:
+            # Fallback to direct response if routing unclear
+            routing_decision = "direct"
+
+        return {
+            "routing_decision": routing_decision,
+            "confidence": 0.8  # Placeholder, could be extracted from LLM output
+        }
 
     def get_agent_prompt(self, agent_name: str) -> str:
         """Get agent system prompt"""
@@ -1173,7 +1289,7 @@ from .agents.review import ReviewAgent
 
 
 class AgentState(TypedDict):
-    """Multi-Agent workflow state"""
+    """Specialized Agent System workflow state"""
     user_query: str
     conversation_history: list
     current_agent: str
@@ -1184,7 +1300,7 @@ class AgentState(TypedDict):
 
 
 class MultiAgentOrchestrator:
-    """LangGraph-based Multi-Agent Orchestrator"""
+    """LangGraph-based Specialized Agent System Orchestrator"""
 
     def __init__(self):
         # Initialize all agents (auto-detect LLM backend)
@@ -1203,7 +1319,7 @@ class MultiAgentOrchestrator:
         self.workflow = self._build_workflow()
 
     def _build_workflow(self) -> StateGraph:
-        """Build LangGraph state machine for multi-agent workflows"""
+        """Build LangGraph state machine for Specialized Agent System workflows"""
         workflow = StateGraph(AgentState)
 
         # Add nodes
@@ -1458,8 +1574,9 @@ class VLLMLLMService(BaseLLMService):
         system_prompt = self.get_agent_prompt(agent_name)
         full_prompt = f"{system_prompt}\n\n사용자: {prompt}\n\n답변:"
 
-        # TODO: Add LoRA support after validation
-        # lora_request = LoRARequest(...)
+        # LoRA support available in Phase 14 (Post-MVP) per FR-071A
+        # Activate only after prompt engineering validation in Phase 10
+        # Reference: .specify/memory/constitution.md Principle IV (Simplicity Over Optimization)
 
         return await self.generate(full_prompt, max_tokens)
 
@@ -1517,42 +1634,48 @@ LLM_BACKEND=llama_cpp  → LLM_BACKEND=vllm
 **LoRA File Structure**:
 ```
 models/
-├── qwen3-4b-instruct-q4_k_m.gguf              # Base model (GGUF)
-└── lora/
-    ├── citizen_support_dummy.gguf              # Phase 10: Dummy
-    ├── citizen_support_v1.gguf                 # Later: Fine-tuned
-    ├── document_writing_dummy.gguf
-    ├── document_writing_v1.gguf
-    └── ...
+├── qwen3-4b-instruct-q4_k_m.gguf              # Base model (GGUF, ~2.5GB)
+└── lora_adapters/                              # Phase 10: identity LoRA, Phase 14: fine-tuned
+    ├── rag_agent/
+    │   ├── adapter_model.bin                   # Phase 10: identity, Phase 14: fine-tuned
+    │   └── adapter_config.json
+    ├── citizen_support/
+    │   ├── adapter_model.bin
+    │   └── adapter_config.json
+    ├── document_writing/
+    ├── legal_research/
+    ├── data_analysis/
+    └── review/
 ```
 
-**LoRA is Optional**: If fine-tuning doesn't improve performance significantly, we can skip it and rely on prompt engineering alone
+**Phase 10 Strategy**: Use identity LoRA (no-op transformation) or random initialization to test infrastructure without actual fine-tuning
+**Phase 14 Strategy**: Collect training data (500-1000 samples/agent) and fine-tune if evaluation shows benefit
 
 ---
 
 ### LoRA Transition Decision Tree
 
-**When to transition from dummy to actual LoRA adapters**:
+**When to transition from Phase 10 (identity LoRA) to Phase 14 (fine-tuned LoRA)**:
 
 ```
-Phase 10 완료 (Multi-Agent with dummy LoRA)
+Phase 10 완료 (Specialized Agent System with identity LoRA + prompt engineering)
     ↓
-SC-021/SC-022 검증 (Routing accuracy ≥85%, Workflow time ≤90s)
+Agent System 검증 (Orchestrator routing, LoRA switching, Tool Library)
     ↓
-    ├─ FAIL → Fix orchestrator/agent logic first (LoRA 전환 연기)
-    └─ PASS → LoRA 전환 평가 시작GIL
+    ├─ FAIL → Fix orchestrator/agent/tool logic first (LoRA 전환 연기)
+    └─ PASS → LoRA 전환 평가 시작
             ↓
         Training data 수집 가능 여부 확인
             ↓
-            ├─ NO (100 examples/agent 미달) → Prompt engineering으로 진행, LoRA 제거
-            └─ YES → Fine-tuning 진행
+            ├─ NO (500 examples/agent 미달) → Prompt engineering으로 진행, LoRA infrastructure 유지 (identity LoRA)
+            └─ YES → Fine-tuning 진행 (Phase 14)
                     ↓
-                Fine-tune 5 agents (LoRA rank 16-32, 100-1000 examples each)
+                Fine-tune 6 agents (LoRA rank 16-32, 500-1000 examples each, total 3000-6000 samples)
                     ↓
-                A/B Test: Prompt-only vs Prompt+LoRA (50 queries per agent)
+                A/B Test: Prompt-only vs Prompt+LoRA (50 queries per agent, 300 total)
                     ↓
                     ├─ Improvement <10% → LoRA 제거, Prompt-only 유지
-                    ├─ Improvement 10-20% → Cost-benefit 분석 (LoRA 유지 고려)
+                    ├─ Improvement 10-20% → Cost-benefit 분석 (메모리/성능 tradeoff)
                     └─ Improvement >20% → LoRA 유지, production 배포
 ```
 
@@ -1586,10 +1709,10 @@ huggingface-cli download \
   qwen2.5-1.5b-instruct.Q4_K_M.gguf \
   --local-dir ./models/
 
-# Install llama-cpp-python offline
-pip download llama-cpp-python -d ./offline_packages/
+# Install llama.cpp-python offline
+pip download llama.cpp-python -d ./offline_packages/
 # Transfer to air-gapped server
-pip install --no-index --find-links=./offline_packages/ llama-cpp-python
+pip install --no-index --find-links=./offline_packages/ llama.cpp-python
 ```
 
 **Later (vLLM)**:
@@ -1630,9 +1753,9 @@ def create_dummy_gguf_lora(output_path: str, rank: int = 16):
         f.write(b'DUMMY_LORA')  # Placeholder
     print(f"Created dummy LoRA: {output_path}")
 
-# Create dummy adapters for all 5 agents
-for agent in ["citizen_support", "document_writing", "legal_research",
-              "data_analysis", "review"]:
+# Create dummy adapters for all 6 agents
+for agent in ["rag_agent", "citizen_support", "document_writing",
+              "legal_research", "data_analysis", "review"]:
     create_dummy_gguf_lora(f"/models/lora/{agent}_dummy.gguf")
 ```
 
@@ -1642,12 +1765,1567 @@ for agent in ["citizen_support", "document_writing", "legal_research",
 
 ### Success Criteria Update
 
-**Phase 10 (Multi-Agent with llama.cpp)**:
-- **SC-021**: Agent routing accuracy ≥85% on test dataset of 50 queries
-- **SC-022**: Sequential 3-agent workflow completes within 90 seconds
-- **SC-023** (Optional): LoRA dummy adapters load successfully without errors
+**Phase 10 (Specialized Agent System with llama.cpp)**:
+- **SC-021**: Orchestrator routing accuracy ≥85% on test dataset of 50 queries (7 routing options)
+- **SC-022**: Sequential specialized agent workflow (3 agents) completes within 90 seconds
+- **SC-023**: LoRA identity adapters load successfully for all 6 agents without errors
+- **SC-024**: LoRA adapter switching (LRU cache) completes in <3 seconds per swap
 
 **Later (After vLLM deployment)**:
-- **SC-024**: Multi-user concurrent access (10-16 users) with <5 second response time
-- **SC-025**: vLLM PagedAttention reduces memory usage by 30% vs naive implementation
+- **SC-025**: Multi-user concurrent access (10-16 users) with <5 second response time
+- **SC-026**: vLLM PagedAttention reduces memory usage by 30% vs naive implementation
 
+---
+
+## Security Hardening (Feature 002 Patch)
+
+**Priority**: P0 (Blocking) - Must be completed before production deployment
+**Requirements**: FR-110, FR-111, FR-112, FR-113, FR-114
+**Success Criteria**: SC-028, SC-029, SC-030, SC-031, SC-032
+
+### Overview
+
+This section addresses 5 critical security and operational issues discovered during Feature 002 code review (2025-11-04):
+
+1. **CSRF Protection Missing (FR-110)** - CRITICAL
+   Cookie-based authentication without CSRF validation allows cross-site attacks on admin functions
+
+2. **Middleware Not Applied (FR-111)** - CRITICAL
+   RateLimitMiddleware, ResourceLimitMiddleware, PerformanceMiddleware exist but not registered in main.py
+
+3. **Session Token Exposure (FR-112)** - HIGH
+   secure=False allows HTTP transmission, no environment-based configuration, tokens may appear in logs
+
+4. **DB Metric Inconsistency (FR-113)** - MEDIUM
+   Metrics collected sequentially cause timestamp drift, no transaction isolation
+
+5. **Korean Encoding Issues (FR-114)** - MEDIUM
+   UTF-8 BOM causes parsing errors on Linux/Mac, no OS detection for encoding
+
+### Architecture Changes
+
+#### 1. CSRF Protection (FR-110)
+
+**New Middleware**: `backend/app/middleware/csrf_middleware.py`
+
+```python
+from fastapi import Request, HTTPException, status
+from starlette.middleware.base import BaseHTTPMiddleware
+import secrets
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    """CSRF protection for state-changing requests"""
+
+    CSRF_EXEMPT_PATHS = [
+        "/api/v1/auth/login",
+        "/api/v1/setup",
+        "/health",
+        "/api/v1/health"
+    ]
+
+    async def dispatch(self, request: Request, call_next):
+        # GET, HEAD, OPTIONS bypass CSRF check
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            response = await call_next(request)
+
+            # Generate and set CSRF token for authenticated users
+            if request.url.path not in self.CSRF_EXEMPT_PATHS:
+                csrf_token = secrets.token_urlsafe(32)
+                response.set_cookie(
+                    key="csrf_token",
+                    value=csrf_token,
+                    httponly=False,  # JS needs to read this
+                    secure=True,     # HTTPS only
+                    samesite="strict",
+                    max_age=1800     # 30 minutes
+                )
+            return response
+
+        # POST, PUT, DELETE, PATCH require CSRF validation
+        if request.url.path in self.CSRF_EXEMPT_PATHS:
+            return await call_next(request)
+
+        csrf_cookie = request.cookies.get("csrf_token")
+        csrf_header = request.headers.get("X-CSRF-Token")
+
+        if not csrf_cookie or csrf_cookie != csrf_header:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="CSRF 토큰이 유효하지 않습니다. 페이지를 새로고침 후 다시 시도해주세요."
+            )
+
+        return await call_next(request)
+```
+
+**Frontend Integration**: `frontend/src/lib/api.ts`
+
+```typescript
+// Axios interceptor to include CSRF token
+import Cookies from 'js-cookie';
+
+api.interceptors.request.use((config) => {
+  // Include CSRF token for state-changing requests
+  if (['post', 'put', 'delete', 'patch'].includes(config.method?.toLowerCase() || '')) {
+    const csrfToken = Cookies.get('csrf_token');
+    if (csrfToken) {
+      config.headers['X-CSRF-Token'] = csrfToken;
+    }
+  }
+  return config;
+});
+```
+
+#### 2. Middleware Registration (FR-111)
+
+**Update**: `backend/app/main.py`
+
+```python
+from app.middleware.csrf_middleware import CSRFMiddleware
+from app.middleware.rate_limit_middleware import RateLimitMiddleware
+from app.middleware.resource_limit_middleware import ResourceLimitMiddleware
+from app.middleware.performance_middleware import PerformanceMiddleware
+from app.middleware.metrics import MetricsMiddleware
+
+# CRITICAL: Middleware order matters!
+# Applied in reverse order (last added = first executed)
+app.add_middleware(CORSMiddleware, ...)           # 6th - outermost
+app.add_middleware(CSRFMiddleware)                 # 5th
+app.add_middleware(RateLimitMiddleware,            # 4th
+                   requests_per_minute=60)
+app.add_middleware(ResourceLimitMiddleware,        # 3rd
+                   max_react_sessions=10,
+                   max_agent_workflows=5)
+app.add_middleware(PerformanceMiddleware)          # 2nd
+app.add_middleware(MetricsMiddleware)              # 1st - innermost
+```
+
+**Execution Order** (request flow):
+1. CORS → 2. CSRF → 3. Rate Limit → 4. Resource Limit → 5. Performance → 6. Metrics → **Route Handler**
+
+#### 3. Session Token Security (FR-112)
+
+**Environment Configuration**: `backend/app/core/config.py`
+
+```python
+class Settings(BaseSettings):
+    ENVIRONMENT: str = Field(default="development", env="ENVIRONMENT")
+
+    @property
+    def cookie_secure(self) -> bool:
+        """HTTPS-only cookies in production"""
+        return self.ENVIRONMENT == "production"
+
+    @property
+    def cookie_samesite(self) -> str:
+        """Strict in production, lax in development"""
+        return "strict" if self.ENVIRONMENT == "production" else "lax"
+
+settings = Settings()
+```
+
+**Updated Cookie Settings**: `backend/app/api/v1/auth.py`
+
+```python
+response.set_cookie(
+    key="session_token",
+    value=session.session_token,
+    httponly=True,
+    secure=settings.cookie_secure,      # ✅ Environment-based
+    samesite=settings.cookie_samesite,  # ✅ Environment-based
+    max_age=1800,                        # ✅ 30 minutes explicit
+)
+```
+
+**Logging Filter**: `backend/app/core/logging.py`
+
+```python
+import logging
+import re
+
+class SensitiveDataFilter(logging.Filter):
+    """Mask sensitive data in logs"""
+
+    PATTERNS = [
+        # Session tokens
+        (re.compile(r'(session_token["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_-]+)'),
+         r'\1***REDACTED***'),
+
+        # Bearer tokens (JWT)
+        (re.compile(r'(Bearer\s+)([A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+)'),
+         r'\1***REDACTED***'),
+
+        # Passwords
+        (re.compile(r'(password["\']?\s*[:=]\s*["\']?)([^"\']+)'),
+         r'\1***REDACTED***'),
+    ]
+
+    def filter(self, record):
+        if isinstance(record.msg, str):
+            for pattern, replacement in self.PATTERNS:
+                record.msg = pattern.sub(replacement, record.msg)
+        return True
+
+# Apply to all handlers
+for handler in logging.root.handlers:
+    handler.addFilter(SensitiveDataFilter())
+```
+
+#### 4. Metric Collection Consistency (FR-113)
+
+**Refactored**: `backend/app/services/metrics_collector.py`
+
+```python
+async def collect_all_metrics(self, granularity: str = "hourly") -> dict:
+    """Collect all metrics in single transaction for consistency"""
+    collected_at = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    results = {}
+
+    # ✅ Single transaction for all metrics
+    async with self.db.begin():
+        logger.debug(f"🔄 Starting metric collection transaction (granularity={granularity})")
+
+        for metric_type in MetricType:
+            try:
+                value = await self._collect_metric(metric_type)
+
+                snapshot = MetricSnapshot(
+                    metric_type=metric_type.value,
+                    value=value,
+                    granularity=granularity,
+                    collected_at=collected_at,  # ✅ Identical timestamp
+                    retry_count=0
+                )
+                self.db.add(snapshot)
+                results[metric_type.value] = value
+
+            except Exception as e:
+                logger.error(f"❌ Metric collection failed: {metric_type.value} - {e}")
+                # Record failure but don't rollback transaction
+                await self._record_collection_failure(
+                    metric_type, collected_at, granularity, str(e)
+                )
+                results[metric_type.value] = None
+
+        # ✅ Commit all successful metrics at once
+        await self.db.commit()
+        logger.debug(f"✅ Metric collection transaction committed")
+
+    return results
+```
+
+**Database Configuration**: `backend/app/core/database.py`
+
+```python
+from sqlalchemy import create_engine
+
+engine = create_engine(
+    DATABASE_URL,
+    isolation_level="READ COMMITTED",  # ✅ Explicit isolation
+    pool_pre_ping=True,
+    pool_recycle=3600
+)
+```
+
+#### 5. Korean Encoding Compatibility (FR-114)
+
+**OS Detection**: `backend/app/api/v1/metrics.py`
+
+```python
+@router.post("/export", ...)
+async def export_metrics(
+    request: ExportRequest,
+    user_agent: str = Header(None),  # ✅ Detect client OS
+    db: AsyncSession = Depends(get_db),
+    ...
+):
+    # Windows clients need BOM for Excel
+    is_windows = user_agent and "Windows" in user_agent
+
+    if request.format == 'csv':
+        file_data, downsampled = export_service.export_to_csv(
+            snapshots=all_snapshots,
+            use_bom=is_windows  # ✅ Conditional BOM
+        )
+```
+
+**Updated Export Service**: `backend/app/services/export_service.py`
+
+```python
+def export_to_csv(
+    self,
+    snapshots: list[MetricSnapshot],
+    metric_type: str,
+    granularity: str,
+    use_bom: bool = False,  # ✅ Conditional BOM parameter
+    include_metadata: bool = True
+) -> tuple[bytes, bool]:
+    """Export with OS-specific encoding"""
+
+    # ... data preparation ...
+
+    # ✅ Choose encoding based on client OS
+    encoding = 'utf-8-sig' if use_bom else 'utf-8'
+
+    csv_buffer = io.StringIO()
+    csv_buffer.write(metadata)
+    df.to_csv(csv_buffer, index=False, encoding=encoding)
+
+    csv_data = csv_buffer.getvalue().encode(encoding)
+
+    return csv_data, downsampled
+```
+
+**Frontend Fallback**: `frontend/src/components/admin/MetricsExport.tsx`
+
+```typescript
+async function downloadCSV(url: string, filename: string) {
+  const response = await fetch(url);
+  let blob = await response.blob();
+
+  // ✅ Client-side BOM injection as fallback
+  if (navigator.platform.includes('Win')) {
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    blob = new Blob([bom, blob], { type: 'text/csv;charset=utf-8;' });
+  }
+
+  // Trigger download
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+}
+```
+
+### Testing Strategy
+
+#### SC-028: CSRF Protection Validation
+
+**Manual Tests**:
+1. POST request without X-CSRF-Token header → expect 403
+2. POST request with mismatched token (cookie ≠ header) → expect 403
+3. Login endpoint without CSRF token → expect 200 (exempt)
+4. Setup endpoint without CSRF token → expect 200 (exempt)
+5. Authenticated GET request → verify csrf_token cookie set
+
+**Automated Test** (`backend/tests/test_csrf.py`):
+```python
+def test_csrf_blocks_invalid_requests(client):
+    # Missing header
+    response = client.post("/api/v1/admin/users", json={...})
+    assert response.status_code == 403
+
+    # Mismatched tokens
+    client.cookies.set("csrf_token", "valid-token")
+    response = client.post(
+        "/api/v1/admin/users",
+        json={...},
+        headers={"X-CSRF-Token": "wrong-token"}
+    )
+    assert response.status_code == 403
+```
+
+#### SC-029: Middleware Enforcement
+
+**Manual Tests**:
+1. Send 61 requests in 1 minute → 61st returns 429
+2. Start 11 concurrent ReAct sessions → 11th returns 503
+3. Check response headers for X-RateLimit-* values
+4. Verify slow endpoints (>1s) logged in performance metrics
+
+**Load Test Script** (`scripts/test_rate_limit.sh`):
+```bash
+#!/bin/bash
+for i in {1..61}; do
+  curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/api/v1/health &
+done
+wait
+# Expected: 60x "200", 1x "429"
+```
+
+#### SC-030: Session Token Security
+
+**Configuration Tests**:
+```python
+def test_production_cookie_security():
+    os.environ['ENVIRONMENT'] = 'production'
+    settings = Settings()
+    assert settings.cookie_secure == True
+    assert settings.cookie_samesite == "strict"
+
+def test_development_cookie_permissive():
+    os.environ['ENVIRONMENT'] = 'development'
+    settings = Settings()
+    assert settings.cookie_secure == False
+    assert settings.cookie_samesite == "lax"
+```
+
+**Log Masking Test**:
+```python
+def test_sensitive_data_masked_in_logs(caplog):
+    logger.info("session_token=abc123xyz")
+    logger.info("Bearer eyJhbGciOiJIUzI1NiIs.payload.signature")
+    logger.info("password='secret123'")
+
+    assert "abc123xyz" not in caplog.text
+    assert "***REDACTED***" in caplog.text
+    assert "secret123" not in caplog.text
+```
+
+#### SC-031: Metric Transaction Consistency
+
+**Database Test**:
+```python
+async def test_metrics_same_timestamp():
+    collector = MetricsCollector(db)
+    await collector.collect_all_metrics("hourly")
+
+    # Query all metrics from last collection
+    snapshots = await db.execute(
+        select(MetricSnapshot)
+        .order_by(MetricSnapshot.collected_at.desc())
+        .limit(6)
+    )
+    snapshots = snapshots.scalars().all()
+
+    # All timestamps must be identical
+    timestamps = [s.collected_at for s in snapshots]
+    assert len(set(timestamps)) == 1, "Timestamps must be identical"
+
+    # Verify isolation level
+    result = await db.execute(text("SHOW transaction_isolation"))
+    assert result.scalar() == "read committed"
+```
+
+#### SC-032: Korean Encoding Compatibility
+
+**Platform Tests**:
+```python
+def test_windows_bom_detection():
+    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    is_windows = "Windows" in user_agent
+    assert is_windows == True
+
+def test_linux_no_bom():
+    user_agent = "Mozilla/5.0 (X11; Linux x86_64)"
+    is_windows = "Windows" in user_agent
+    assert is_windows == False
+```
+
+**CSV Validation** (manual):
+1. Export CSV on Windows → Open in Excel → No encoding dialog
+2. Export CSV on Linux → `pandas.read_csv()` → Check `df.columns[0]` has no '\ufeff'
+3. Export CSV → Open in LibreOffice Calc → Korean displays correctly
+
+### Deployment Checklist
+
+**Before Production**:
+- [ ] Set `ENVIRONMENT=production` in `.env`
+- [ ] Verify HTTPS certificate installed
+- [ ] Test CSRF protection on all admin endpoints
+- [ ] Run load test to confirm rate limiting works
+- [ ] Check logs contain no plaintext tokens/passwords
+- [ ] Verify metric collection transaction consistency
+- [ ] Test CSV export on Windows/Linux clients
+
+**Post-Deployment Monitoring**:
+- [ ] Monitor 403 errors (potential CSRF issues)
+- [ ] Monitor 429 errors (rate limit effectiveness)
+- [ ] Monitor 503 errors (resource limit effectiveness)
+- [ ] Check metric collection failure rate (<1% per SC-022)
+- [ ] Verify CSV encoding complaints from users (should be zero)
+
+### Dependencies
+
+**New Python Packages** (already in requirements.txt):
+- No new dependencies required (uses existing FastAPI, secrets, re, logging)
+
+**Configuration Files**:
+- `.env`: Add `ENVIRONMENT=production` for production deployment
+- `backend/app/middleware/csrf_middleware.py`: New file
+- `backend/app/core/logging.py`: Enhanced with SensitiveDataFilter
+
+### Success Criteria Summary
+
+- **SC-028**: CSRF blocks 100% of unauthorized requests ✅
+- **SC-029**: Rate/resource limits prevent DoS ✅
+- **SC-030**: Tokens masked in logs, secure cookies in prod ✅
+- **SC-031**: Metrics have identical timestamps (<5ms variance) ✅
+- **SC-032**: Korean CSV works on Windows/Linux (>95% UA accuracy) ✅
+
+---
+
+**Implementation Priority**: Complete FR-110 and FR-111 (CRITICAL) before production. FR-112, FR-113, FR-114 can follow in maintenance release.
+
+## Phase 11.7: Quality & Operational Fixes (FR-115 ~ FR-122)
+
+### Overview
+
+This phase addresses critical quality issues and operational inconsistencies discovered during post-implementation review. Issues are prioritized by severity: CRITICAL (immediate user/data impact), HIGH (monitoring/security gaps), MEDIUM (technical debt/test alignment).
+
+**Dependency**: Requires Phase 11.6 (Security Hardening) completion
+
+### Implementation Approach
+
+#### FR-115: Korean Encoding Fix (CRITICAL)
+
+**Problem**: `frontend/src/lib/errorMessages.ts` contains corrupted Korean text (mojibake ������), causing unreadable error messages to users.
+
+**Root Cause**: File saved with incorrect encoding (likely Windows-1252 or ISO-8859-1) instead of UTF-8.
+
+**Solution**:
+1. **Immediate fix**: Rewrite `errorMessages.ts` with correct UTF-8 encoding
+2. **Prevention**: Add pre-commit hook to validate UTF-8 encoding
+3. **Testing**: Regex validation for Korean Unicode range
+
+**Implementation**:
+```typescript
+// frontend/src/lib/errorMessages.ts (CORRECTED VERSION)
+export const errorMessages = {
+  // Authentication errors
+  INVALID_CREDENTIALS: "사용자 이름 또는 비밀번호가 올바르지 않습니다.",
+  SESSION_EXPIRED: "세션이 만료되었습니다. 다시 로그인해주세요.",
+  UNAUTHORIZED: "권한이 없습니다.",
+
+  // Network errors
+  NETWORK_ERROR: "네트워크 연결에 실패했습니다. 인터넷 연결을 확인해주세요.",
+  SERVER_ERROR: "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+
+  // ... (complete all error messages with proper Korean)
+}
+
+// Validation test
+function validateKoreanText(text: string): boolean {
+  const koreanPattern = /^[\uAC00-\uD7A3\s\w\d.,!?'"()]+$/
+  return koreanPattern.test(text)
+}
+```
+
+**Pre-commit Hook** (`.git/hooks/pre-commit`):
+```bash
+#!/bin/bash
+# Validate UTF-8 encoding in TypeScript files
+for file in $(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx)$'); do
+  if ! iconv -f UTF-8 -t UTF-8 "$file" > /dev/null 2>&1; then
+    echo "ERROR: $file is not valid UTF-8"
+    exit 1
+  fi
+done
+```
+
+**Testing**:
+```bash
+# Manual validation
+cd frontend/src/lib
+file errorMessages.ts  # Should show: "UTF-8 Unicode text"
+iconv -f UTF-8 -t UTF-8 errorMessages.ts > /dev/null && echo "Valid UTF-8"
+
+# Automated test (add to tests/korean_quality_test.py)
+def test_error_messages_encoding():
+    import re
+    from frontend.src.lib import errorMessages  # Assuming TS compiled to JS
+    korean_pattern = re.compile(r'^[\uAC00-\uD7A3\s\w\d.,!?\'"()]+$')
+
+    for key, msg in errorMessages.items():
+        assert korean_pattern.match(msg), f"{key} contains non-Korean characters: {msg}"
+```
+
+#### FR-116: Active User Metric Fix (CRITICAL)
+
+**Problem**: `active_users` metric calculated incorrectly using `created_at >= now - 30m` instead of `expires_at > now`, mixing timezone-naive/aware datetimes.
+
+**Location**: `backend/app/core/business_metrics.py:31`
+
+**Solution**:
+```python
+# BEFORE (INCORRECT)
+async def get_active_users_count(db: AsyncSession) -> int:
+    now = datetime.utcnow()  # ❌ Deprecated, timezone-naive
+    cutoff = now - timedelta(minutes=30)
+    stmt = select(func.count(func.distinct(Session.user_id))).where(
+        Session.created_at >= cutoff  # ❌ Wrong logic
+    )
+    ...
+
+# AFTER (CORRECT)
+async def get_active_users_count(db: AsyncSession) -> int:
+    now = datetime.now(timezone.utc)  # ✅ Timezone-aware
+    stmt = select(func.count(func.distinct(Session.user_id))).where(
+        Session.expires_at > now  # ✅ Correct: non-expired sessions
+    )
+    result = await db.execute(stmt)
+    count = result.scalar() or 0
+
+    logger.debug(f"Active users count: {count} (current time: {now.isoformat()})")
+    return count
+```
+
+**Verification**:
+```python
+# Integration test
+async def test_active_users_metric_accuracy():
+    # Create 2 active sessions (expire in future)
+    session1 = create_session(user_id=1, expires_at=now + timedelta(minutes=10))
+    session2 = create_session(user_id=2, expires_at=now + timedelta(minutes=20))
+
+    # Create 1 expired session
+    session3 = create_session(user_id=3, expires_at=now - timedelta(minutes=5))
+
+    # Metric should count only non-expired
+    metric = await get_active_users_count(db)
+    assert metric == 2, f"Expected 2 active users, got {metric}"
+
+    # Verify timezone-aware
+    assert metric.collected_at.tzinfo is not None
+```
+
+#### FR-117: Async Query Metrics (HIGH)
+
+**Problem**: Event listeners bound only to `sync_engine`, missing async queries from application.
+
+**Solution**:
+```python
+# backend/app/core/database.py
+
+# BEFORE: Only sync_engine events captured
+@event.listens_for(sync_engine, "before_cursor_execute")
+def before_cursor_execute(...):
+    ...
+
+# AFTER: Capture both sync and async
+@event.listens_for(Engine, "before_cursor_execute")  # Universal listener
+def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    context._query_start_time = time.time()
+
+@event.listens_for(Engine, "after_cursor_execute")
+def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    duration = time.time() - context._query_start_time
+    query_type = _get_query_type(statement)
+
+    db_query_duration.labels(query_type=query_type).observe(duration)
+    db_queries_total.labels(query_type=query_type, status='success').inc()
+
+# Update pool metrics to use async engine
+def update_pool_metrics():
+    try:
+        # Get pool from async engine's sync_engine
+        pool = async_engine.sync_engine.pool
+        db_connections_active.set(pool.checkedout())
+    except Exception as e:
+        logger.warning(f"Failed to update pool metrics: {e}")
+```
+
+**Validation**:
+```bash
+# Make API requests then check Prometheus
+curl http://localhost:8000/api/v1/auth/me  # Trigger async query
+curl http://localhost:8000/metrics | grep db_queries_total
+
+# Expected output:
+# db_queries_total{query_type="select",status="success"} 42.0
+# (should be non-zero if async queries captured)
+```
+
+#### FR-118: Admin Privilege Model (HIGH)
+
+**Problem**: Dual privilege models (`User.is_admin` + `Admin` table) with inconsistent usage.
+
+**Decision**: Use `User.is_admin` as single source of truth (simpler, already implemented).
+
+**Migration Path**:
+```python
+# Option A: Remove Admin table (RECOMMENDED)
+# backend/alembic/versions/20251104_remove_admin_table.py
+
+def upgrade():
+    # 1. Ensure all users with Admin records have is_admin=True
+    op.execute("""
+        UPDATE users
+        SET is_admin = TRUE
+        WHERE id IN (SELECT user_id FROM admins)
+    """)
+
+    # 2. Drop Admin table
+    op.drop_table('admins')
+
+def downgrade():
+    # Recreate Admin table
+    op.create_table('admins', ...)
+    op.execute("""
+        INSERT INTO admins (user_id, created_at)
+        SELECT id, created_at FROM users WHERE is_admin = TRUE
+    """)
+```
+
+**Update Dependency**:
+```python
+# backend/app/api/deps.py (NO CHANGE NEEDED - already uses is_admin)
+
+async def get_current_admin(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    if not current_user.is_admin:  # ✅ Already correct
+        raise HTTPException(
+            status_code=403,
+            detail="관리자 권한이 필요합니다."
+        )
+    return current_user
+```
+
+**Documentation**:
+```markdown
+# docs/admin/user-management.md
+
+## Administrator Management
+
+Administrators are identified by the `is_admin` flag on the User model.
+
+### Creating Administrators
+1. Via setup wizard (first admin only, FR-034)
+2. Via direct database modification (additional admins, FR-033):
+   ```sql
+   UPDATE users SET is_admin = TRUE WHERE username = 'john.doe';
+   ```
+
+### Removing Admin Privileges
+```sql
+UPDATE users SET is_admin = FALSE WHERE username = 'john.doe';
+```
+
+**Note**: Users cannot remove their own admin privileges (enforced at application level).
+```
+
+#### FR-119: CSRF Token Optimization (MEDIUM)
+
+**Problem**: CSRF token regenerated on every GET request, causing unnecessary rotation.
+
+**Solution**:
+```python
+# backend/app/middleware/csrf_middleware.py
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # GET requests: Only generate token if missing/expired
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            response = await call_next(request)
+
+            if request.url.path not in self.CSRF_EXEMPT_PATHS:
+                # Check if token already exists
+                existing_token = request.cookies.get("csrf_token")
+
+                if not existing_token:  # Only generate if missing
+                    csrf_token = secrets.token_urlsafe(32)
+                    response.set_cookie(
+                        key="csrf_token",
+                        value=csrf_token,
+                        httponly=False,
+                        secure=settings.cookie_secure,
+                        samesite=settings.cookie_samesite,
+                        max_age=settings.SESSION_TIMEOUT_MINUTES * 60
+                    )
+                    logger.debug(f"CSRF token generated for new session")
+
+            return response
+
+        # POST/PUT/DELETE/PATCH: Validate (unchanged)
+        ...
+```
+
+**Alternative Approach** (generate on login only):
+```python
+# backend/app/api/v1/auth.py
+
+@router.post("/login")
+async def login(...):
+    # ... authenticate user ...
+
+    # Generate CSRF token on login
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie("csrf_token", csrf_token, ...)
+
+    # Also set session cookie
+    response.set_cookie("session_token", session.session_token, ...)
+
+    return LoginResponse(...)
+```
+
+#### FR-120: CSRF Exemption Patterns (MEDIUM)
+
+**Solution**:
+```python
+# backend/app/middleware/csrf_middleware.py
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    # Support both exact and prefix matching
+    CSRF_EXEMPT_PATTERNS = [
+        ("/api/v1/auth/login", "exact"),
+        ("/api/v1/setup", "prefix"),  # Matches /api/v1/setup/*
+        ("/health", "exact"),
+        ("/api/v1/health", "exact"),
+        ("/docs", "exact"),
+        ("/openapi.json", "exact"),
+        ("/metrics", "exact"),  # Prometheus
+    ]
+
+    def _is_exempt(self, path: str) -> bool:
+        """Check if path is exempt from CSRF validation"""
+        for pattern, match_type in self.CSRF_EXEMPT_PATTERNS:
+            if match_type == "exact":
+                if path == pattern:
+                    return True
+            elif match_type == "prefix":
+                if path.startswith(pattern):
+                    return True
+        return False
+
+    async def dispatch(self, request: Request, call_next):
+        # Use helper for exemption check
+        if self._is_exempt(request.url.path):
+            logger.debug(f"CSRF exempt path: {request.url.path}")
+            return await call_next(request)
+        ...
+```
+
+#### FR-121: Security Test Alignment (MEDIUM)
+
+**Solution**:
+```python
+# tests/security_audit.py
+
+# BEFORE (INCORRECT - expects passlib)
+def test_password_hashing():
+    from passlib.context import CryptContext  # ❌ Not used
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    ...
+
+# AFTER (CORRECT - matches actual implementation)
+def test_password_hashing():
+    import bcrypt  # ✅ Matches backend/app/core/security.py
+
+    password = "testpassword123"
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))
+
+    # Verify correct password
+    assert bcrypt.checkpw(password.encode(), hashed)
+
+    # Verify wrong password
+    assert not bcrypt.checkpw("wrongpass".encode(), hashed)
+
+    # Verify rounds = 12 (FR-029)
+    assert hashed.startswith(b'$2b$12$')
+
+def test_login_endpoint_uses_bcrypt():
+    """Integration test: actual endpoint uses correct hashing"""
+    # Create user with known password
+    create_user(username="testuser", password="password123")
+
+    # Login should work
+    response = client.post("/api/v1/auth/login", json={
+        "username": "testuser",
+        "password": "password123"
+    })
+    assert response.status_code == 200
+```
+
+#### FR-122: Data Isolation (MEDIUM)
+
+**Decision**: Use Option B (document existing isolation at dependency level).
+
+**Rationale**: Data isolation already enforced via `get_current_user()` dependency in all routes. No middleware needed.
+
+**Documentation**:
+```python
+# backend/app/api/deps.py (existing code, add comments)
+
+async def get_current_user(
+    session_token: str = Cookie(None),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """
+    Extract current user from session token.
+
+    Data Isolation (FR-032):
+    All API routes using this dependency automatically enforce user_id filtering
+    via query filters or ownership validation. Middleware not required.
+
+    Examples:
+    - GET /conversations/{id}: Route validates conversation.user_id == current_user.id
+    - DELETE /documents/{id}: Route validates document.user_id == current_user.id
+    """
+    if not session_token:
+        raise HTTPException(status_code=401, detail="인증이 필요합니다.")
+
+    session = await get_session(db, session_token)
+    if not session or session.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=401, detail="세션이 만료되었습니다.")
+
+    user = await get_user_by_id(db, session.user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="사용자를 찾을 수 없습니다.")
+
+    return user
+```
+
+**Update Test Expectations**:
+```python
+# tests/security_audit.py
+
+def test_data_isolation_via_dependencies():
+    """
+    Verify data isolation at API dependency level (not middleware).
+    FR-032, FR-122 Option B.
+    """
+    # Create two users
+    user1 = create_user("user1")
+    user2 = create_user("user2")
+
+    # User1 creates conversation
+    conv = create_conversation(user1)
+
+    # User2 attempts to access User1's conversation
+    response = client.get(
+        f"/api/v1/conversations/{conv.id}",
+        cookies={"session_token": user2.session_token}
+    )
+
+    # Should return 403 Forbidden
+    assert response.status_code == 403
+    assert "권한이 없습니다" in response.json()["detail"]
+```
+
+### Testing Strategy
+
+#### CRITICAL Tests (must pass before merge)
+
+1. **FR-115**: Korean encoding validation
+   ```bash
+   npm run test:encoding  # Validates errorMessages.ts
+   git diff frontend/src/lib/errorMessages.ts  # Manual review
+   ```
+
+2. **FR-116**: Active users metric accuracy
+   ```bash
+   pytest backend/tests/test_metrics_accuracy.py -v
+   ```
+
+#### HIGH Tests (required for production)
+
+3. **FR-117**: Async query metrics
+   ```bash
+   # Start server, make requests, check metrics
+   curl http://localhost:8000/api/v1/conversations
+   curl http://localhost:8000/metrics | grep db_queries_total
+   ```
+
+4. **FR-118**: Admin privilege consistency
+   ```bash
+   pytest backend/tests/test_admin_auth.py -v
+   ```
+
+#### MEDIUM Tests (recommended)
+
+5-8. **FR-119 ~ FR-122**:
+   ```bash
+   pytest backend/tests/test_security_enhancements.py -v
+   ```
+
+### Deployment Checklist
+
+**Pre-merge**:
+- [ ] All CRITICAL tests passing
+- [ ] Korean error messages display correctly in browser
+- [ ] Active users metric matches database query
+- [ ] Prometheus shows non-zero async query counts
+- [ ] Admin model documented in user-management.md
+
+**Post-merge monitoring**:
+- [ ] No mojibake reports from users
+- [ ] Metrics dashboard shows accurate counts
+- [ ] Prometheus query metrics increasing
+- [ ] No 403 errors on exempt paths
+
+### Success Criteria
+
+- **SC-033**: Korean text displays correctly ✅
+- **SC-034**: Active users = non-expired sessions ✅
+- **SC-035**: Async queries in Prometheus ✅
+- **SC-036**: Admin privilege checks consistent ✅
+- **SC-037**: CSRF tokens stable within session ✅
+- **SC-038**: Common paths exempt from CSRF ✅
+- **SC-039**: Security tests match implementation ✅
+- **SC-040**: Data isolation verified ✅
+
+---
+
+**Implementation Priority**:
+1. FR-115, FR-116 (CRITICAL) - immediate fix
+2. FR-117, FR-118 (HIGH) - before production
+3. FR-119 ~ FR-122 (MEDIUM) - maintenance release acceptable
+
+---
+
+## Phase 11.8: Multiprocess Deployment & Redis Integration (FR-123 ~ FR-128)
+
+**Purpose**: Enable production-grade horizontal scalability with multiprocess deployment and distributed state management
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Nginx (Optional)                        │
+│                   Load Balancer / Proxy                      │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+┌────────────────────────┴────────────────────────────────────┐
+│                    Gunicorn Master Process                   │
+│                   (preload_app=True)                         │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │           LLM Model (Qwen3-4B, 2.5GB)                │  │
+│  │         Loaded once, Copy-on-Write shared            │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────┐  │
+│  │ Worker 1   │ │ Worker 2   │ │ Worker 3   │ │Worker 4│  │
+│  │ Uvicorn    │ │ Uvicorn    │ │ Uvicorn    │ │Uvicorn │  │
+│  │ (+0.5GB)   │ │ (+0.5GB)   │ │ (+0.5GB)   │ │(+0.5GB)│  │
+│  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └────┬───┘  │
+└────────┼──────────────┼──────────────┼──────────────┼──────┘
+         │              │              │              │
+         └──────────────┴──────────────┴──────────────┘
+                         │
+         ┌───────────────┴───────────────┐
+         │                               │
+    ┌────▼─────┐                   ┌────▼────┐
+    │PostgreSQL│                   │  Redis  │
+    │(Session) │                   │ (State) │
+    └──────────┘                   └─────────┘
+```
+
+**Key Design Decisions**:
+1. **Gunicorn + Uvicorn Workers**: Industry-standard multiprocess architecture for FastAPI
+2. **Copy-on-Write Memory Sharing**: preload_app=True loads LLM model once, shared across workers
+3. **Redis for Distributed State**: Rate limiting, LLM cache, future session store
+4. **Graceful Degradation**: System works without Redis (fallback to in-memory)
+
+### Component Designs
+
+#### 1. Gunicorn Configuration (FR-123)
+
+**File**: `backend/gunicorn_conf.py`
+
+```python
+"""
+Gunicorn configuration for multiprocess deployment.
+
+Worker formula: (2 * cpu_count) + 1
+Default: 4 workers for production
+"""
+import multiprocessing
+import os
+
+# Server socket
+bind = "0.0.0.0:8000"
+backlog = 2048
+
+# Worker processes
+workers = int(os.getenv("GUNICORN_WORKERS", (2 * multiprocessing.cpu_count()) + 1))
+worker_class = "uvicorn.workers.UvicornWorker"
+worker_connections = 1000
+timeout = 120  # 2 minutes for LLM inference
+keepalive = 5
+
+# Worker lifecycle
+max_requests = 1000  # Recycle worker after 1000 requests (prevent memory leaks)
+max_requests_jitter = 50  # Add jitter to avoid thundering herd
+preload_app = True  # Copy-on-Write memory sharing for LLM model
+
+# Logging
+accesslog = "-"  # stdout
+errorlog = "-"   # stderr
+loglevel = "info"
+access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
+
+# Worker lifecycle hooks
+def on_starting(server):
+    server.log.info(f"Starting Gunicorn with {workers} workers")
+
+def post_worker_init(worker):
+    worker.log.info(f"Worker {worker.pid} initialized")
+
+def worker_exit(server, worker):
+    server.log.info(f"Worker {worker.pid} exited")
+```
+
+**Memory Calculation**:
+- Without preload_app: `4 workers × 2.5GB = 10GB total`
+- With preload_app: `2.5GB base + (4 workers × 0.5GB) = 4.5GB total`
+- **Savings: 55% reduction (10GB → 4.5GB)**
+
+#### 2. Redis Client (FR-124)
+
+**File**: `backend/app/core/redis_client.py`
+
+```python
+"""
+Redis client with connection pooling and circuit breaker pattern.
+
+Key Patterns:
+- ratelimit:{client_ip} - Rate limiting sorted sets (60s TTL)
+- llm_cache:{sha256_hash} - LLM response cache (1hr TTL)
+"""
+import logging
+import time
+from typing import Optional
+import redis
+from redis.connection import ConnectionPool
+
+logger = logging.getLogger(__name__)
+
+# Circuit breaker state
+class CircuitBreaker:
+    def __init__(self, failure_threshold: int = 3, recovery_timeout: int = 60):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.last_failure_time = 0
+        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+
+    def record_failure(self):
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        if self.failure_count >= self.failure_threshold:
+            self.state = "OPEN"
+            logger.warning(f"Circuit breaker OPEN after {self.failure_count} failures")
+
+    def record_success(self):
+        self.failure_count = 0
+        self.state = "CLOSED"
+
+    def can_attempt(self) -> bool:
+        if self.state == "CLOSED":
+            return True
+        if self.state == "OPEN":
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = "HALF_OPEN"
+                logger.info("Circuit breaker HALF_OPEN, attempting recovery")
+                return True
+            return False
+        return True  # HALF_OPEN
+
+# Global connection pool
+_redis_pool: Optional[ConnectionPool] = None
+_circuit_breaker = CircuitBreaker()
+
+def get_redis_pool() -> Optional[redis.Redis]:
+    """Get Redis connection from pool with circuit breaker."""
+    global _redis_pool, _circuit_breaker
+
+    if not _circuit_breaker.can_attempt():
+        logger.debug("Circuit breaker OPEN, skipping Redis connection")
+        return None
+
+    if _redis_pool is None:
+        try:
+            _redis_pool = redis.ConnectionPool(
+                host=os.getenv("REDIS_HOST", "localhost"),
+                port=int(os.getenv("REDIS_PORT", 6379)),
+                db=int(os.getenv("REDIS_DB", 0)),
+                max_connections=10,
+                socket_timeout=3,
+                socket_connect_timeout=3,
+                decode_responses=True
+            )
+            logger.info("Redis connection pool created")
+        except Exception as e:
+            logger.error(f"Failed to create Redis pool: {e}")
+            _circuit_breaker.record_failure()
+            return None
+
+    try:
+        client = redis.Redis(connection_pool=_redis_pool)
+        client.ping()  # Health check
+        _circuit_breaker.record_success()
+        return client
+    except Exception as e:
+        logger.error(f"Redis connection failed: {e}")
+        _circuit_breaker.record_failure()
+        return None
+
+async def check_redis_health() -> bool:
+    """Check Redis health status."""
+    client = get_redis_pool()
+    if client is None:
+        return False
+    try:
+        client.ping()
+        return True
+    except:
+        return False
+```
+
+#### 3. Distributed Rate Limiting (FR-125)
+
+**Update**: `backend/app/middleware/rate_limit_middleware.py`
+
+```python
+"""
+Rate limiting middleware with Redis-based distributed state.
+
+Sliding window algorithm:
+1. ZADD: Add current timestamp to sorted set
+2. ZREMRANGEBYSCORE: Remove timestamps older than window
+3. ZCARD: Count requests in window
+4. If count > limit: return 429
+
+Fallback: In-memory rate limiting if Redis unavailable.
+"""
+from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+from app.core.redis_client import get_redis_pool
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, requests_per_minute: int = 60):
+        super().__init__(app)
+        self.requests_per_minute = requests_per_minute
+        self.window_seconds = 60
+        # In-memory fallback
+        self.requests: Dict[str, deque] = defaultdict(deque)
+        self.redis_mode = True  # Try Redis first
+
+    async def dispatch(self, request: Request, call_next):
+        client_ip = request.client.host
+
+        # Try Redis first
+        redis_client = get_redis_pool()
+        if redis_client and self.redis_mode:
+            if not await self._check_rate_limit_redis(redis_client, client_ip):
+                return Response(
+                    content="Rate limit exceeded",
+                    status_code=429,
+                    headers={
+                        "X-RateLimit-Limit": str(self.requests_per_minute),
+                        "X-RateLimit-Remaining": "0"
+                    }
+                )
+        else:
+            # Fallback to in-memory
+            if not self.redis_mode:
+                logger.warning("Using in-memory rate limiting (Redis unavailable)")
+            if not self._check_rate_limit_memory(client_ip):
+                return Response(content="Rate limit exceeded", status_code=429)
+
+        response = await call_next(request)
+        return response
+
+    async def _check_rate_limit_redis(self, redis_client, client_ip: str) -> bool:
+        """Check rate limit using Redis sorted sets."""
+        key = f"ratelimit:{client_ip}"
+        now = time.time()
+        window_start = now - self.window_seconds
+
+        try:
+            # Use pipeline for atomic operations
+            pipe = redis_client.pipeline()
+            # Remove old timestamps
+            pipe.zremrangebyscore(key, 0, window_start)
+            # Add current timestamp
+            pipe.zadd(key, {str(now): now})
+            # Count requests in window
+            pipe.zcard(key)
+            # Set TTL
+            pipe.expire(key, self.window_seconds)
+            results = pipe.execute()
+
+            request_count = results[2]  # ZCARD result
+            return request_count <= self.requests_per_minute
+        except Exception as e:
+            logger.error(f"Redis rate limit error: {e}")
+            self.redis_mode = False  # Switch to in-memory mode
+            return self._check_rate_limit_memory(client_ip)
+
+    def _check_rate_limit_memory(self, client_ip: str) -> bool:
+        """Fallback in-memory rate limiting."""
+        now = time.time()
+        window_start = now - self.window_seconds
+
+        # Remove old requests
+        while self.requests[client_ip] and self.requests[client_ip][0] < window_start:
+            self.requests[client_ip].popleft()
+
+        # Check limit
+        if len(self.requests[client_ip]) >= self.requests_per_minute:
+            return False
+
+        # Add current request
+        self.requests[client_ip].append(now)
+        return True
+```
+
+#### 4. LLM Response Caching (FR-126, Optional)
+
+**File**: `backend/app/services/llm_cache_service.py`
+
+```python
+"""
+LLM response caching service using Redis.
+
+Cache Key: llm_cache:{sha256(normalized_prompt)}
+TTL: 3600 seconds (1 hour)
+Max Size: 50KB per entry
+"""
+import hashlib
+import logging
+from typing import Optional
+from app.core.redis_client import get_redis_pool
+
+logger = logging.getLogger(__name__)
+MAX_CACHE_SIZE = 50 * 1024  # 50KB
+
+def _normalize_prompt(prompt: str) -> str:
+    """Normalize prompt for cache key generation."""
+    return prompt.lower().strip()
+
+def _get_cache_key(prompt: str) -> str:
+    """Generate cache key from prompt."""
+    normalized = _normalize_prompt(prompt)
+    hash_digest = hashlib.sha256(normalized.encode()).hexdigest()
+    return f"llm_cache:{hash_digest}"
+
+async def get_cached_response(prompt: str) -> Optional[str]:
+    """Get cached LLM response if available."""
+    redis_client = get_redis_pool()
+    if redis_client is None:
+        return None
+
+    try:
+        key = _get_cache_key(prompt)
+        cached = redis_client.get(key)
+        if cached:
+            logger.info(f"LLM cache HIT: {key[:20]}...")
+            return cached
+        logger.debug(f"LLM cache MISS: {key[:20]}...")
+        return None
+    except Exception as e:
+        logger.error(f"Cache get error: {e}")
+        return None
+
+async def set_cached_response(prompt: str, response: str, ttl: int = 3600):
+    """Cache LLM response with TTL."""
+    redis_client = get_redis_pool()
+    if redis_client is None:
+        return
+
+    # Check size limit
+    if len(response.encode()) > MAX_CACHE_SIZE:
+        logger.warning(f"Response too large to cache: {len(response)} bytes")
+        return
+
+    try:
+        key = _get_cache_key(prompt)
+        redis_client.setex(key, ttl, response)
+        logger.info(f"LLM cache SET: {key[:20]}... (TTL={ttl}s)")
+    except Exception as e:
+        logger.error(f"Cache set error: {e}")
+
+async def invalidate_cache():
+    """Clear all LLM cache entries."""
+    redis_client = get_redis_pool()
+    if redis_client is None:
+        return
+
+    try:
+        keys = redis_client.keys("llm_cache:*")
+        if keys:
+            redis_client.delete(*keys)
+            logger.info(f"Invalidated {len(keys)} cache entries")
+    except Exception as e:
+        logger.error(f"Cache invalidation error: {e}")
+```
+
+#### 5. Multiprocess Observability (FR-127)
+
+**Update**: `backend/app/core/metrics.py`
+
+```python
+"""
+Prometheus metrics with per-worker labels.
+"""
+from prometheus_client import Counter, Histogram, Gauge
+import os
+
+# Extract worker ID from environment
+WORKER_ID = os.getenv("GUNICORN_WORKER_ID", "0")
+
+# HTTP metrics with worker_id label
+http_requests_total = Counter(
+    'http_requests_total',
+    'Total HTTP requests',
+    ['method', 'endpoint', 'status', 'worker_id']
+)
+
+# Worker lifecycle metrics
+worker_restarts_total = Counter(
+    'worker_restarts_total',
+    'Total worker restarts',
+    ['worker_id']
+)
+
+worker_age_seconds = Gauge(
+    'worker_age_seconds',
+    'Worker uptime in seconds',
+    ['worker_id']
+)
+
+# LLM cache metrics
+llm_cache_hits_total = Counter(
+    'llm_cache_hits_total',
+    'Total LLM cache hits',
+    ['worker_id']
+)
+
+llm_cache_misses_total = Counter(
+    'llm_cache_misses_total',
+    'Total LLM cache misses',
+    ['worker_id']
+)
+```
+
+**Worker Health Check**: `backend/app/api/v1/health.py`
+
+```python
+@router.get("/health/worker")
+async def worker_health():
+    """Worker-specific health check."""
+    import os
+    import time
+
+    worker_pid = os.getpid()
+    worker_id = os.getenv("GUNICORN_WORKER_ID", "unknown")
+
+    # Check Redis
+    redis_healthy = await check_redis_health()
+
+    # Check LLM model loaded
+    from app.services.llm_service import llm_service
+    model_loaded = llm_service.model is not None
+
+    return {
+        "worker_id": worker_id,
+        "pid": worker_pid,
+        "uptime_seconds": time.time() - WORKER_START_TIME,
+        "status": "healthy",
+        "redis_connected": redis_healthy,
+        "model_loaded": model_loaded
+    }
+```
+
+### Testing Strategy
+
+#### 1. Distributed Rate Limiting Test
+```python
+# backend/tests/test_distributed_rate_limiting.py
+async def test_rate_limit_across_workers():
+    """Verify rate limiting works across multiple workers."""
+    # Simulate 61 requests from same IP across different workers
+    responses = await asyncio.gather(*[
+        client.get("/api/v1/health", headers={"X-Forwarded-For": "192.168.1.100"})
+        for _ in range(61)
+    ])
+
+    # Exactly 1 request should return 429
+    status_codes = [r.status_code for r in responses]
+    assert status_codes.count(429) == 1
+    assert status_codes.count(200) == 60
+```
+
+#### 2. Memory Sharing Validation
+```bash
+# Measure RSS (Resident Set Size) for each worker
+docker-compose exec backend sh -c "ps aux | grep gunicorn | awk '{print \$2, \$6}'"
+
+# Expected with preload_app=True:
+# Master: ~2500MB
+# Worker 1: ~3000MB (2500 + 500 CoW)
+# Worker 2: ~3000MB
+# Worker 3: ~3000MB
+# Worker 4: ~3000MB
+# Total: ~14.5GB actual, but 4.5GB effective (shared pages)
+```
+
+#### 3. Graceful Shutdown Test
+```python
+async def test_graceful_shutdown():
+    """Verify in-progress requests complete before shutdown."""
+    # Start long-running LLM request (10s)
+    task = asyncio.create_task(client.post("/api/v1/chat", json={...}))
+
+    # Wait 2s, then send SIGTERM to worker
+    await asyncio.sleep(2)
+    os.kill(worker_pid, signal.SIGTERM)
+
+    # Request should complete successfully (120s timeout)
+    response = await task
+    assert response.status_code == 200
+```
+
+### Deployment Configuration
+
+**docker-compose.yml** (already updated):
+```yaml
+services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+
+  backend:
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      GUNICORN_WORKERS: 4
+    command: gunicorn app.main:app -c gunicorn_conf.py
+    depends_on:
+      redis:
+        condition: service_healthy
+```
+
+### Success Criteria
+
+- **SC-041**: 20 concurrent requests complete within 15 seconds ✅
+- **SC-042**: Distributed rate limiting enforces 60 req/min across workers ✅
+- **SC-043**: Graceful shutdown completes in-progress requests ✅
+- **SC-044**: LLM cache hit rate >30% for FAQ queries ✅
+- **SC-045**: Per-worker Prometheus metrics visible ✅
+
+### Troubleshooting Guide
+
+**Problem**: Worker timeout (502 Bad Gateway)
+- **Cause**: LLM inference taking >120 seconds
+- **Solution**: Increase `timeout` in gunicorn_conf.py or optimize model inference
+
+**Problem**: Memory leak (RSS growing over time)
+- **Cause**: Worker not recycling after max_requests
+- **Solution**: Verify `max_requests=1000` in gunicorn_conf.py, monitor with `docker stats`
+
+**Problem**: Uneven load distribution
+- **Cause**: Nginx sticky sessions or client IP hashing
+- **Solution**: Use round-robin upstream in Nginx, remove ip_hash directive
+
+**Problem**: Redis connection errors
+- **Cause**: Network issues or Redis container not healthy
+- **Solution**: Check `docker-compose logs redis`, verify healthcheck passes
+
+---
+
+**Implementation Priority**:
+1. FR-123, FR-124, FR-125 (CRITICAL) - Multiprocess + Redis + Rate limiting
+2. FR-127 (HIGH) - Observability for production monitoring
+3. FR-126 (MEDIUM) - LLM cache (optional optimization)
+4. FR-128 (LOW) - Session affinity (future WebSocket support)

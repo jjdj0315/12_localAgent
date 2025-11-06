@@ -24,12 +24,16 @@ from app.schemas.document import (
 )
 from app.services.document_service import document_service
 
+# Import Prometheus metrics
+from app.core.metrics import documents_uploaded_total
+
 router = APIRouter()
 
 
 @router.post("", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: UploadFile = File(...),
+    conversation_id: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -40,6 +44,7 @@ async def upload_document(
     Maximum size: 50MB
 
     - **file**: Document file to upload
+    - **conversation_id**: (Optional) ID of conversation to attach document to. If not provided, a new conversation will be created.
     """
     # Check user storage quota (80% warning threshold)
     from app.services.admin_service import AdminService
@@ -75,21 +80,70 @@ async def upload_document(
             detail=error_msg,
         )
 
+    # Get or create conversation
+    from app.models.conversation import Conversation
+    from uuid import UUID as PyUUID
+
+    target_conversation_id = None
+    if conversation_id:
+        # Use existing conversation
+        try:
+            target_conversation_id = PyUUID(conversation_id)
+            # Verify conversation belongs to user
+            from sqlalchemy import select
+            conv_query = select(Conversation).where(
+                Conversation.id == target_conversation_id,
+                Conversation.user_id == current_user.id
+            )
+            conv_result = await db.execute(conv_query)
+            conversation = conv_result.scalar_one_or_none()
+
+            if not conversation:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="대화를 찾을 수 없거나 접근 권한이 없습니다.",
+                )
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="잘못된 대화 ID 형식입니다.",
+            )
+    else:
+        # Create new conversation for this document
+        conversation = Conversation(
+            user_id=current_user.id,
+            title=f"문서: {file.filename}",
+        )
+        db.add(conversation)
+        await db.flush()  # Get the ID
+        target_conversation_id = conversation.id
+
     # Save document
     try:
         document = await document_service.save_document(
             db=db,
             user_id=current_user.id,
+            conversation_id=target_conversation_id,
             filename=file.filename,
             file_content=file_content,
             file_type=file_type,
         )
+
+        # Track successful document upload
+        documents_uploaded_total.labels(status='success').inc()
+
     except ValueError as e:
+        # Track failed upload
+        documents_uploaded_total.labels(status='error').inc()
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
     except Exception as e:
+        # Track failed upload
+        documents_uploaded_total.labels(status='error').inc()
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"문서 업로드 중 오류가 발생했습니다: {str(e)}",
@@ -99,6 +153,7 @@ async def upload_document(
         id=document.id,
         user_id=document.user_id,
         filename=document.filename,
+        file_path=document.file_path,
         file_type=document.file_type,
         file_size=document.file_size,
         uploaded_at=document.uploaded_at,
@@ -130,6 +185,7 @@ async def list_documents(
             id=doc.id,
             user_id=doc.user_id,
             filename=doc.filename,
+            file_path=doc.file_path,
             file_type=doc.file_type,
             file_size=doc.file_size,
             uploaded_at=doc.uploaded_at,
