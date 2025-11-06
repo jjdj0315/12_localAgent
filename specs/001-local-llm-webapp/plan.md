@@ -1289,7 +1289,7 @@ from .agents.review import ReviewAgent
 
 
 class AgentState(TypedDict):
-    """Multi-Agent workflow state"""
+    """Specialized Agent System workflow state"""
     user_query: str
     conversation_history: list
     current_agent: str
@@ -1300,7 +1300,7 @@ class AgentState(TypedDict):
 
 
 class MultiAgentOrchestrator:
-    """LangGraph-based Multi-Agent Orchestrator"""
+    """LangGraph-based Specialized Agent System Orchestrator"""
 
     def __init__(self):
         # Initialize all agents (auto-detect LLM backend)
@@ -1319,7 +1319,7 @@ class MultiAgentOrchestrator:
         self.workflow = self._build_workflow()
 
     def _build_workflow(self) -> StateGraph:
-        """Build LangGraph state machine for Multi-Agent workflows"""
+        """Build LangGraph state machine for Specialized Agent System workflows"""
         workflow = StateGraph(AgentState)
 
         # Add nodes
@@ -2760,3 +2760,572 @@ def test_data_isolation_via_dependencies():
 1. FR-115, FR-116 (CRITICAL) - immediate fix
 2. FR-117, FR-118 (HIGH) - before production
 3. FR-119 ~ FR-122 (MEDIUM) - maintenance release acceptable
+
+---
+
+## Phase 11.8: Multiprocess Deployment & Redis Integration (FR-123 ~ FR-128)
+
+**Purpose**: Enable production-grade horizontal scalability with multiprocess deployment and distributed state management
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Nginx (Optional)                        │
+│                   Load Balancer / Proxy                      │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+┌────────────────────────┴────────────────────────────────────┐
+│                    Gunicorn Master Process                   │
+│                   (preload_app=True)                         │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │           LLM Model (Qwen3-4B, 2.5GB)                │  │
+│  │         Loaded once, Copy-on-Write shared            │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────┐  │
+│  │ Worker 1   │ │ Worker 2   │ │ Worker 3   │ │Worker 4│  │
+│  │ Uvicorn    │ │ Uvicorn    │ │ Uvicorn    │ │Uvicorn │  │
+│  │ (+0.5GB)   │ │ (+0.5GB)   │ │ (+0.5GB)   │ │(+0.5GB)│  │
+│  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └────┬───┘  │
+└────────┼──────────────┼──────────────┼──────────────┼──────┘
+         │              │              │              │
+         └──────────────┴──────────────┴──────────────┘
+                         │
+         ┌───────────────┴───────────────┐
+         │                               │
+    ┌────▼─────┐                   ┌────▼────┐
+    │PostgreSQL│                   │  Redis  │
+    │(Session) │                   │ (State) │
+    └──────────┘                   └─────────┘
+```
+
+**Key Design Decisions**:
+1. **Gunicorn + Uvicorn Workers**: Industry-standard multiprocess architecture for FastAPI
+2. **Copy-on-Write Memory Sharing**: preload_app=True loads LLM model once, shared across workers
+3. **Redis for Distributed State**: Rate limiting, LLM cache, future session store
+4. **Graceful Degradation**: System works without Redis (fallback to in-memory)
+
+### Component Designs
+
+#### 1. Gunicorn Configuration (FR-123)
+
+**File**: `backend/gunicorn_conf.py`
+
+```python
+"""
+Gunicorn configuration for multiprocess deployment.
+
+Worker formula: (2 * cpu_count) + 1
+Default: 4 workers for production
+"""
+import multiprocessing
+import os
+
+# Server socket
+bind = "0.0.0.0:8000"
+backlog = 2048
+
+# Worker processes
+workers = int(os.getenv("GUNICORN_WORKERS", (2 * multiprocessing.cpu_count()) + 1))
+worker_class = "uvicorn.workers.UvicornWorker"
+worker_connections = 1000
+timeout = 120  # 2 minutes for LLM inference
+keepalive = 5
+
+# Worker lifecycle
+max_requests = 1000  # Recycle worker after 1000 requests (prevent memory leaks)
+max_requests_jitter = 50  # Add jitter to avoid thundering herd
+preload_app = True  # Copy-on-Write memory sharing for LLM model
+
+# Logging
+accesslog = "-"  # stdout
+errorlog = "-"   # stderr
+loglevel = "info"
+access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
+
+# Worker lifecycle hooks
+def on_starting(server):
+    server.log.info(f"Starting Gunicorn with {workers} workers")
+
+def post_worker_init(worker):
+    worker.log.info(f"Worker {worker.pid} initialized")
+
+def worker_exit(server, worker):
+    server.log.info(f"Worker {worker.pid} exited")
+```
+
+**Memory Calculation**:
+- Without preload_app: `4 workers × 2.5GB = 10GB total`
+- With preload_app: `2.5GB base + (4 workers × 0.5GB) = 4.5GB total`
+- **Savings: 55% reduction (10GB → 4.5GB)**
+
+#### 2. Redis Client (FR-124)
+
+**File**: `backend/app/core/redis_client.py`
+
+```python
+"""
+Redis client with connection pooling and circuit breaker pattern.
+
+Key Patterns:
+- ratelimit:{client_ip} - Rate limiting sorted sets (60s TTL)
+- llm_cache:{sha256_hash} - LLM response cache (1hr TTL)
+"""
+import logging
+import time
+from typing import Optional
+import redis
+from redis.connection import ConnectionPool
+
+logger = logging.getLogger(__name__)
+
+# Circuit breaker state
+class CircuitBreaker:
+    def __init__(self, failure_threshold: int = 3, recovery_timeout: int = 60):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.last_failure_time = 0
+        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+
+    def record_failure(self):
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        if self.failure_count >= self.failure_threshold:
+            self.state = "OPEN"
+            logger.warning(f"Circuit breaker OPEN after {self.failure_count} failures")
+
+    def record_success(self):
+        self.failure_count = 0
+        self.state = "CLOSED"
+
+    def can_attempt(self) -> bool:
+        if self.state == "CLOSED":
+            return True
+        if self.state == "OPEN":
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = "HALF_OPEN"
+                logger.info("Circuit breaker HALF_OPEN, attempting recovery")
+                return True
+            return False
+        return True  # HALF_OPEN
+
+# Global connection pool
+_redis_pool: Optional[ConnectionPool] = None
+_circuit_breaker = CircuitBreaker()
+
+def get_redis_pool() -> Optional[redis.Redis]:
+    """Get Redis connection from pool with circuit breaker."""
+    global _redis_pool, _circuit_breaker
+
+    if not _circuit_breaker.can_attempt():
+        logger.debug("Circuit breaker OPEN, skipping Redis connection")
+        return None
+
+    if _redis_pool is None:
+        try:
+            _redis_pool = redis.ConnectionPool(
+                host=os.getenv("REDIS_HOST", "localhost"),
+                port=int(os.getenv("REDIS_PORT", 6379)),
+                db=int(os.getenv("REDIS_DB", 0)),
+                max_connections=10,
+                socket_timeout=3,
+                socket_connect_timeout=3,
+                decode_responses=True
+            )
+            logger.info("Redis connection pool created")
+        except Exception as e:
+            logger.error(f"Failed to create Redis pool: {e}")
+            _circuit_breaker.record_failure()
+            return None
+
+    try:
+        client = redis.Redis(connection_pool=_redis_pool)
+        client.ping()  # Health check
+        _circuit_breaker.record_success()
+        return client
+    except Exception as e:
+        logger.error(f"Redis connection failed: {e}")
+        _circuit_breaker.record_failure()
+        return None
+
+async def check_redis_health() -> bool:
+    """Check Redis health status."""
+    client = get_redis_pool()
+    if client is None:
+        return False
+    try:
+        client.ping()
+        return True
+    except:
+        return False
+```
+
+#### 3. Distributed Rate Limiting (FR-125)
+
+**Update**: `backend/app/middleware/rate_limit_middleware.py`
+
+```python
+"""
+Rate limiting middleware with Redis-based distributed state.
+
+Sliding window algorithm:
+1. ZADD: Add current timestamp to sorted set
+2. ZREMRANGEBYSCORE: Remove timestamps older than window
+3. ZCARD: Count requests in window
+4. If count > limit: return 429
+
+Fallback: In-memory rate limiting if Redis unavailable.
+"""
+from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+from app.core.redis_client import get_redis_pool
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, requests_per_minute: int = 60):
+        super().__init__(app)
+        self.requests_per_minute = requests_per_minute
+        self.window_seconds = 60
+        # In-memory fallback
+        self.requests: Dict[str, deque] = defaultdict(deque)
+        self.redis_mode = True  # Try Redis first
+
+    async def dispatch(self, request: Request, call_next):
+        client_ip = request.client.host
+
+        # Try Redis first
+        redis_client = get_redis_pool()
+        if redis_client and self.redis_mode:
+            if not await self._check_rate_limit_redis(redis_client, client_ip):
+                return Response(
+                    content="Rate limit exceeded",
+                    status_code=429,
+                    headers={
+                        "X-RateLimit-Limit": str(self.requests_per_minute),
+                        "X-RateLimit-Remaining": "0"
+                    }
+                )
+        else:
+            # Fallback to in-memory
+            if not self.redis_mode:
+                logger.warning("Using in-memory rate limiting (Redis unavailable)")
+            if not self._check_rate_limit_memory(client_ip):
+                return Response(content="Rate limit exceeded", status_code=429)
+
+        response = await call_next(request)
+        return response
+
+    async def _check_rate_limit_redis(self, redis_client, client_ip: str) -> bool:
+        """Check rate limit using Redis sorted sets."""
+        key = f"ratelimit:{client_ip}"
+        now = time.time()
+        window_start = now - self.window_seconds
+
+        try:
+            # Use pipeline for atomic operations
+            pipe = redis_client.pipeline()
+            # Remove old timestamps
+            pipe.zremrangebyscore(key, 0, window_start)
+            # Add current timestamp
+            pipe.zadd(key, {str(now): now})
+            # Count requests in window
+            pipe.zcard(key)
+            # Set TTL
+            pipe.expire(key, self.window_seconds)
+            results = pipe.execute()
+
+            request_count = results[2]  # ZCARD result
+            return request_count <= self.requests_per_minute
+        except Exception as e:
+            logger.error(f"Redis rate limit error: {e}")
+            self.redis_mode = False  # Switch to in-memory mode
+            return self._check_rate_limit_memory(client_ip)
+
+    def _check_rate_limit_memory(self, client_ip: str) -> bool:
+        """Fallback in-memory rate limiting."""
+        now = time.time()
+        window_start = now - self.window_seconds
+
+        # Remove old requests
+        while self.requests[client_ip] and self.requests[client_ip][0] < window_start:
+            self.requests[client_ip].popleft()
+
+        # Check limit
+        if len(self.requests[client_ip]) >= self.requests_per_minute:
+            return False
+
+        # Add current request
+        self.requests[client_ip].append(now)
+        return True
+```
+
+#### 4. LLM Response Caching (FR-126, Optional)
+
+**File**: `backend/app/services/llm_cache_service.py`
+
+```python
+"""
+LLM response caching service using Redis.
+
+Cache Key: llm_cache:{sha256(normalized_prompt)}
+TTL: 3600 seconds (1 hour)
+Max Size: 50KB per entry
+"""
+import hashlib
+import logging
+from typing import Optional
+from app.core.redis_client import get_redis_pool
+
+logger = logging.getLogger(__name__)
+MAX_CACHE_SIZE = 50 * 1024  # 50KB
+
+def _normalize_prompt(prompt: str) -> str:
+    """Normalize prompt for cache key generation."""
+    return prompt.lower().strip()
+
+def _get_cache_key(prompt: str) -> str:
+    """Generate cache key from prompt."""
+    normalized = _normalize_prompt(prompt)
+    hash_digest = hashlib.sha256(normalized.encode()).hexdigest()
+    return f"llm_cache:{hash_digest}"
+
+async def get_cached_response(prompt: str) -> Optional[str]:
+    """Get cached LLM response if available."""
+    redis_client = get_redis_pool()
+    if redis_client is None:
+        return None
+
+    try:
+        key = _get_cache_key(prompt)
+        cached = redis_client.get(key)
+        if cached:
+            logger.info(f"LLM cache HIT: {key[:20]}...")
+            return cached
+        logger.debug(f"LLM cache MISS: {key[:20]}...")
+        return None
+    except Exception as e:
+        logger.error(f"Cache get error: {e}")
+        return None
+
+async def set_cached_response(prompt: str, response: str, ttl: int = 3600):
+    """Cache LLM response with TTL."""
+    redis_client = get_redis_pool()
+    if redis_client is None:
+        return
+
+    # Check size limit
+    if len(response.encode()) > MAX_CACHE_SIZE:
+        logger.warning(f"Response too large to cache: {len(response)} bytes")
+        return
+
+    try:
+        key = _get_cache_key(prompt)
+        redis_client.setex(key, ttl, response)
+        logger.info(f"LLM cache SET: {key[:20]}... (TTL={ttl}s)")
+    except Exception as e:
+        logger.error(f"Cache set error: {e}")
+
+async def invalidate_cache():
+    """Clear all LLM cache entries."""
+    redis_client = get_redis_pool()
+    if redis_client is None:
+        return
+
+    try:
+        keys = redis_client.keys("llm_cache:*")
+        if keys:
+            redis_client.delete(*keys)
+            logger.info(f"Invalidated {len(keys)} cache entries")
+    except Exception as e:
+        logger.error(f"Cache invalidation error: {e}")
+```
+
+#### 5. Multiprocess Observability (FR-127)
+
+**Update**: `backend/app/core/metrics.py`
+
+```python
+"""
+Prometheus metrics with per-worker labels.
+"""
+from prometheus_client import Counter, Histogram, Gauge
+import os
+
+# Extract worker ID from environment
+WORKER_ID = os.getenv("GUNICORN_WORKER_ID", "0")
+
+# HTTP metrics with worker_id label
+http_requests_total = Counter(
+    'http_requests_total',
+    'Total HTTP requests',
+    ['method', 'endpoint', 'status', 'worker_id']
+)
+
+# Worker lifecycle metrics
+worker_restarts_total = Counter(
+    'worker_restarts_total',
+    'Total worker restarts',
+    ['worker_id']
+)
+
+worker_age_seconds = Gauge(
+    'worker_age_seconds',
+    'Worker uptime in seconds',
+    ['worker_id']
+)
+
+# LLM cache metrics
+llm_cache_hits_total = Counter(
+    'llm_cache_hits_total',
+    'Total LLM cache hits',
+    ['worker_id']
+)
+
+llm_cache_misses_total = Counter(
+    'llm_cache_misses_total',
+    'Total LLM cache misses',
+    ['worker_id']
+)
+```
+
+**Worker Health Check**: `backend/app/api/v1/health.py`
+
+```python
+@router.get("/health/worker")
+async def worker_health():
+    """Worker-specific health check."""
+    import os
+    import time
+
+    worker_pid = os.getpid()
+    worker_id = os.getenv("GUNICORN_WORKER_ID", "unknown")
+
+    # Check Redis
+    redis_healthy = await check_redis_health()
+
+    # Check LLM model loaded
+    from app.services.llm_service import llm_service
+    model_loaded = llm_service.model is not None
+
+    return {
+        "worker_id": worker_id,
+        "pid": worker_pid,
+        "uptime_seconds": time.time() - WORKER_START_TIME,
+        "status": "healthy",
+        "redis_connected": redis_healthy,
+        "model_loaded": model_loaded
+    }
+```
+
+### Testing Strategy
+
+#### 1. Distributed Rate Limiting Test
+```python
+# backend/tests/test_distributed_rate_limiting.py
+async def test_rate_limit_across_workers():
+    """Verify rate limiting works across multiple workers."""
+    # Simulate 61 requests from same IP across different workers
+    responses = await asyncio.gather(*[
+        client.get("/api/v1/health", headers={"X-Forwarded-For": "192.168.1.100"})
+        for _ in range(61)
+    ])
+
+    # Exactly 1 request should return 429
+    status_codes = [r.status_code for r in responses]
+    assert status_codes.count(429) == 1
+    assert status_codes.count(200) == 60
+```
+
+#### 2. Memory Sharing Validation
+```bash
+# Measure RSS (Resident Set Size) for each worker
+docker-compose exec backend sh -c "ps aux | grep gunicorn | awk '{print \$2, \$6}'"
+
+# Expected with preload_app=True:
+# Master: ~2500MB
+# Worker 1: ~3000MB (2500 + 500 CoW)
+# Worker 2: ~3000MB
+# Worker 3: ~3000MB
+# Worker 4: ~3000MB
+# Total: ~14.5GB actual, but 4.5GB effective (shared pages)
+```
+
+#### 3. Graceful Shutdown Test
+```python
+async def test_graceful_shutdown():
+    """Verify in-progress requests complete before shutdown."""
+    # Start long-running LLM request (10s)
+    task = asyncio.create_task(client.post("/api/v1/chat", json={...}))
+
+    # Wait 2s, then send SIGTERM to worker
+    await asyncio.sleep(2)
+    os.kill(worker_pid, signal.SIGTERM)
+
+    # Request should complete successfully (120s timeout)
+    response = await task
+    assert response.status_code == 200
+```
+
+### Deployment Configuration
+
+**docker-compose.yml** (already updated):
+```yaml
+services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+
+  backend:
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      GUNICORN_WORKERS: 4
+    command: gunicorn app.main:app -c gunicorn_conf.py
+    depends_on:
+      redis:
+        condition: service_healthy
+```
+
+### Success Criteria
+
+- **SC-041**: 20 concurrent requests complete within 15 seconds ✅
+- **SC-042**: Distributed rate limiting enforces 60 req/min across workers ✅
+- **SC-043**: Graceful shutdown completes in-progress requests ✅
+- **SC-044**: LLM cache hit rate >30% for FAQ queries ✅
+- **SC-045**: Per-worker Prometheus metrics visible ✅
+
+### Troubleshooting Guide
+
+**Problem**: Worker timeout (502 Bad Gateway)
+- **Cause**: LLM inference taking >120 seconds
+- **Solution**: Increase `timeout` in gunicorn_conf.py or optimize model inference
+
+**Problem**: Memory leak (RSS growing over time)
+- **Cause**: Worker not recycling after max_requests
+- **Solution**: Verify `max_requests=1000` in gunicorn_conf.py, monitor with `docker stats`
+
+**Problem**: Uneven load distribution
+- **Cause**: Nginx sticky sessions or client IP hashing
+- **Solution**: Use round-robin upstream in Nginx, remove ip_hash directive
+
+**Problem**: Redis connection errors
+- **Cause**: Network issues or Redis container not healthy
+- **Solution**: Check `docker-compose logs redis`, verify healthcheck passes
+
+---
+
+**Implementation Priority**:
+1. FR-123, FR-124, FR-125 (CRITICAL) - Multiprocess + Redis + Rate limiting
+2. FR-127 (HIGH) - Observability for production monitoring
+3. FR-126 (MEDIUM) - LLM cache (optional optimization)
+4. FR-128 (LOW) - Session affinity (future WebSocket support)

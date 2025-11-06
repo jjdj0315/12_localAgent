@@ -11,7 +11,7 @@
 
 ### Session 2025-10-28
 
-- Q: Document Q&A implementation strategy - should we use simple text extraction or vector embeddings for document analysis? → A: Vector embeddings + similarity search (ChromaDB/FAISS) to properly support multi-document comparison and accurate source references (User Story 3, Acceptance Scenarios 2 & 4)
+- Q: Document Q&A implementation strategy - should we use simple text extraction or vector embeddings for document analysis? → A: Vector embeddings + similarity search (Qdrant vector database) to properly support multi-document comparison and accurate source references (User Story 3, Acceptance Scenarios 2 & 4)
 - Q: Administrator data access scope - can administrators view user conversation contents, or only metadata for storage management? → A: Metadata only (username, conversation titles, message counts, storage usage) - conversation message contents are not accessible to administrators, preserving user privacy while enabling storage management (FR-032, User Story 5)
 - Q: Backup and recovery strategy for air-gapped environment - what backup requirements are needed to support 30-day continuous operation? → A: Daily automated backups + weekly full backups with minimum 30-day retention (standard government policy), stored locally on separate storage volume, with documented restore procedures for IT staff (SC-010, Assumption #8)
 - Q: Document generation mode activation - how does the user explicitly request document creation to trigger the 10,000 character limit? → A: Keyword detection in user queries (Korean keywords: "문서 작성", "초안 생성", "공문", "보고서 작성", etc.) automatically activates document generation mode, maintaining natural conversation flow (FR-017)
@@ -162,13 +162,13 @@ Government employees need the system to automatically filter inappropriate conte
 
 Government employees need the AI system to intelligently route queries to specialized agents (document search, legal research, citizen support, etc.) that provide expert-level responses using domain-specific fine-tuned models and specialized tools, while simple queries are handled directly by the base model for efficiency.
 
-**Why this priority**: Specialized agent system with orchestration provides significant productivity gains for complex domain-specific tasks while maintaining fast responses for simple queries. Requires stable foundation of P1-P2 features and can be added after core conversation functionality is proven.
+**Why this priority**: Specialized agent system with orchestration provides significant productivity gains for complex domain-specific tasks while maintaining efficient responses for simple queries. Requires stable foundation of P1-P2 features and can be added after core conversation functionality is proven.
 
 **Independent Test**: Can be tested by submitting various query types (general questions, document analysis requests, legal inquiries, citizen complaints, data analysis tasks) and verifying correct agent routing, specialized responses using domain knowledge, and appropriate tool usage.
 
 **Acceptance Scenarios**:
 
-1. **Given** an employee submits a general query (e.g., "What is the weather today?" or "Explain photosynthesis"), **When** the orchestrator analyzes the intent, **Then** the base model responds directly without routing to specialized agents, providing fast and accurate general knowledge responses
+1. **Given** an employee submits a general query (e.g., "What is the weather today?" or "Explain photosynthesis"), **When** the orchestrator analyzes the intent, **Then** the base model responds directly without routing to specialized agents, providing accurate general knowledge responses
 
 2. **Given** an employee requests document search or analysis (e.g., "Find information about budget policy in uploaded documents" or "Summarize the key points from the uploaded regulation"), **When** the orchestrator detects document-related intent, **Then** the system routes to the RAG Agent which uses document search tools and specialized LoRA to provide accurate answers with source citations
 
@@ -182,7 +182,7 @@ Government employees need the AI system to intelligently route queries to specia
 
 7. **Given** an employee requests review or quality check (e.g., "Review this draft document for errors" or "Check this response for policy compliance"), **When** the orchestrator detects review intent, **Then** the Review Agent checks for errors (factual, grammatical, policy compliance), highlights issues, and suggests specific improvements using specialized LoRA
 
-8. **Given** multiple users simultaneously request different specialized agents, **When** the system processes concurrent requests, **Then** the system efficiently manages LoRA adapter swapping using LRU caching (keeps 2-3 most recently used adapters loaded) with <3 second adapter loading time
+8. **Given** multiple users simultaneously request different specialized agents, **When** the system processes concurrent requests, **Then** the system manages LoRA adapter swapping using LRU caching (keeps 2-3 most recently used adapters loaded) with <3 second adapter loading time
 
 9. **Given** an agent needs to use specialized tools (calculator, date/schedule, templates), **When** processing a query, **Then** the agent can invoke shared tool library functions (document search, calculator, date/schedule, data analysis, document template, legal reference tools) and display results clearly
 
@@ -332,7 +332,7 @@ Government employees need the AI system to intelligently route queries to specia
 - **FR-006**: System MUST allow users to create, view, and delete their saved conversations
 - **FR-007**: System MUST support searching or filtering through saved conversations
 - **FR-008**: System MUST accept document uploads in common formats (PDF, TXT, DOCX)
-- **FR-009**: System MUST process uploaded documents using vector embeddings (ChromaDB or FAISS) for semantic search, enable question-answering based on document content with accurate source references (page numbers, sections), and support multi-document comparison queries within the same conversation (documents are scoped to individual conversations, accessible only within that conversation, and automatically deleted when the conversation is deleted)
+- **FR-009**: System MUST process uploaded documents using vector embeddings (Qdrant vector database) for semantic search, enable question-answering based on document content with accurate source references (page numbers, sections), and support multi-document comparison queries within the same conversation (documents are scoped to individual conversations, accessible only within that conversation, and automatically deleted when the conversation is deleted)
 - **FR-010**: System MUST support multiple concurrent users with individual authentication
 - **FR-011**: System MUST ensure each user can only access their own conversation history and uploaded documents
 - **FR-012**: System MUST provide session management with automatic timeout after 30 minutes (1,800 seconds) of inactivity measured from last user request (click, input, scroll), display warning modal 3 minutes before timeout asking "곧 로그아웃됩니다. 계속하시겠습니까?", redirect to login page on timeout, and save draft messages to local storage for recovery upon re-login
@@ -416,12 +416,12 @@ Government employees need the AI system to intelligently route queries to specia
 #### Shared Tool Library Requirements (FR-060 series)
 
 - **FR-060**: System MUST provide a shared tool library accessible to all specialized agents containing six government-specialized tools for domain-specific tasks:
-  1. **Document Search Tool**: searches uploaded documents in current conversation using vector similarity (ChromaDB/FAISS), returns text snippets with source references (filename, page number, section), supports semantic queries in Korean
+  1. **Document Search Tool**: searches uploaded documents in current conversation using vector similarity (Qdrant), returns text snippets with source references (filename, page number, section), supports semantic queries in Korean
   2. **Calculator Tool**: evaluates mathematical expressions (addition, subtraction, multiplication, division, percentages, exponents), handles Korean currency symbols (원), Korean number formats (천 단위 쉼표), returns numeric result with proper formatting
   3. **Date/Schedule Tool**: calculates business days excluding weekends/Korean public holidays, fiscal year conversions (회계연도), deadline calculations from start date + duration, supports Korean date formats (YYYY년 MM월 DD일)
   4. **Data Analysis Tool**: loads CSV/Excel files from conversation uploads, provides summary statistics (mean, median, sum, count, std dev), basic filtering and grouping operations, outputs Korean-formatted results (천 단위 쉼표)
   5. **Document Template Tool**: generates structured Korean government documents (공문서, 보고서, 안내문, 회의록) using Jinja2 templates, includes standard headers, sections (제목, 배경, 내용, 결론), signature blocks, proper formatting per government standards
-  6. **Legal Reference Tool**: searches uploaded regulations/ordinances for specific articles using keyword and semantic search, returns citations with article numbers and full text, supports Korean legal terminology
+  6. **Legal Reference Tool**: searches uploaded regulations/ordinances for specific articles using keyword and semantic search (Qdrant), returns citations with article numbers and full text, supports Korean legal terminology
 - **FR-061**: System MUST implement tool execution safety: 30-second timeout per tool call (configurable by administrator), sandbox tool execution to prevent system access beyond designated directories (`/uploads`, `/templates`, `/data`), track identical tool calls (if same tool + same parameters called 3+ times consecutively, force stop with error "도구 실행이 반복되고 있습니다.")
 - **FR-062**: System MUST handle tool execution errors with transparent failure approach: return error description in Korean (e.g., "문서를 찾을 수 없습니다", "파일 형식이 지원되지 않습니다"), log errors with stack traces for debugging, agent must attempt alternative tool/approach OR provide clear guidance to user explaining limitation and suggesting next steps
 - **FR-063**: System MUST log all tool executions to audit trail: timestamp, user_id, conversation_id, agent_name (which agent invoked tool), tool_name, input_parameters (sanitized to remove PII), output_result (truncated to 500 chars), execution_time_ms, success/failure status, accessible to administrators in admin panel for audit and optimization purposes
@@ -644,6 +644,22 @@ Government employees need the AI system to intelligently route queries to specia
 
 - **FR-122** *(MEDIUM)*: System MUST implement data isolation middleware or update test expectations by: either (Option A) creating backend/app/middleware/data_isolation_middleware.py that validates user_id matches session user for GET/PUT/DELETE on /conversations/{id}, /documents/{id}, /messages/{id} routes, returning 403 Forbidden with message "이 리소스에 접근할 권한이 없습니다." on ownership mismatch, OR (Option B) removing data_isolation_middleware expectations from tests/security_audit.py and documenting that data isolation is handled at API dependency level via get_current_user() in backend/app/api/deps.py, registering middleware in main.py if Option A selected
 
+#### Multiprocess & Distributed State Requirements (FR-123 series)
+
+*Note: These requirements enable horizontal scalability and shared state management for production deployments (2025-11-06)*
+
+- **FR-123** *(HIGH)*: System MUST support multiprocess deployment using Gunicorn with Uvicorn workers by: installing gunicorn>=21.2.0 as production WSGI server, configuring worker count based on CPU cores (formula: `workers = (2 * cpu_count) + 1` with default 4 workers), using UvicornWorker class for async FastAPI compatibility, implementing graceful shutdown with timeout=120 seconds for LLM inference completion, enabling preload_app=True for Copy-on-Write memory sharing of LLM model across workers, configuring max_requests=1000 and max_requests_jitter=50 for automatic worker recycling to prevent memory leaks, logging worker lifecycle events (spawn, restart, abort) for monitoring
+
+- **FR-124** *(HIGH)*: System MUST integrate Redis for distributed state management by: deploying Redis 7+ with AOF persistence enabled, configuring maxmemory=512mb with allkeys-lru eviction policy for automatic memory management, storing data in Redis DB 0 (default), implementing connection pooling with redis-py library (connection pool size: 10), handling Redis connection failures gracefully with circuit breaker pattern (fallback to local memory cache for non-critical features), monitoring Redis health via healthcheck (redis-cli ping every 10s), documenting Redis data structures and key patterns in docs/architecture/redis-schema.md
+
+- **FR-125** *(HIGH)*: System MUST implement distributed rate limiting using Redis by: migrating rate_limit_middleware.py from in-memory dict to Redis sorted sets for request timestamp tracking, using Redis key pattern `ratelimit:{client_ip}` with 60-second TTL, implementing sliding window algorithm with ZADD + ZREMRANGEBYSCORE + ZCARD for accurate request counting across workers, ensuring atomic operations using Redis transactions (MULTI/EXEC), maintaining backward compatibility (system functions without Redis by falling back to in-memory rate limiting with warning log), testing rate limit enforcement works correctly across multiple Gunicorn workers (request from worker 1 counted by worker 2)
+
+- **FR-126** *(MEDIUM)*: System MAY implement LLM response caching using Redis to improve response time for repeated queries by: storing completed LLM responses in Redis with key pattern `llm_cache:{hash(prompt)}`, using SHA256 hash of normalized prompt (lowercased, whitespace trimmed) as cache key, setting cache TTL to 1 hour (3600 seconds) for frequently asked questions, implementing cache invalidation on admin request or system update, limiting cache entry size to 50KB to prevent memory bloat, monitoring cache hit rate via Prometheus metric `llm_cache_hit_rate`, allowing users to bypass cache with `?nocache=1` query parameter, documenting caching behavior in user guide with examples of when cache is beneficial (FAQ, policy queries) vs not beneficial (personalized document generation)
+
+- **FR-127** *(MEDIUM)*: System MUST provide observability for multiprocess deployment by: exposing per-worker metrics via /metrics endpoint with worker_id label, aggregating metrics across workers in Prometheus (sum by endpoint for request counts, avg for latencies), logging worker PID and ID in all application logs for debugging, implementing health check endpoint /health/worker that returns worker-specific status, monitoring worker CPU/memory usage via cgroup metrics, alerting on worker restart frequency (>3 restarts/hour indicates issue), documenting troubleshooting guide for common multiprocess issues (worker timeout, memory leak, uneven load distribution)
+
+- **FR-128** *(LOW)*: System SHOULD implement session affinity (sticky sessions) for WebSocket connections if real-time features are added in future by: configuring Nginx upstream with ip_hash directive for consistent routing, storing active WebSocket connections in Redis set with key pattern `websocket:{worker_id}`, implementing graceful worker shutdown that notifies clients to reconnect, documenting session affinity configuration in deployment guide
+
 ### Key Entities
 
 - **User**: Government employee who uses the system; has unique credentials, can create conversations, upload documents
@@ -696,7 +712,7 @@ Government employees need the AI system to intelligently route queries to specia
   - **측정 방법**:
     1. 테스트 문서: 20페이지 한글 PDF (A4 크기, 평균 500자/페이지, ~10,000자 총계)
     2. 측정 구간: 파일 선택 후 "업로드" 버튼 클릭 → "문서 분석 완료" 메시지 표시까지
-    3. 처리 단계: 파일 업로드(HTTP) + PDF 텍스트 추출(pdfplumber) + 청킹(500자 단위) + 벡터 임베딩(sentence-transformers) + ChromaDB 저장
+    3. 처리 단계: 파일 업로드(HTTP) + PDF 텍스트 추출(pdfplumber) + 청킹(500자 단위) + 벡터 임베딩(sentence-transformers) + Qdrant 저장
     4. 합격 기준: 5회 반복 측정의 중앙값(P50)이 60초 이하
   - **테스트 도구**: `scripts/test-document-upload-performance.py` (Phase 7 추가 예정)
 - **SC-004**: 한국어 쿼리의 90%가 문법적으로 정확하고 맥락적으로 적절한 응답을 받음
@@ -774,6 +790,11 @@ Government employees need the AI system to intelligently route queries to specia
 - **SC-038**: CSRF exemption supports common paths: /docs and /openapi.json accessible without CSRF token, /api/v1/setup and all sub-routes (/api/v1/setup/init, /api/v1/setup/complete) work without token, Prometheus /metrics endpoint works without authentication or CSRF token, documented list of all exempt paths accessible in code comments
 - **SC-039**: Security tests match implementation: tests/security_audit.py password hashing test passes using bcrypt.hashpw(), bcrypt rounds set to 12 per FR-029, integration test successfully logs in with hashed password via /api/v1/auth/login endpoint, no import errors for passlib (not used in implementation)
 - **SC-040**: Data isolation prevents unauthorized access: user A cannot access user B's conversations/documents/messages (403 Forbidden returned), admin attempting to read user message content receives appropriate restriction (can view metadata only per FR-032), middleware or dependency-level isolation verified by automated security test suite passing 100% of ownership validation tests
+- **SC-041**: Multiprocess deployment handles concurrent load without worker timeout: 4 Gunicorn workers successfully process 20 concurrent requests within 15 seconds (5 requests per worker average), no worker timeout errors in logs during load test, graceful shutdown completes all in-progress LLM requests within 120 seconds, memory sharing via preload_app reduces total RAM usage by >40% compared to non-shared deployment (measured: 2.5GB base + 4×0.5GB = 4.5GB total vs 4×2.5GB = 10GB without sharing)
+- **SC-042**: Redis distributed rate limiting enforces limits across all workers: making 61 requests from same IP within 60 seconds returns 429 Too Many Requests regardless of which worker receives request, rate limit counters persist across worker restarts (stored in Redis, not in-memory), Redis failure triggers graceful degradation to in-memory rate limiting with warning log, automated test makes 100 requests distributed across 4 workers and verifies exactly 60 succeed + 40 fail with 429
+- **SC-043**: Worker lifecycle management prevents data loss: worker receiving SIGTERM completes current request before shutdown (verified by checking response status = 200 for requests sent during shutdown), worker restart does not affect other workers' operations (isolated process failure), worker recycling after max_requests=1000 executes without dropping connections, Prometheus metrics show worker_restarts_total incrementing as expected with jitter variance
+- **SC-044**: LLM cache improves response time for repeated queries: cache hit rate >30% for FAQ-style queries measured over 1-hour load test with 100 unique prompts (30 repeated 3 times each), cached response returns within 500ms (vs 8 seconds for uncached), cache TTL expires after exactly 1 hour, cache invalidation clears all entries immediately, exported cache metrics show llm_cache_hits and llm_cache_misses with correct ratio
+- **SC-045**: Multiprocess observability provides per-worker visibility: /metrics endpoint includes worker_id label for all application metrics (http_requests_total{worker_id="1"}), Prometheus aggregation query sum(rate(http_requests_total[5m])) by (endpoint) correctly combines all workers, health check /health/worker returns JSON with worker PID and status, logs include worker ID in all entries for request tracing, troubleshooting guide documents how to identify worker-specific issues (memory leak, CPU spike, timeout)
 
 ## Assumptions
 
@@ -810,7 +831,12 @@ This specification is based on the following assumptions:
     - HuggingFace: `Qwen/Qwen2.5-1.5B-Instruct`
     - Size: ~1GB Q4_K_M GGUF quantization
     - Use case: Systems with limited RAM (<16GB) or storage constraints
-- Vector database (ChromaDB or FAISS) with embedding model for document semantic search
+- **Vector Database**: Qdrant 1.7+ for document semantic search
+  - Docker deployment: qdrant/qdrant:v1.7.4 image for air-gapped environment
+  - Collection: documents (768 dimensions, Cosine similarity, HNSW index)
+  - Data isolation: payload filtering by conversation_id for user-scoped queries
+  - Backup: Snapshot API for periodic vector data backups
+  - Memory: ~100-200MB base + vector data (proportional to document count)
 - **Embedding model**: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 (HuggingFace: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, **default fp32 variant**, ~420MB, supports Korean, CPU-compatible) pre-downloaded for offline installation using `huggingface-cli download sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --local-dir ./models/embeddings/`, used for both document Q&A (FR-009) and tag auto-matching (FR-043). **Note**: For air-gapped deployment, download includes all files in model repository (pytorch_model.bin, config.json, tokenizer files)
 - **Safety Filter Dependencies**:
   - Lightweight toxic content classification model (HuggingFace: `unitary/toxic-bert`, ~400MB, multilingual including Korean, CPU-compatible) pre-downloaded from HuggingFace for offline installation
@@ -824,7 +850,15 @@ This specification is based on the following assumptions:
     - **openpyxl 3.1+**: Excel file support
     - **sympy** or **numexpr**: Calculator Tool expression evaluation
     - **jinja2 3.1+**: Document Template Tool rendering
-  - ChromaDB or FAISS: Document Search Tool and Legal Reference Tool vector search
+  - Qdrant: Document Search Tool and Legal Reference Tool vector search
+- **Multiprocess Deployment Dependencies** (FR-123 through FR-128):
+  - **Gunicorn 21.2.0+**: Production WSGI server for multiprocess deployment, supports Uvicorn workers for FastAPI async compatibility
+  - **Redis 7+**: Distributed cache and state management
+    - Configuration: AOF persistence enabled, maxmemory=512mb, maxmemory-policy=allkeys-lru
+    - Use cases: Distributed rate limiting (primary), LLM response caching (optional), session store (future)
+  - **redis-py 5.0.1+**: Python Redis client with connection pooling support
+  - **hiredis 2.3.2+**: High-performance Redis protocol parser (optional but recommended for performance)
+  - **APScheduler 3.10+**: Background task scheduling for metrics collection (already required for Feature 002)
 - **Specialized Agent System Dependencies**:
   - **Agent Prompt Templates** (Phase 10 mandatory): Stored as text files in `/prompts/agents/` directory for each specialized agent:
     - `/prompts/agents/rag_agent.txt`: RAG Agent prompts for document search and citation

@@ -6,9 +6,12 @@ Auto-generated from all feature plans. Last updated: 2025-11-04
 - **Backend**: Python 3.11+ + FastAPI
 - **Frontend**: TypeScript + React 18+ + Next.js 14+ (App Router)
 - **Database**: PostgreSQL 15+ with SQLAlchemy 2.0 (async)
-- **LLM**: Meta-Llama-3-8B via vLLM inference engine
+- **Vector Database**: Qdrant 1.7+ (HNSW index, Cosine similarity)
+- **LLM**: Qwen3-4B-Instruct (~2.5GB Q4_K_M) via llama.cpp (CPU baseline, Phase 10) or vLLM (GPU optional, Phase 13)
 - **Embeddings**: sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2) for semantic tag matching (FR-043)
-- **Document Processing**: pdfplumber, python-docx, ChromaDB/FAISS
+- **Document Processing**: pdfplumber, python-docx, Qdrant
+- **Distributed State**: Redis 7+ (rate limiting, LLM cache)
+- **Multiprocess**: Gunicorn 21.2+ with Uvicorn workers
 - **Styling**: TailwindCSS + shadcn/ui or Headless UI
 - **State Management**: React Query
 - **Task Scheduling**: APScheduler 3.10+ (background metrics collection)
@@ -20,7 +23,7 @@ Auto-generated from all feature plans. Last updated: 2025-11-04
 ```
 local-llm-webapp/
 ├── frontend/           # Next.js 14 application
-│   ├── src/app/        # App Router (auth, user, admin routes)
+│   ├── src/app/        # App Router (auth, user, admin routes)     
 │   ├── components/     # React components (chat, admin, ui)
 │   ├── lib/            # Utilities (api, errorMessages, localStorage)
 │   ├── hooks/          # Custom hooks (useSessionTimeout, useChatState)
