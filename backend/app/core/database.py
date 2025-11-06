@@ -66,15 +66,18 @@ if USE_SQLITE:
         connect_args={"check_same_thread": False},
     )
 else:
-    # PostgreSQL with READ COMMITTED isolation level (FR-113)
-    # This prevents dirty reads while allowing concurrent metric collection
+    # PostgreSQL with READ COMMITTED isolation level (FR-113, T294)
+    # - READ COMMITTED: Prevents dirty reads while allowing concurrent metric collection
+    # - pool_pre_ping: Connection health checks before using from pool
+    # - pool_recycle: Recycle connections after 1 hour (3600s) to avoid stale connections
     async_engine = create_async_engine(
         ASYNC_SQLALCHEMY_DATABASE_URL,
         echo=False,
-        pool_pre_ping=True,
+        pool_pre_ping=True,  # T294: Connection health checks
         pool_size=20,
         max_overflow=40,
-        isolation_level="READ COMMITTED"  # FR-113: Consistent metric snapshots
+        pool_recycle=3600,  # T294: Recycle connections after 1 hour
+        isolation_level="READ COMMITTED"  # T294: Consistent metric snapshots
     )
 
 # ==============================================================================

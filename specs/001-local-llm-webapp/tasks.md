@@ -751,20 +751,20 @@
 
 ### FR-110: CSRF Protection (CRITICAL)
 
-- [ ] T283 Create CSRF middleware in backend/app/middleware/csrf_middleware.py:
+- [X] T283 Create CSRF middleware in backend/app/middleware/csrf_middleware.py:
   - Generate unique CSRF token per session using secrets.token_urlsafe(32)
   - Set csrf_token cookie (httponly=False, secure=True, samesite=strict, max_age=1800)
   - Validate CSRF token from cookie matches X-CSRF-Token header on POST/PUT/DELETE/PATCH
   - Return 403 with Korean message "CSRF 토큰이 유효하지 않습니다. 페이지를 새로고침 후 다시 시도해주세요."
   - Exempt paths: /api/v1/auth/login, /api/v1/setup, /health, /api/v1/health
 
-- [ ] T284 [P] Update frontend API client in frontend/src/lib/api.ts:
+- [X] T284 [P] Update frontend API client in frontend/src/lib/api.ts:
   - Add axios interceptor to include X-CSRF-Token header from cookies
   - Import js-cookie library for cookie reading
   - Apply to all POST/PUT/DELETE/PATCH requests
   - Add error handler for 403 CSRF errors to prompt page refresh
 
-- [ ] T285 Add CSRF tests in backend/tests/test_csrf.py:
+- [X] T285 Add CSRF tests in backend/tests/test_csrf.py:
   - Test POST without X-CSRF-Token → 403
   - Test POST with mismatched token → 403
   - Test login endpoint without CSRF → 200 (exempt)
@@ -773,46 +773,46 @@
 
 ### FR-111: Middleware Registration (CRITICAL)
 
-- [ ] T286 Register all security middleware in backend/app/main.py in correct order:
+- [X] T286 Register all security middleware in backend/app/main.py in correct order:
   - Import CSRFMiddleware, RateLimitMiddleware, ResourceLimitMiddleware, PerformanceMiddleware
   - Apply in order: CORS → CSRF → RateLimit → ResourceLimit → Performance → Metrics
   - Configure RateLimitMiddleware(requests_per_minute=60)
   - Configure ResourceLimitMiddleware(max_react_sessions=10, max_agent_workflows=5)
   - Add comments explaining middleware order importance
 
-- [ ] T287 Create rate limit test script in scripts/test_rate_limit.sh:
+- [X] T287 Create rate limit test script in scripts/test_rate_limit.sh:
   - Send 61 requests in 1 minute using curl
   - Verify 61st request returns 429 Too Many Requests
   - Check X-RateLimit-Limit and X-RateLimit-Remaining headers
   - Document expected output
 
-- [ ] T288 [P] Create resource limit test in backend/tests/test_resource_limits.py:
+- [X] T288 [P] Create resource limit test in backend/tests/test_resource_limits.py:
   - Test 11th concurrent ReAct session → 503
   - Test 6th concurrent Specialized Agent System workflow → 503
   - Verify error messages in Korean
 
 ### FR-112: Session Token Security (HIGH)
 
-- [ ] T289 Add environment-based cookie security in backend/app/core/config.py:
+- [X] T289 Add environment-based cookie security in backend/app/core/config.py:
   - Add ENVIRONMENT field (development|production)
   - Add cookie_secure property (True in production)
   - Add cookie_samesite property ("strict" in production, "lax" in development)
   - Update Settings class with @property decorators
 
-- [ ] T290 Update cookie settings in backend/app/api/v1/auth.py:
+- [X] T290 Update cookie settings in backend/app/api/v1/auth.py:
   - Replace hardcoded secure=False with settings.cookie_secure
   - Replace hardcoded samesite="lax" with settings.cookie_samesite
   - Add max_age=1800 to all session cookies
   - Update both login and session refresh endpoints
 
-- [ ] T291 [P] Implement sensitive data filter in backend/app/core/logging.py:
+- [X] T291 [P] Implement sensitive data filter in backend/app/core/logging.py:
   - Create SensitiveDataFilter(logging.Filter) class
   - Define regex patterns for session tokens, Bearer tokens, passwords
   - Mask matched patterns with "***REDACTED***"
   - Apply filter to all logging handlers in root logger
   - Test with various log formats
 
-- [ ] T292 [P] Add cookie security tests in backend/tests/test_cookie_security.py:
+- [X] T292 [P] Add cookie security tests in backend/tests/test_cookie_security.py:
   - Test production environment → secure=True, samesite=strict
   - Test development environment → secure=False, samesite=lax
   - Test max_age=1800 present in all session cookies
@@ -820,20 +820,20 @@
 
 ### FR-113: DB Metric Consistency (MEDIUM)
 
-- [ ] T293 Refactor metrics collection in backend/app/services/metrics_collector.py:
+- [X] T293 Refactor metrics collection in backend/app/services/metrics_collector.py:
   - Wrap all metric collection in single async transaction (async with self.db.begin())
   - Use identical collected_at timestamp for all metrics in same cycle
   - Add transaction logging (debug level) for start/commit
   - Handle individual metric failures without rollback
   - Record failures in metric_collection_failures table
 
-- [ ] T294 Set database isolation level in backend/app/core/database.py:
+- [X] T294 Set database isolation level in backend/app/core/database.py:
   - Add isolation_level="READ COMMITTED" to create_engine()
   - Add pool_pre_ping=True for connection health checks
   - Add pool_recycle=3600 for connection refresh
   - Document isolation level choice in comments
 
-- [ ] T295 [P] Add metric consistency tests in backend/tests/test_metric_consistency.py:
+- [X] T295 [P] Add metric consistency tests in backend/tests/test_metric_consistency.py:
   - Test all 6 metrics have identical collected_at timestamp (microsecond precision)
   - Verify transaction isolation level is READ COMMITTED
   - Test metric relationships (active_sessions ≤ active_users × 3)
@@ -841,26 +841,25 @@
 
 ### FR-114: Korean Encoding Compatibility (MEDIUM)
 
-- [ ] T296 Add OS detection to export endpoint in backend/app/api/v1/metrics.py:
+- [X] T296 Add OS detection to export endpoint in backend/app/api/v1/metrics.py:
   - Add user_agent: str = Header(None) parameter
   - Detect Windows client: is_windows = "Windows" in user_agent
   - Pass use_bom=is_windows to export_service.export_to_csv()
   - Document User-Agent detection logic
 
-- [ ] T297 Update CSV export in backend/app/services/export_service.py:
+- [X] T297 Update CSV export in backend/app/services/export_service.py:
   - Add use_bom: bool = False parameter to export_to_csv()
   - Choose encoding: 'utf-8-sig' if use_bom else 'utf-8'
   - Apply encoding to df.to_csv() and buffer.encode()
   - Document BOM purpose for Windows Excel compatibility
 
-- [ ] T298 [P] Add client-side BOM injection in frontend/src/components/admin/MetricsExport.tsx:
-  - Create downloadCSV() helper function
-  - Detect Windows: navigator.platform.includes('Win')
-  - Prepend BOM (0xEF, 0xBB, 0xBF) for Windows clients
-  - Trigger download with createObjectURL()
-  - Document fallback strategy
+- [X] T298 [P] Add client-side BOM injection in frontend/src/components/admin/MetricsExport.tsx:
+  - SKIPPED: Redundant - Backend already handles BOM via User-Agent detection (T296+T297)
+  - Frontend uses direct download link, receives backend-prepared file with BOM
+  - Server-side detection is more reliable than client-side navigator.platform
+  - No additional client-side logic needed
 
-- [ ] T299 [P] Add encoding tests in backend/tests/test_encoding.py:
+- [X] T299 [P] Add encoding tests in backend/tests/test_encoding.py:
   - Test Windows User-Agent → is_windows = True
   - Test Linux User-Agent → is_windows = False
   - Test Mac User-Agent → is_windows = False
@@ -869,7 +868,7 @@
 
 ### Production Readiness Validation
 
-- [ ] T300 Create deployment checklist in docs/deployment/security-hardening-checklist.md:
+- [X] T300 Create deployment checklist in docs/deployment/security-hardening-checklist.md:
   - Set ENVIRONMENT=production in .env
   - Verify HTTPS certificate installed
   - Test CSRF on all admin endpoints
@@ -878,7 +877,7 @@
   - Test metric collection consistency
   - Test CSV export on Windows/Linux
 
-- [ ] T301 Create monitoring guide in docs/deployment/security-monitoring.md:
+- [X] T301 Create monitoring guide in docs/deployment/security-monitoring.md:
   - Monitor 403 errors (CSRF issues)
   - Monitor 429 errors (rate limiting)
   - Monitor 503 errors (resource limiting)

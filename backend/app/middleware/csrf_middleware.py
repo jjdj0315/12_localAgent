@@ -80,6 +80,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                         max_age=settings.SESSION_TIMEOUT_MINUTES * 60  # Match session timeout
                     )
                     logger.debug(f"CSRF token generated for path: {request.url.path}")
+                else:
+                    # Token already exists, reuse it (T312 optimization)
+                    logger.debug(f"CSRF token reused for path: {request.url.path}")
             return response
 
         # POST, PUT, DELETE, PATCH require CSRF validation

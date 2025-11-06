@@ -24,7 +24,7 @@ class MetricsCollector:
         self.db = db
 
     async def collect_all_metrics(self, granularity: str = "hourly") -> dict:
-        """Collect all metrics and store snapshots in a single transaction (FR-113)
+        """Collect all metrics and store snapshots in a single transaction (FR-113, T293)
 
         Args:
             granularity: 'hourly' or 'daily'
@@ -35,24 +35,22 @@ class MetricsCollector:
         # Use single timestamp for all metrics to ensure consistency (FR-113)
         collected_at = datetime.now(timezone.utc).replace(second=0, microsecond=0)
         results = {}
-        snapshots = []
 
-        # Collect all metrics WITHOUT committing individually
-        for metric_type in MetricType:
-            value = await self._collect_metric_with_retry(
-                metric_type, collected_at, granularity, commit=False
-            )
-            results[metric_type.value] = value
+        logger.debug(f"메트릭 수집 트랜잭션 시작: timestamp={collected_at.isoformat()}, granularity={granularity}")
 
-        # Single atomic commit for all successful collections (FR-113)
-        try:
-            await self.db.commit()
-            logger.info(f"모든 메트릭 수집 완료: {len(results)}개 메트릭 (granularity={granularity})")
-        except Exception as e:
-            logger.error(f"메트릭 커밋 실패: {str(e)}")
-            await self.db.rollback()
-            raise
+        # Wrap all metric collection in single async transaction (T293)
+        async with self.db.begin():
+            # Collect all metrics WITHOUT committing individually
+            # Individual failures are handled gracefully without rollback (T293)
+            for metric_type in MetricType:
+                value = await self._collect_metric_with_retry(
+                    metric_type, collected_at, granularity, commit=False
+                )
+                results[metric_type.value] = value
 
+            logger.debug(f"메트릭 수집 트랜잭션 커밋: {len(results)}개 메트릭 수집 완료")
+
+        logger.info(f"모든 메트릭 수집 완료: {len(results)}개 메트릭 (granularity={granularity})")
         return results
 
     async def _collect_metric_with_retry(
