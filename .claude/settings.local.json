@@ -3,7 +3,8 @@
     "allow": [
       "Bash(pip install:*)",
       "Bash(iconv:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git merge 002-admin-metrics-history -m \"$(cat <<''EOF''\nMerge branch ''002-admin-metrics-history'' into main\n\nSpecification improvements from /speckit.analyze review:\n- Fix CLAUDE.md LLM model reference (Meta-Llama-3-8B → Qwen3-4B-Instruct)\n- Unify terminology in plan.md (Multi-Agent → Specialized Agent System)\n- Remove vague adjectives in spec.md for clarity\n- Add Redis and Qdrant infrastructure configuration\n- Add Phase 11.8 multiprocess deployment tasks\n\nResolves constitution violations and improves specification quality.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []
