@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 from uuid import UUID
+import logging
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +11,9 @@ from sqlalchemy.orm import selectinload
 
 from app.models.conversation import Conversation
 from app.models.message import Message
+from app.services.qdrant_service import get_qdrant_service
+
+logger = logging.getLogger(__name__)
 
 
 def get_current_utc():
@@ -195,7 +199,7 @@ class ConversationService:
         db: AsyncSession, conversation_id: UUID, user_id: UUID
     ) -> bool:
         """
-        Delete conversation and all its messages.
+        Delete conversation, all its messages, and Qdrant collection.
 
         Args:
             db: Database session
@@ -217,6 +221,19 @@ class ConversationService:
 
         if not conversation:
             return False
+
+        # Delete Qdrant collection for this conversation
+        try:
+            qdrant_service = get_qdrant_service()
+            logger.info(f"Deleting Qdrant collection for conversation {conversation_id}")
+            deleted = qdrant_service.delete_collection(conversation_id)
+            if deleted:
+                logger.info(f"Successfully deleted Qdrant collection for conversation {conversation_id}")
+            else:
+                logger.info(f"Qdrant collection not found for conversation {conversation_id}")
+        except Exception as e:
+            # Log error but continue with deletion
+            logger.error(f"Failed to delete Qdrant collection for conversation {conversation_id}: {e}")
 
         await db.delete(conversation)
         await db.commit()

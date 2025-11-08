@@ -183,6 +183,36 @@
   - **If fails**: BLOCK all Phase 3+ work until resolved (Constitution Principle I is NON-NEGOTIABLE)
   - Document results in docs/deployment/air-gapped-validation-report.md
 
+### Horizontal Requirements Integration Verification
+
+- [ ] T042B Verify web interface accessibility (FR-002):
+  - Test web interface accessible via standard browsers (Chrome 90+, Edge 90+, Firefox 88+) on internal network
+  - Verify responsive design at minimum 1280x720 resolution
+  - Test all main pages load correctly (login, chat, history, admin dashboard)
+  - Confirm no external CDN or internet dependencies (all assets served locally)
+  - **Pass criteria**: All pages accessible without internet, no console errors for missing resources
+
+- [ ] T042C Verify Korean language display (FR-014):
+  - Test Korean characters display correctly across all UI components
+  - Verify Korean error messages show without mojibake (���� characters)
+  - Test Korean input/output in chat interface
+  - Validate UTF-8 encoding without BOM in all frontend Korean resource files
+  - **Pass criteria**: All Korean text displays correctly, no encoding corruption
+
+- [ ] T042D Verify browser compatibility (FR-040):
+  - Test application on Chrome 90+, Edge 90+, Firefox 88+ (Windows workstations)
+  - Verify JavaScript-dependent features work correctly
+  - Test responsive layout on different screen sizes (1280x720 minimum, 1920x1080 recommended)
+  - Confirm graceful degradation for unsupported browsers (display error message for IE)
+  - **Pass criteria**: Core functionality works on all supported browsers
+
+- [ ] T042E Verify session timeout behavior (FR-012):
+  - Test session expires after 30 minutes of inactivity (no API requests)
+  - Verify 3-minute warning modal appears before timeout
+  - Test draft message recovery from localStorage after re-login
+  - Confirm session activity tracking updates on user interactions (click, input, scroll)
+  - **Pass criteria**: Session timeout works correctly, warning modal appears, draft recovery functions
+
 **Checkpoint**: ✅ Foundation ready - user story implementation can now begin in parallel
 **⚠️ GATE**: T042A must PASS before proceeding to Phase 3
 
@@ -196,13 +226,13 @@
 
 ### Backend Implementation
 
-- [X] T043 [US1] Implement conversation context management service in backend/app/services/context_service.py:
+- [X] T043 [US1] Implement conversation context management service in backend/app/services/context_service.py (FR-005, FR-036):
   - 10-message window (5 user + 5 AI), FIFO removal when exceeded
   - 2048 token limit using actual tokenizer (transformers.AutoTokenizer.from_pretrained for accurate Korean token counting)
   - Do NOT use character approximation (1 token ≈ 4 chars) - this is inaccurate for Korean text
   - Count tokens dynamically before each LLM call, trim oldest messages if limit exceeded
-- [X] T044 [US1] Implement chat endpoint POST /api/v1/chat with streaming support in backend/app/api/v1/chat.py
-- [X] T045 [US1] Implement conversation CRUD endpoints in backend/app/api/v1/conversations.py (create, list, get, delete)
+- [X] T044 [US1] Implement chat endpoint POST /api/v1/chat with streaming support in backend/app/api/v1/chat.py (FR-003, FR-004)
+- [X] T045 [US1] Implement conversation CRUD endpoints in backend/app/api/v1/conversations.py (create, list, get, delete) (FR-006)
 - [X] T046 [US1] Implement message history endpoint GET /api/v1/conversations/{id}/messages in backend/app/api/v1/conversations.py
 
 ### Frontend Implementation
@@ -231,7 +261,7 @@
 ### Backend Implementation
 
 - [X] T056 [US2] Implement conversation title edit endpoint PATCH /api/v1/conversations/{id} in backend/app/api/v1/conversations.py
-- [X] T057 [US2] Implement conversation search endpoint GET /api/v1/conversations/search in backend/app/api/v1/conversations.py
+- [X] T057 [US2] Implement conversation search endpoint GET /api/v1/conversations/search in backend/app/api/v1/conversations.py (FR-007)
 - [X] T058 [US2] Implement tag service with semantic similarity matching in backend/app/services/tag_service.py (sentence-transformers, cosine similarity >0.7)
 - [X] T059 [US2] Implement auto-tag assignment logic triggered on first message in backend/app/services/tag_service.py (analyze first message content + custom conversation title if set by user before first message, semantic similarity >0.7 per FR-016, FR-043)
 - [X] T060 [US2] Implement tag management endpoints in backend/app/api/v1/tags.py (create, edit, delete, list)
@@ -263,12 +293,17 @@
 
 ### Backend Implementation
 
-- [X] T071 [US3] Implement document upload endpoint POST /api/v1/documents in backend/app/api/v1/documents.py (file validation, size limits per FR-015)
-- [X] T072 [US3] Implement document processing service in backend/app/services/document_service.py (pdfplumber for PDF, python-docx for DOCX extraction)
-- [X] T073 [US3] Implement vector embedding service in backend/app/services/embedding_service.py (ChromaDB or FAISS, sentence-transformers)
-- [X] T074 [US3] Implement document search service in backend/app/services/document_service.py (semantic search, return snippets with page numbers)
+- [X] T071 [US3] Implement document upload endpoint POST /api/v1/documents in backend/app/api/v1/documents.py (file validation, size limits per FR-008, FR-015)
+- [X] T072 [US3] Implement document processing service in backend/app/services/document_service.py (pdfplumber for PDF, python-docx for DOCX extraction) - text extraction only (FR-009)
+- [X] T073 [US3] Implement Qdrant vector database integration (FR-009)
+  - [X] T073-1 Create EmbeddingService in backend/app/services/embedding_service.py (sentence-transformers: paraphrase-multilingual-MiniLM-L12-v2, 384-dim vectors, chunking 500 chars + 50 overlap)
+  - [X] T073-2 Create QdrantService in backend/app/services/qdrant_service.py (conversation-scoped collections, HNSW index, cosine similarity)
+  - [X] T073-3 Modify DocumentService.save_document to generate vectors and store in Qdrant (chunk → embed → upload)
+  - [X] T073-4 Modify DocumentService.delete_document to delete vectors from Qdrant
+  - [X] T073-5 Add Qdrant collection cleanup to conversation deletion logic
+- [ ] T074 [US3] Implement Document Search Tool in backend/app/services/react_tools/document_search.py (vector similarity search, return top 5 chunks with filename/page references) (FR-009)
 - [X] T075 [US3] Implement document list/delete endpoints in backend/app/api/v1/documents.py
-- [X] T076 [US3] Integrate document context into chat endpoint for document-aware responses in backend/app/api/v1/chat.py
+- [X] T076 [US3] Integrate document context into chat endpoint for document-aware responses in backend/app/api/v1/chat.py (document_ids parameter)
 
 ### Frontend Implementation
 
@@ -280,8 +315,8 @@
 
 - [X] T080 [US3] Test PDF upload and text extraction (20-page document <60 seconds per SC-003)
 - [X] T081 [US3] Test DOCX and TXT file processing
-- [X] T082 [US3] Verify document Q&A returns accurate answers with source references
-- [X] T083 [US3] Test multi-document comparison queries
+- [ ] T082 [US3] Verify document Q&A returns accurate answers with source references (requires T073, T074)
+- [ ] T083 [US3] Test multi-document comparison queries (requires T073, T074)
 
 ---
 
@@ -293,12 +328,12 @@
 
 ### Backend Implementation
 
-- [X] T084 [US4] Implement user login endpoint POST /api/v1/auth/login in backend/app/api/v1/auth.py (password validation, session creation)
+- [X] T084 [US4] Implement user login endpoint POST /api/v1/auth/login in backend/app/api/v1/auth.py (password validation, session creation) (FR-010)
 - [X] T085 [US4] Implement user logout endpoint POST /api/v1/auth/logout in backend/app/api/v1/auth.py (session invalidation)
-- [X] T086 [US4] Implement session timeout logic with 30-minute inactivity in backend/app/middleware/session_middleware.py
+- [X] T086 [US4] Implement session timeout logic with 30-minute inactivity in backend/app/middleware/session_middleware.py (FR-012)
 - [X] T087 [US4] Implement concurrent session management (max 3 sessions, oldest terminated) in backend/app/services/auth_service.py (FR-030)
 - [X] T088 [US4] Implement login attempt tracking and rate limiting in backend/app/services/auth_service.py (5 attempts = 30min lockout, FR-031)
-- [X] T089 [US4] Implement data isolation middleware ensuring user_id filtering in backend/app/middleware/data_isolation_middleware.py (FR-032)
+- [X] T089 [US4] Implement data isolation middleware ensuring user_id filtering in backend/app/middleware/data_isolation_middleware.py (FR-011, FR-032)
 - [X] T090 [US4] Implement storage quota checking in backend/app/services/storage_service.py (10GB per user, auto-cleanup at limit per FR-020)
 
 ### Frontend Implementation
@@ -477,6 +512,33 @@
 - [X] T169 [US7] Verify tool execution audit log (sanitized parameters, no PII, 500 char truncation per FR-063) - ✅ **2025-11-01**: Audit logging verified
 - [X] T170 [US7] Test admin tool management (enable/disable tools per FR-064) - ✅ **2025-11-01**: Admin interface implemented
 - [X] T171 [US7] Verify all tool dependencies loaded locally for air-gapped deployment (FR-065) - ✅ **2025-11-01**: Offline dependencies verified
+- [ ] T171A [US7] Test orchestrator routing accuracy (FR-066, SC-046):
+  - Create labeled test dataset: 100 queries across 7 routing options (direct + 6 agents)
+  - Run orchestrator classification on all test queries
+  - Measure routing accuracy: correct route / total queries
+  - **Pass criteria**: ≥85% routing accuracy (per SC-046)
+  - Document misclassified queries for routing improvement
+- [ ] T171B [US7] Test agent-specific response quality (FR-067):
+  - Test each of 6 agents with 10 domain-specific queries (60 total)
+  - RAG Agent: document search accuracy, source citation correctness
+  - Citizen Support Agent: empathetic tone, completeness, 존댓말 usage
+  - Document Writing Agent: structure (제목, 배경, 내용, 결론), formatting, official language
+  - Legal Research Agent: regulation search accuracy, citation format, plain-language interpretation
+  - Data Analysis Agent: statistical accuracy, Korean number formatting (천 단위 쉼표)
+  - Review Agent: error detection (factual, grammatical, policy), specific improvement suggestions
+  - **Pass criteria**: 80% of queries meet quality criteria per agent specialization
+- [ ] T171C [US7] Test LoRA adapter switching performance (FR-070):
+  - Test sequential requests to different agents (trigger adapter switching)
+  - Measure adapter load time from disk (cold load)
+  - Measure adapter load time from LRU cache (warm load)
+  - Verify LRU cache keeps 2-3 most recently used adapters
+  - **Pass criteria**: Cold load <3 seconds, warm load <500ms, cache eviction works correctly
+- [ ] T171D [US7] Test multi-agent workflow integration (FR-072, FR-073):
+  - Test concurrent agent requests (5 concurrent limit per FR-072)
+  - Test agent timeout behavior (2-minute timeout per FR-072)
+  - Test graceful degradation (LoRA loading failure → prompt-only fallback per FR-073)
+  - Test tool error handling within agent context (per FR-073)
+  - **Pass criteria**: Resource limits enforced, timeouts work, fallbacks activate correctly
 
 ---
 
@@ -820,12 +882,15 @@
 
 ### FR-113: DB Metric Consistency (MEDIUM)
 
+**Session 2025-11-08 clarification**: All-or-nothing atomic transaction - prioritizes data consistency (identical timestamps) over partial success. Any metric failure rolls back entire transaction and retries next cycle.
+
 - [X] T293 Refactor metrics collection in backend/app/services/metrics_collector.py:
-  - Wrap all metric collection in single async transaction (async with self.db.begin())
+  - **Session 2025-11-08 update**: All-or-nothing approach - wrap all metric collection in single try/except
+  - If ANY metric calculation fails → Rollback entire transaction (auto-rollback on exception)
   - Use identical collected_at timestamp for all metrics in same cycle
   - Add transaction logging (debug level) for start/commit
-  - Handle individual metric failures without rollback
-  - Record failures in metric_collection_failures table
+  - Record ENTIRE collection cycle failure in metric_collection_failures table (separate transaction)
+  - Retry full collection in next scheduled cycle (hourly/daily)
 
 - [X] T294 Set database isolation level in backend/app/core/database.py:
   - Add isolation_level="READ COMMITTED" to create_engine()
@@ -949,34 +1014,53 @@
 
 ### FR-118: Admin Privilege Model (HIGH)
 
-- [ ] T309 Create Admin table removal migration in backend/alembic/versions/20251104_remove_admin_table.py:
-  - Upgrade: Sync User.is_admin from Admin table, then DROP admins table
-  - Downgrade: Recreate Admin table and populate from User.is_admin
-  - Test migration up/down on dev database
+**Session 2025-11-08 clarification**: Use Admin table existence check as single source of truth (Option B). User.is_admin maintained as denormalized reference.
+
+- [ ] T309 Create Admin table synchronization migration in backend/alembic/versions/20251108_sync_admin_privileges.py:
+  - Upgrade: Sync User.is_admin = TRUE where user_id IN (SELECT user_id FROM admins)
+  - Upgrade: Sync User.is_admin = FALSE where user_id NOT IN (SELECT user_id FROM admins)
+  - Optional: Add database trigger to keep is_admin synchronized OR synchronize via application logic
+  - Test migration on dev database
   - Verify existing admins retain privileges after migration
 
-- [ ] T310 Document admin management in docs/admin/user-management.md:
-  - Explain is_admin flag is single source of truth
-  - Document SQL command to grant admin: `UPDATE users SET is_admin=TRUE WHERE username='...'`
-  - Document SQL command to revoke admin: `UPDATE users SET is_admin=FALSE WHERE username='...'`
+- [ ] T310 Update get_current_admin() dependency in backend/app/api/deps.py:
+  - Primary check: Query Admin table for record where Admin.user_id == current_user.id
+  - Raise HTTPException(403) if no Admin record found
+  - Add db: AsyncSession parameter to dependency
+  - Update all admin endpoint signatures to include db dependency
+  - Test admin user accessing /admin/users → 200
+  - Test non-admin user accessing /admin/users → 403
+
+- [ ] T311 Document admin management in docs/admin/user-management.md:
+  - **Session 2025-11-08 update**: Explain Admin table is single source of truth, User.is_admin is denormalized reference
+  - Document SQL commands to grant admin:
+    ```sql
+    INSERT INTO admins (user_id, created_at) VALUES ((SELECT id FROM users WHERE username='...'), NOW());
+    UPDATE users SET is_admin=TRUE WHERE username='...';
+    ```
+  - Document SQL commands to revoke admin:
+    ```sql
+    DELETE FROM admins WHERE user_id=(SELECT id FROM users WHERE username='...');
+    UPDATE users SET is_admin=FALSE WHERE username='...';
+    ```
   - Note setup wizard exception (FR-034)
   - Add warning about self-privilege removal protection
 
-- [ ] T311 [P] Add admin privilege consistency test in backend/tests/test_admin_auth.py:
-  - Test all admin endpoints use get_current_admin() dependency
-  - Test non-admin user accessing /admin/users → 403
-  - Test admin user accessing /admin/users → 200
+- [ ] T312 [P] Add admin privilege consistency test in backend/tests/test_admin_auth.py:
+  - Test Admin table check is primary: Create user with is_admin=TRUE but no Admin record → 403
+  - Test Admin table record grants access: Create user with is_admin=FALSE but has Admin record → 200
+  - Test all admin endpoints use updated get_current_admin() dependency
   - Verify error message in Korean: "관리자 권한이 필요합니다."
 
 ### FR-119: CSRF Token Optimization (MEDIUM)
 
-- [ ] T312 Optimize CSRF token generation in backend/app/middleware/csrf_middleware.py:
+- [ ] T313 Optimize CSRF token generation in backend/app/middleware/csrf_middleware.py:
   - Add check: `existing_token = request.cookies.get("csrf_token")`
   - Only generate token if `not existing_token`
   - Add debug log: "CSRF token generated" vs "CSRF token reused"
   - Test with 10 sequential GET requests → should see only 1 generation log
 
-- [ ] T313 [P] Add CSRF token stability test in backend/tests/test_csrf_stability.py:
+- [ ] T314 [P] Add CSRF token stability test in backend/tests/test_csrf_stability.py:
   - Login to get session
   - Make 10 GET requests
   - Verify same csrf_token value in all responses
@@ -1253,6 +1337,313 @@
 
 ---
 
+## Phase 11.9: Unified Orchestrator Implementation
+
+**Purpose**: Unify separate ReAct Agent and Multi-Agent systems into single intelligent 3-way routing architecture
+
+**Requirements**: FR-129 (Unified Architecture), FR-130 (Classification), FR-131 (Direct Path), FR-132 (Reasoning Path), FR-133 (Specialized Path), FR-134 (LangGraph State), FR-135 (Performance), FR-136 (Backward Compatibility)
+**Success Criteria**: SC-046 (Classification accuracy ≥85%), SC-047 (Direct path P95 <1.5s), SC-048 (Keyword classification <10ms), SC-049 (Route distribution matches expectations), SC-050 (Backward compatibility), SC-051 (State transitions logged)
+
+### Core Architecture (CRITICAL)
+
+- [X] **T341** [CRITICAL] Create Unified Orchestrator service `backend/app/services/unified_orchestrator_service.py`
+  - Define `RouteType` enum: DIRECT, REASONING, SPECIALIZED
+  - Define `UnifiedAgentState` TypedDict per FR-134 schema (query, route, confidence, clarified_intent, agent_outputs, tools_used, etc.)
+  - Implement `UnifiedOrchestrator` class with `__init__()` loading keyword dictionaries
+  - Keyword dictionaries per FR-130: clear_simple (안녕, 감사, 이란, 무엇, 설명), ambiguous (해줘, 좀, 부탁, 도와), clearly_complex (작성, 보고서, 법령, 분석+데이터)
+  - Lazy init: `self.multi_agent = MultiAgentOrchestrator()`
+  - Call `self._build_main_graph()` to construct LangGraph workflow
+  - **Acceptance**: Import succeeds, orchestrator initializes without errors
+
+- [X] **T342** [CRITICAL] Implement LangGraph main graph in `UnifiedOrchestrator._build_main_graph()`
+  - Create `StateGraph(UnifiedAgentState)` instance
+  - Add 5 nodes: "classify", "direct_node", "reasoning_node", "specialized_node", "finalize"
+  - Set entry point: `workflow.set_entry_point("classify")`
+  - Add conditional edges from classify to 3 execution nodes via `_route_decision()` function
+  - Add edges from all execution nodes to finalize: `add_edge("direct_node", "finalize")`
+  - Add edge from finalize to END: `add_edge("finalize", END)`
+  - Return `workflow.compile()`
+  - **Acceptance**: Graph compiles successfully, `graph.invoke(initial_state)` executes without errors
+
+### Classification Implementation (CRITICAL)
+
+- [X] **T343** [CRITICAL] Implement fast keyword classification `UnifiedOrchestrator._fast_classify()`
+  - Input: query string, Output: (route, confidence) tuple
+  - Count keyword matches per route from `self.route_keywords` dictionaries
+  - Select route with highest score, calculate confidence as `max_score / total_score`
+  - High-confidence shortcuts per FR-130:
+    - Query length <10 + greeting keyword → ("direct", 0.95)
+    - Ambiguous pattern (해줘, 좀, 부탁) + short query (<15 chars) → ("reasoning", 0.9)
+    - 2+ clearly_complex keywords → ("specialized", 0.85)
+  - If max_score == 0 → ("direct", 0.3) for LLM fallback
+  - **Acceptance**: Test 100 queries, keyword classification completes in <10ms average (SC-048)
+
+- [X] **T344** [CRITICAL] Implement LLM-based classification `UnifiedOrchestrator._llm_classify()`
+  - Input: query string, Output: (route, confidence) tuple
+  - Build classification prompt with 3 categories:
+    - DIRECT: Clear and simple queries (greetings, explanations, straightforward questions)
+    - REASONING: Ambiguous intent requiring clarification (vague requests, missing context)
+    - SPECIALIZED: Complex tasks requiring domain expertise (document writing, legal research, data analysis)
+  - Call `self.llm_service.generate_sync(prompt, max_tokens=10, temperature=0.1)`
+  - Parse response for "DIRECT", "REASONING", or "SPECIALIZED" keywords
+  - Map to route with confidence 0.8, fallback to ("direct", 0.5) on error
+  - **Acceptance**: Ambiguous query "이것 좀 도와주세요" routes correctly, LLM call completes in ~200ms
+
+- [X] **T345** [CRITICAL] Implement classify node `UnifiedOrchestrator._classify_node()`
+  - Call `_fast_classify(state["query"])` first (Stage 1)
+  - If confidence < 0.7, call `_llm_classify(state["query"])` (Stage 2)
+  - Update state: `route`, `complexity`, `classification_confidence`, `classification_method`
+  - Append to `execution_log`: {"stage": "classify", "method": "keyword"|"llm", "confidence": x, "time_ms": y}
+  - **Acceptance**: State updated correctly, execution_log contains classification entry
+
+- [X] **T346** [CRITICAL] Implement route decision function `UnifiedOrchestrator._route_decision()`
+  - Input: state, Output: "direct" | "reasoning" | "specialized"
+  - Return `state["route"]` for conditional edge routing
+  - **Acceptance**: LangGraph routes to correct node based on state["route"] value
+
+### Execution Paths (HIGH)
+
+- [X] **T347** [HIGH] Implement direct path `UnifiedOrchestrator._direct_node()`
+  - Extract `state["query"]` and last 5 conversation history messages
+  - Build simple prompt with history context
+  - Call `self.llm_service.generate_sync(prompt, max_tokens=1000, temperature=0.7)`
+  - Update state: `final_response`, `processing_time_ms`
+  - Append to execution_log: {"stage": "direct_execution", "status": "success"|"error", "time_ms": x}
+  - Error handling: catch exceptions, set state["error"], return fallback message
+  - **Acceptance**: Simple query "안녕하세요" completes in <1.5s P95 (SC-047)
+
+- [X] **T348** [HIGH] Implement intent clarification helper `UnifiedOrchestrator._clarify_intent()`
+  - Input: query string, conversation_history list, Output: clarification dict
+  - Build clarification prompt asking: actual intent, missing context, complexity (simple/complex), recommended route, agent_type (if complex), refined_query
+  - **Retry Policy**: Call `self.llm_service.generate_sync()` with retry logic:
+    - Max 3 retries with exponential backoff (100ms → 200ms → 400ms)
+    - Total timeout: 2 seconds per attempt (each retry has 2s timeout)
+    - Retry on: Connection errors, timeout errors, 5xx server errors
+    - No retry on: 4xx client errors, JSON structure issues
+  - Call with parameters: `prompt, max_tokens=300, temperature=0.3`
+  - Parse JSON response with keys: clarified_intent, missing_context, complexity, recommended_route, agent_type, refined_query
+  - Fallback on all retries exhausted: return {clarified_intent: query, complexity: "simple", recommended_route: "direct", agent_type: None, refined_query: query, missing_context: []}
+  - Log all retry attempts and final failure for monitoring
+  - **Acceptance**: Ambiguous query "분석해줘" returns clarification with missing context identified, retry logic handles transient LLM failures
+
+- [X] **T349** [HIGH] Implement reasoning path `UnifiedOrchestrator._reasoning_node()`
+  - **Session 2025-11-08 clarification**: Strictly prompt-based - NO tool invocation in Reasoning path
+  - Call `_clarify_intent(state["query"], state["conversation_history"])` to analyze ambiguous intent via LLM only
+  - Update state with clarification: `clarified_intent`, `missing_context`, `refined_query`
+  - **IMPORTANT**: This path only analyzes query to clarify intent, then reroutes. No tool execution occurs here.
+  - If clarification complexity == "simple": reroute to direct path
+    - Set `state["rerouted_to"] = "direct"`
+    - Call `_execute_direct_llm(refined_query, history)` and set `final_response`
+  - Else: reroute to specialized path
+    - Set `state["rerouted_to"] = "specialized"`, `state["agent_type"]`
+    - Call `self.multi_agent.route_and_execute(refined_query, forced_agent=agent_type)`
+    - Update `final_response`, `agent_sequence`, `tools_used`
+  - If context gathering (e.g., document list, tag list) needed for clarification → Query belongs in Specialized path instead
+  - Append to execution_log: {"stage": "intent_clarification", "clarified_intent": x, "rerouted_to": y, "time_ms": z}
+  - **Acceptance**: Query "분석해줘" routes to reasoning, clarifies intent via LLM analysis only, reroutes to appropriate path
+
+- [X] **T350** [HIGH] Implement specialized path `UnifiedOrchestrator._specialized_node()`
+  - Call existing `self.multi_agent.route_and_execute(user_query=state["query"], context={...})`
+  - Combine agent outputs with "[agent_name]\n{output}" format, join with "\n\n---\n\n"
+  - Update state: `final_response`, `agent_outputs`, `workflow_type`, `tools_used` (aggregate tools used by all agents), `processing_time_ms`
+  - Append to execution_log: {"stage": "specialized_execution", "workflow": "single"|"sequential"|"parallel", "agents": [...], "tools": [...], "time_ms": x}
+  - **Note**: Agents autonomously use tools via internal ReAct pattern; orchestrator aggregates tool usage metadata
+  - **Acceptance**: Query "보고서 작성" routes to specialized, DocumentWritingAgent executes with optional tool usage
+
+- [X] **T351** [HIGH] Implement finalize node `UnifiedOrchestrator._finalize_node()`
+  - Validate state["final_response"] exists, set fallback if missing
+  - Calculate total_time_ms from execution_log entries
+  - Append final log: {"stage": "finalize", "total_time_ms": x, "route": y, "success": z}
+  - Optional debug mode: append route emoji to response (⚡ direct, 🤔 reasoning, 👥 specialized)
+  - **Acceptance**: All execution paths produce final_response and complete execution_log
+
+### API Integration (HIGH)
+
+- [ ] **T352** [HIGH] Update chat request schema `backend/app/schemas/message.py`
+  - Add field: `use_unified_routing: bool = True` (new default)
+  - Keep legacy fields: `use_react_agent: bool = False`, `use_multi_agent: bool = False`
+  - Add docstring: "use_unified_routing enables automatic 3-way intelligent routing"
+  - **Acceptance**: Pydantic validates request schema, accepts all 3 fields
+
+- [ ] **T353** [HIGH] Update chat response schema `backend/app/schemas/message.py`
+  - Add fields: `route_type: Optional[str] = None` (direct|reasoning|specialized|legacy_react|legacy_multi)
+  - Add fields: `classification_confidence: Optional[float] = None`, `agents_used: Optional[List[str]] = None`
+  - Add reasoning path fields: `clarified_intent: Optional[str] = None`, `rerouted_to: Optional[str] = None`
+  - Keep existing (legacy): `react_steps`, `tools_used` (now only for specialized path), `multi_agent_result`
+  - **Acceptance**: Response schema validates with new fields, backward compatible
+
+- [ ] **T354** [HIGH] Integrate unified orchestrator in chat endpoint `backend/app/api/v1/chat.py`
+  - Initialize singleton: `unified_orchestrator = UnifiedOrchestrator()` at module level
+  - In `send_message()`, add routing logic:
+    ```python
+    if request.use_unified_routing:
+        result = await unified_orchestrator.process(...)
+        return ChatResponse(route_type=result["route"], classification_confidence=..., ...)
+    elif request.use_multi_agent:  # Legacy
+        ...
+    elif request.use_react_agent:  # Legacy
+        ...
+    else:  # Legacy direct
+        ...
+    ```
+  - Map orchestrator result to ChatResponse fields
+  - **Acceptance**: API endpoint returns route_type and classification_confidence for unified routing
+
+### Performance Optimization (HIGH)
+
+- [ ] **T355** [HIGH] Implement fast-path optimizations and concurrency limits per FR-135
+  - Profile keyword classification: ensure <10ms per call (no LLM)
+  - Profile direct path: ensure P95 <1.5s for queries <100 chars
+  - Implement connection pooling for LLM service (reuse connections)
+  - Lazy load agent resources: only initialize when needed
+  - **Concurrency Enforcement (Session 2025-11-08 clarification)**:
+    - Per-user limit: Track active requests per user_id, reject if user already has 1 active request (HTTP 429)
+    - Global limit: Track total active orchestrator executions, reject if ≥50 concurrent (HTTP 429)
+    - **Equal counting**: All routes (Direct/Reasoning/Specialized) count as 1 toward 50 limit regardless of complexity
+    - No weighted counting or separate pools - simpler implementation, predictable behavior
+    - Implementation: Use class-level atomic counters with asyncio.Lock + try-finally cleanup in `process()` method
+    - No queueing: Immediate 429 rejection rather than queuing requests
+    - Metrics: Track rejection count by limit type (per_user/global)
+  - Measure savings: keyword classification (~200ms saved), skipped agent routing (~300ms saved), skipped tool init (~300ms saved)
+  - **Acceptance**: Direct path 600ms faster than legacy multi-agent path, concurrency limits enforced (51st request returns 429), per-user duplicate prevention working, all routes counted equally
+
+- [ ] **T356** [MEDIUM] Implement response caching integration (optional, requires FR-126 Redis)
+  - In `_direct_node()`, check cache before LLM call: `cached = llm_cache_service.get_cached_response(normalized_query)`
+  - If cache hit, return cached response, skip LLM call
+  - After LLM generation, cache result: `llm_cache_service.set_cached_response(normalized_query, response, ttl=3600)`
+  - Support cache bypass: check `context.get("nocache")` flag
+  - **Acceptance**: Second identical query returns cached response in <1s vs 8s for first query
+
+### Testing (CRITICAL)
+
+- [ ] **T357** [CRITICAL] Create unit tests `backend/tests/test_unified_orchestrator.py`
+  - Test: `test_fast_classify_greeting()` → ("direct", confidence >0.9)
+  - Test: `test_fast_classify_ambiguous()` → ("reasoning", confidence >0.8) for query "분석해줘"
+  - Test: `test_fast_classify_document()` → ("specialized", confidence >0.7)
+  - Test: `test_llm_classify_ambiguous()` → route in [direct/reasoning/specialized], confidence ≥0.5
+  - Test: `test_direct_path_latency()` → processing_time_ms <1500
+  - Test: `test_reasoning_path_clarification()` → clarified_intent not None, rerouted_to in ["direct", "specialized"]
+  - Test: `test_specialized_path_agents()` → "document_writing" in agents_used, tools_used populated if agents used tools
+  - Test: `test_state_transitions()` → execution_log contains classify, execute, finalize entries
+  - **Acceptance**: 8 tests pass with >90% coverage of unified_orchestrator_service.py
+
+- [ ] **T358** [CRITICAL] Create integration tests `backend/tests/test_unified_routing_integration.py`
+  - Test: End-to-end direct path via API (POST /api/v1/chat/send with "안녕하세요")
+  - Test: End-to-end reasoning path via API (POST with "분석해줘") → expect clarified_intent and rerouted_to fields
+  - Test: End-to-end specialized path via API (POST with "보고서 작성")
+  - Test: Backward compatibility with `use_react_agent=True` flag (triggers reasoning path)
+  - Test: Backward compatibility with `use_multi_agent=True` flag (triggers specialized path)
+  - Test: Response includes route_type, classification_confidence, appropriate metadata (clarified_intent for reasoning, tools_used for specialized)
+  - **Acceptance**: All 6 integration tests pass, response format correct
+
+- [ ] **T359** [HIGH] Create performance benchmark `backend/tests/test_unified_orchestrator_performance.py`
+  - Test: Keyword classification <10ms for 100 queries (SC-048)
+  - Test: Route distribution matches expectations: 60% direct, 25% reasoning, 15% specialized (±10%, SC-049)
+  - Test: Direct path P95 <1.5s for queries <100 chars (SC-047)
+  - Test: Classification accuracy ≥85% on labeled test set of 100 queries (SC-046)
+  - Use `pytest-benchmark` for timing measurements
+  - **Acceptance**: All 4 performance targets met
+
+### Monitoring & Observability (MEDIUM)
+
+- [ ] **T360** [MEDIUM] Add Prometheus metrics for unified orchestrator `backend/app/core/metrics.py`
+  - Counter: `orchestrator_classification_total` (labels: method=keyword|llm, route=direct|reasoning|specialized)
+  - Histogram: `orchestrator_classification_confidence` (label: route)
+  - Histogram: `orchestrator_route_latency_seconds` (labels: route, success=true|false)
+  - Gauge: `orchestrator_route_distribution_percent` (label: route)
+  - Update metrics in classify_node, finalize_node
+  - **Acceptance**: `/metrics` endpoint exposes orchestrator metrics, Prometheus scrapes successfully
+
+- [ ] **T361** [MEDIUM] Create Grafana dashboard configuration `docs/monitoring/grafana-unified-orchestrator.json`
+  - Panel: Classification method split (pie chart: keyword vs LLM percentage)
+  - Panel: Route distribution (pie chart: direct/reasoning/specialized)
+  - Panel: P50/P95/P99 latency by route (time series graph)
+  - Panel: Classification confidence distribution (histogram)
+  - Panel: Route success rate by route (gauge: % of successful executions)
+  - **Acceptance**: Import JSON into Grafana, dashboard displays all panels correctly
+
+### Documentation (MEDIUM)
+
+- [ ] **T362** [MEDIUM] Create unified orchestrator architecture doc `docs/architecture/unified-orchestrator.md`
+  - Section: Overview (3-way routing concept, benefits)
+  - Section: LangGraph structure (diagram with classify→route→execute→finalize flow)
+  - Section: Classification strategy (keyword vs LLM, confidence thresholds)
+  - Section: Execution paths (direct/reasoning/specialized details)
+  - Section: State management (UnifiedAgentState schema, transitions)
+  - Section: Performance characteristics (latency targets by route)
+  - **Acceptance**: Documentation reviewed and merged
+
+- [ ] **T363** [MEDIUM] Update API documentation `docs/api/chat-endpoint.md`
+  - Document new request field: `use_unified_routing: bool = True`
+  - Document new response fields: `route_type`, `classification_confidence`, `agents_used`
+  - Provide examples for each route type (direct, reasoning, specialized)
+  - Document backward compatibility with legacy flags
+  - Document migration timeline (Phase 1-4 per FR-136)
+  - **Acceptance**: API docs updated, examples tested
+
+### Migration Support (MEDIUM)
+
+- [ ] **T364** [MEDIUM] Implement migration Phase 1: Coexistence (Week 1)
+  - Deploy with `use_unified_routing=False` default (opt-in)
+  - Add feature flag in `backend/app/core/config.py`: `UNIFIED_ROUTING_DEFAULT: bool = False`
+  - Monitor classification accuracy via Prometheus metrics
+  - Track route distribution, identify misrouted queries
+  - **Acceptance**: Both systems coexist, users can opt-in to unified routing
+
+- [ ] **T365** [MEDIUM] Implement migration Phase 2: Default Enabled (Week 3)
+  - Change default to `use_unified_routing=True`
+  - Update `UNIFIED_ROUTING_DEFAULT: bool = True` in config
+  - Legacy flags still work (backward compatibility)
+  - Announce change in release notes: "Unified routing now default"
+  - Monitor error rates, rollback if issues detected
+  - **Acceptance**: Unified routing default, legacy flags functional
+
+- [ ] **T366** [LOW] Implement migration Phase 3: Deprecation Warning (Month 2)
+  - Add deprecation log when `use_react_agent=True` or `use_multi_agent=True` used
+  - Log warning: "use_react_agent is deprecated, will be removed in 3 months"
+  - Update frontend to show deprecation notice
+  - Update documentation with migration guide
+  - **Acceptance**: Deprecation warnings logged, users notified
+
+- [ ] **T367** [LOW] Implement migration Phase 4: Legacy Removal (Month 4)
+  - Remove `use_react_agent` and `use_multi_agent` fields from ChatRequest schema
+  - Remove legacy routing code paths from chat endpoint
+  - Remove route_type values "legacy_react" and "legacy_multi"
+  - Update tests to remove legacy flag tests
+  - **Acceptance**: Legacy code removed, only unified routing remains
+
+### Post-Deployment Monitoring (MEDIUM)
+
+- [ ] **T368** [MEDIUM] Execute 2-week post-deployment monitoring per FR-135 production criteria
+  - Deploy unified orchestrator to staging/production environment
+  - Monitor classification accuracy daily using production query logs
+  - Track metrics:
+    - Classification accuracy trend (target: maintain ≥85%)
+    - Route distribution (target: 60% direct ± 10%, 25% reasoning ± 10%, 15% specialized ± 10%)
+    - P95 latency per route (direct <1.5s, reasoning <3s, specialized <15s)
+    - Failure rate (reasoning failures, agent selection failures, concurrency rejections)
+  - Weekly review: Compare Week 1 vs Week 2 for regression detection
+  - Collect user feedback on misrouted queries
+  - Document: Any accuracy regression, latency spikes, or unexpected route distribution
+  - **Acceptance**: 2-week monitoring complete, no accuracy regression detected, route distribution within ±10% targets, P95 latency targets met, production deployment approved
+
+**Phase 11.9 Validation Checklist**:
+- [ ] All 28 tasks completed (T341-T368)
+- [ ] SC-046: Classification accuracy ≥85% on test set of 100 queries
+- [ ] SC-047: Direct path P95 latency <1.5s for queries <100 characters
+- [ ] SC-048: Keyword classification speed <10ms per query
+- [ ] SC-049: Route distribution matches expectations: 60% direct, 25% reasoning, 15% specialized (±10%)
+- [ ] SC-050: Backward compatibility with legacy flags verified
+- [ ] SC-051: LangGraph state transitions logged completely in execution_log
+- [ ] All unit tests pass (test_unified_orchestrator.py, 8 tests)
+- [ ] All integration tests pass (test_unified_routing_integration.py, 6 tests)
+- [ ] All performance benchmarks pass (test_unified_orchestrator_performance.py, 4 tests)
+- [ ] Prometheus metrics exposed, Grafana dashboard functional
+- [ ] Architecture and API documentation complete
+- [ ] Migration Phase 1 (Coexistence) deployed successfully
+
+---
+
 ## Phase 12: Polish & Cross-Cutting Concerns
 
 **Purpose**: Final touches, optimization, and production readiness
@@ -1435,12 +1826,22 @@
 
 ### Evaluation & Decision
 
-- [ ] T277 Run LoRA evaluation protocol (FR-071A): 50 test queries per agent, 3-person blind evaluation, composite scoring (Quality 50%, Time 30%, Accuracy 20%)
-- [ ] T278 Compare LoRA-adapted agents vs. base model (prompt-only Phase 10 baseline)
-- [ ] T279 Calculate composite improvement score - IF <10% improvement OR quality <5%, **REMOVE LoRA infrastructure** per Constitution Principle IV
-- [ ] T280 Document evaluation results in docs/evaluation/lora-evaluation-report.md with decision rationale
-- [ ] T281 IF LoRA beneficial (≥10% improvement): Keep LoRA, update documentation, deploy to production
-- [ ] T282 IF LoRA not beneficial (<10% improvement): Remove LoRA code, revert to Phase 10 prompt-only approach, document decision
+**Session 2025-11-08 clarification**: Use automated metrics (BLEU/ROUGE) for Response Quality measurement instead of human evaluation.
+
+- [ ] T277 Prepare test set with reference answers: 50-100 queries per agent with high-quality reference answers (total 300-600), written by government employees or domain experts
+- [ ] T278 Run automated LoRA evaluation protocol (FR-071A):
+  - **Response Quality (Session 2025-11-08)**: Automated metrics using BLEU-4 and ROUGE-L scores against reference answers
+    - BLEU-4 Score (0-100): N-gram precision measuring exact phrase overlap
+    - ROUGE-L Score (0-100): Longest common subsequence measuring content coverage
+    - Combined Quality Score: `(BLEU-4 + ROUGE-L) / 2` normalized to 0-100 scale
+  - **Response Time (30%)**: Average execution time per query (milliseconds, excluding network latency)
+  - **Task-Specific Accuracy (20%)**: Per agent metrics (RAG=source citation %, Data Analysis=numerical correctness %, etc.)
+  - **Composite Score**: Weighted average (Response Quality 50% + Response Time 30% + Task-Specific Accuracy 20%)
+- [ ] T279 Compare LoRA-adapted agents vs. base model (prompt-only Phase 10 baseline) using automated evaluation
+- [ ] T280 Calculate composite improvement score - IF <10% improvement OR quality <5%, **REMOVE LoRA infrastructure** per Constitution Principle IV
+- [ ] T281 Document evaluation results in docs/evaluation/lora-evaluation-report.md with decision rationale, automated metrics methodology
+- [ ] T282 IF LoRA beneficial (≥10% improvement): Keep LoRA, update documentation, deploy to production
+- [ ] T283 IF LoRA not beneficial (<10% improvement): Remove LoRA code, revert to Phase 10 prompt-only approach, document decision
 
 **Total Phase 14 Tasks**: 26 tasks (optional, only if Phase 10 insufficient)
 

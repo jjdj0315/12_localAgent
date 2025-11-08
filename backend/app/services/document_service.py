@@ -6,6 +6,7 @@ import magic
 from pathlib import Path
 from typing import Optional, Tuple
 from uuid import UUID, uuid4
+import logging
 
 import pdfplumber
 from docx import Document as DocxDocument
@@ -13,6 +14,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document
+from app.services.embedding_service import get_embedding_service
+from app.services.qdrant_service import get_qdrant_service
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentService:
@@ -205,6 +210,43 @@ class DocumentService:
             file_path.unlink(missing_ok=True)
             raise e
 
+        # Generate embeddings and upload to Qdrant
+        try:
+            # Get services
+            embedding_service = get_embedding_service()
+            qdrant_service = get_qdrant_service()
+
+            # Generate embeddings for document chunks
+            logger.info(f"Generating embeddings for document {doc_id} (conversation={conversation_id})")
+            embedded_chunks = embedding_service.embed_document(extracted_text)
+
+            # Prepare chunks for Qdrant upload
+            chunks_for_qdrant = [
+                {
+                    "chunk_text": chunk_text,
+                    "embedding": embedding,
+                    "chunk_index": idx,
+                    "start_position": start_pos,
+                }
+                for idx, (chunk_text, embedding, start_pos) in enumerate(embedded_chunks)
+            ]
+
+            # Upload vectors to Qdrant
+            logger.info(f"Uploading {len(chunks_for_qdrant)} vectors to Qdrant")
+            vector_count = qdrant_service.upload_vectors(
+                conversation_id=conversation_id,
+                document_id=doc_id,
+                chunks=chunks_for_qdrant,
+            )
+
+            logger.info(f"Successfully uploaded {vector_count} vectors for document {doc_id}")
+
+        except Exception as e:
+            # Clean up file if embedding/upload fails
+            logger.error(f"Failed to generate/upload vectors for document {doc_id}: {e}")
+            file_path.unlink(missing_ok=True)
+            raise ValueError(f"문서 벡터 처리 중 오류가 발생했습니다: {str(e)}")
+
         # Create database record
         document = Document(
             id=doc_id,
@@ -293,7 +335,7 @@ class DocumentService:
         db: AsyncSession, document_id: UUID, user_id: UUID
     ) -> bool:
         """
-        Delete document from database and filesystem.
+        Delete document from database, filesystem, and Qdrant.
 
         Args:
             db: Database session
@@ -307,6 +349,19 @@ class DocumentService:
 
         if not document:
             return False
+
+        # Delete vectors from Qdrant
+        try:
+            qdrant_service = get_qdrant_service()
+            logger.info(f"Deleting vectors for document {document_id} from Qdrant")
+            qdrant_service.delete_document_vectors(
+                conversation_id=document.conversation_id,
+                document_id=document_id,
+            )
+            logger.info(f"Successfully deleted vectors for document {document_id}")
+        except Exception as e:
+            # Log error but continue with deletion
+            logger.error(f"Failed to delete Qdrant vectors for document {document_id}: {e}")
 
         # Delete file from filesystem
         try:
