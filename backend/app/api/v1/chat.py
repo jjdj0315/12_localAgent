@@ -20,6 +20,7 @@ from app.services.document_service import document_service
 from app.services.safety_filter_service import SafetyFilterService
 from app.services.react_agent_service import ReActAgentService
 from app.services.orchestrator_service import MultiAgentOrchestrator
+from app.services.llm_cache_service import llm_cache_service
 
 router = APIRouter()
 
@@ -203,10 +204,6 @@ async def send_chat_message(
             doc = await document_service.get_document(db, doc_id, current_user.id)
             if doc:
                 documents.append(doc)
-                # Attach document to conversation
-                await document_service.attach_document_to_conversation(
-                    db, conversation_id, doc_id
-                )
 
         if documents:
             document_context = "\n\n---\n\n".join(
@@ -293,10 +290,32 @@ async def send_chat_message(
         # Standard LLM response with document context
         import time
         start_time = time.time()
-        response_text = await llm_service.generate(
-            filtered_input, max_tokens=4000
+
+        # Check if response can be cached and try to get from cache
+        is_cacheable = llm_cache_service.is_cacheable(
+            query=request.content,  # Use original query (before PII masking) for cache key
+            conversation_id=request.conversation_id,
+            document_ids=request.document_ids
         )
-        processing_time_ms = int((time.time() - start_time) * 1000)
+
+        cached_response = None
+        if is_cacheable:
+            cached_response = llm_cache_service.get_cached_response(request.content)
+
+        if cached_response:
+            # Cache hit - use cached response
+            response_text = cached_response
+            processing_time_ms = int((time.time() - start_time) * 1000)  # Cache lookup time (~1ms)
+        else:
+            # Cache miss - generate new response
+            response_text = await llm_service.generate(
+                filtered_input, max_tokens=4000
+            )
+            processing_time_ms = int((time.time() - start_time) * 1000)
+
+            # Cache the response if cacheable
+            if is_cacheable:
+                llm_cache_service.set_cached_response(request.content, response_text)
 
     # ======== PHASE 2: OUTPUT FILTERING ========
     # Run safety filter on LLM output
@@ -416,10 +435,6 @@ async def stream_chat_message(
             doc = await document_service.get_document(db, doc_id, current_user.id)
             if doc:
                 documents.append(doc)
-                # Attach document to conversation
-                await document_service.attach_document_to_conversation(
-                    db, conversation_id, doc_id
-                )
 
         if documents:
             document_context = "\n\n---\n\n".join(
@@ -446,6 +461,12 @@ async def stream_chat_message(
         try:
             # Build prompt with history and document context
             prompt_parts = []
+
+            # Add system prompt
+            system_prompt = """당신은 도움이 되고 정확한 AI 어시스턴트입니다.
+사용자의 질문에 친절하고 명확하게 답변해주세요.
+한국어로 자연스럽게 대화하며, 간결하고 이해하기 쉬운 답변을 제공하세요."""
+            prompt_parts.append(f"시스템: {system_prompt}\n")
 
             # Add document context if provided
             if document_context:
