@@ -13,7 +13,7 @@ from typing import Dict, List, Literal
 
 import numpy as np
 
-from app.services.embedding_service import embedding_service
+from app.services.embedding_service import get_embedding_service
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,7 @@ class SemanticRouter:
 
     def __init__(self):
         """Initialize router with pre-computed route embeddings."""
+        self.embedding_service = get_embedding_service()
         self.route_embeddings: Dict[RouteType, np.ndarray] = {}
         self._initialize_route_embeddings()
 
@@ -110,7 +111,7 @@ class SemanticRouter:
             # Generate embeddings for all examples
             embeddings = []
             for example in examples:
-                emb = embedding_service.embed_query(example)
+                emb = self.embedding_service.embed_single(example)
                 embeddings.append(emb)
 
             # Compute average embedding for this route
@@ -185,7 +186,7 @@ class SemanticRouter:
             Route type (always returns a route, never None)
         """
         # Generate query embedding
-        query_emb = embedding_service.embed_query(query)
+        query_emb = self.embedding_service.embed_single(query)
 
         # Compute cosine similarity with each route
         similarities: Dict[RouteType, float] = {}
