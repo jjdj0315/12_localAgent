@@ -41,6 +41,10 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     # Path prefixes exempt from CSRF validation
     CSRF_EXEMPT_PREFIXES = [
         "/api/v1/setup/",  # All setup wizard endpoints
+        "/api/v1/documents",  # Document upload (multipart/form-data)
+        "/api/info",  # LangGraph Server API: server info
+        "/api/assistants/",  # LangGraph Server API: assistant endpoints
+        "/api/threads",  # LangGraph Server API: thread (conversation) endpoints
     ]
 
     def _is_exempt_path(self, path: str) -> bool:

@@ -141,6 +141,22 @@ curl http://localhost:8000/api/assistants/unified-agent | python3 -m json.tool
 - 이전 대화 목록 확인
 - 특정 대화 선택 및 이어가기
 
+## 최신 업데이트
+
+### 2025-11-10: CSRF 보호 예외 추가
+- **문제**: agent-chat-ui가 POST 요청 시 403 CSRF 오류 발생
+- **원인**: LangGraph Server API 엔드포인트(`/api/threads`, `/api/assistants` 등)가 CSRF 토큰 없이 Bearer 토큰 인증만 사용
+- **해결**: CSRF 미들웨어에 LangGraph API 경로 예외 추가
+  ```python
+  CSRF_EXEMPT_PREFIXES = [
+      "/api/info",       # LangGraph Server API: server info
+      "/api/assistants/",  # LangGraph Server API: assistant endpoints
+      "/api/threads",    # LangGraph Server API: thread (conversation) endpoints
+  ]
+  ```
+- **파일**: `backend/app/middleware/csrf_middleware.py:45-47`
+- **결과**: agent-chat-ui가 정상적으로 대화 생성 및 스트리밍 가능
+
 ## 문제 해결
 
 ### 백엔드가 시작되지 않는 경우
