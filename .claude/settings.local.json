@@ -130,7 +130,8 @@
       "Bash(else echo '{\"\"FEATURE_DIR\"\": \"\"specs/002-admin-metrics-history\"\", \"\"AVAILABLE_DOCS\"\": [\"\"spec.md\"\", \"\"plan.md\"\", \"\"tasks.md\"\"]}')",
       "Bash(sed:*)",
       "Bash(then bash .specify/scripts/bash/check-prerequisites.sh --json)",
-      "Bash(else PowerShell.exe -NoProfile -ExecutionPolicy Bypass -File .specify/scripts/powershell/check-prerequisites.ps1 -Json)"
+      "Bash(else PowerShell.exe -NoProfile -ExecutionPolicy Bypass -File .specify/scripts/powershell/check-prerequisites.ps1 -Json)",
+      "Bash(git merge:*)"
     ],
     "deny": [],
     "ask": []
