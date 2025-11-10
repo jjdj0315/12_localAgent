@@ -2,7 +2,8 @@
 
 import os
 import time
-from typing import AsyncGenerator
+from contextlib import contextmanager
+from typing import AsyncGenerator, Generator
 
 from sqlalchemy import create_engine, event, Engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -51,11 +52,14 @@ if USE_SQLITE:
         connect_args={"check_same_thread": False},
     )
 else:
+    # Session 2025-11-10 clarification: Worker당 5개 연결 (균형적)
+    # pool_size=5, max_overflow=10 (worker당)
+    # 4 workers × (5+10) = 60개 최대 연결
     sync_engine = create_engine(
         SQLALCHEMY_DATABASE_URL,
         pool_pre_ping=True,
-        pool_size=20,
-        max_overflow=40,
+        pool_size=5,
+        max_overflow=10,
     )
 
 # Create async engine (for application)
@@ -70,12 +74,13 @@ else:
     # - READ COMMITTED: Prevents dirty reads while allowing concurrent metric collection
     # - pool_pre_ping: Connection health checks before using from pool
     # - pool_recycle: Recycle connections after 1 hour (3600s) to avoid stale connections
+    # Session 2025-11-10 clarification: pool_size=5, max_overflow=10 (FR-123, FR-126, FR-135)
     async_engine = create_async_engine(
         ASYNC_SQLALCHEMY_DATABASE_URL,
         echo=False,
         pool_pre_ping=True,  # T294: Connection health checks
-        pool_size=20,
-        max_overflow=40,
+        pool_size=5,
+        max_overflow=10,
         pool_recycle=3600,  # T294: Recycle connections after 1 hour
         isolation_level="READ COMMITTED"  # T294: Consistent metric snapshots
     )
@@ -177,20 +182,23 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             update_pool_metrics()
 
 
-def get_sync_db() -> Session:
+@contextmanager
+def get_sync_db() -> Generator[Session, None, None]:
     """
-    Get sync database session (for scripts and migrations).
+    Context manager for sync database session (for scripts and migrations).
 
     Usage:
-        db = get_sync_db()
-        try:
+        with get_sync_db() as db:
             # ... do work
             db.commit()
-        finally:
-            db.close()
+        # Session automatically closed
+
+    Yields:
+        Session: SQLAlchemy sync session (automatically closed on exit)
     """
     db = SyncSessionLocal()
     try:
-        return db
+        yield db
     finally:
         db.close()
+        update_pool_metrics()

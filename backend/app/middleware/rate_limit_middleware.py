@@ -62,11 +62,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Get client IP (with proxy support - T317)
         client_ip = self._get_client_ip(request)
 
-        # Use Redis if available, otherwise fallback to in-memory
+        # Session 2025-11-10 clarification: Fail-Open (요청 허용, 가용성 우선)
+        # Redis 장애 시 Rate Limiting 검사 건너뛰고 요청 처리
         if self.redis:
-            count, remaining = await self._check_rate_limit_redis(client_ip)
+            try:
+                count, remaining = await self._check_rate_limit_redis(client_ip)
+            except Exception as e:
+                # Fail-open: Redis 에러 시 요청 허용
+                logger.warning(f"Rate limiting unavailable (Redis error), allowing request from {client_ip}: {e}")
+                count, remaining = 0, self.requests_per_minute
         else:
-            count, remaining = self._check_rate_limit_memory(client_ip)
+            # Fail-open: Redis 없으면 요청 허용
+            logger.warning(f"Rate limiting unavailable (Redis down), allowing request from {client_ip}")
+            count, remaining = 0, self.requests_per_minute
 
         # Process request
         response = await call_next(request)
@@ -118,9 +126,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return count, remaining
 
         except RedisError as e:
-            logger.warning(f"Redis error in rate limiting, falling back to in-memory: {e}")
-            # Fallback to in-memory
-            return self._check_rate_limit_memory(client_ip)
+            # Session 2025-11-10 clarification: Fail-Open
+            # Redis 에러 시 예외를 던져서 상위에서 fail-open 처리
+            logger.error(f"Redis error in rate limiting: {e}")
+            raise
 
     def _check_rate_limit_memory(self, client_ip: str) -> tuple[int, int]:
         """

@@ -47,6 +47,34 @@
 - Q: Base 모델 공유 방식 - 6개 Agent가 동일한 base 모델을 어떻게 공유하나? → A: LoRA adapter 동적 교체 - Base 모델(Qwen3-4B-Instruct)은 startup 시 1회만 로드. 각 Agent 호출 시 해당 Agent의 LoRA adapter만 로드/언로드. LRU 캐싱으로 최근 사용 2-3개 adapter를 메모리에 유지하여 스왑 오버헤드 최소화 (<3초) (FR-070)
 - Q: Phase 10과 Phase 14의 LoRA 역할 차이는? → A: Phase 10(구조), Phase 14(학습) - Phase 10에서는 LoRA 로딩 인프라(PEFT 라이브러리, adapter 관리, 캐싱)만 구현하고 identity LoRA 또는 프롬프트만 사용. Phase 14에서 학습 데이터 수집(Agent별 500-1000 샘플) + 실제 파인튜닝 진행하여 성능 향상 (FR-071)
 
+### Session 2025-11-07
+
+- Q: Reasoning Path에서 의도 명확화가 실패한 경우(예: LLM 타임아웃, JSON 파싱 오류, 분석 후에도 여전히 애매함) 시스템이 어떻게 동작해야 할까요? → A: Direct 경로로 라우팅하며 명시적 메시지 표시 - "요청을 명확히 파악하지 못했습니다. 구체적으로 알려주세요: [무엇을/어떤/언제]?" 형식으로 사용자에게 안내하여 대화 흐름 유지하면서 투명하게 상황 전달 (FR-132)
+- Q: Specialized Path에서 agent 선택이 실패한 경우(예: 의도 분석 결과 agent_type이 null이거나 잘못된 agent 이름) 시스템이 어떻게 동작해야 할까요? → A: Direct path로 폴백하여 base LLM이 직접 처리 - 사용자에게 "일반 모드로 처리합니다" 알림 표시, 실패 로그 기록하여 classification 정확도 개선에 활용 (FR-133)
+- Q: Unified Orchestrator의 classification 정확도가 어느 수준에 도달해야 production 배포가 가능한가요? → A: 85% 정확도 달성 + 2주일 모니터링 - 라벨링된 테스트 세트(100개 쿼리)에서 85% 이상 정확도 달성, 2주간 실사용 모니터링으로 회귀 없음 확인 후 배포 (SC-046 기준 활용, FR-135)
+- Q: FR-132에서 LLM clarification timeout을 2초로 명시했는데, LLM 서비스 호출 실패 시 재시도 정책은 어떻게 되나요? → A: 최대 3회 재시도 + 지수 백오프 - 100ms → 200ms → 400ms 간격으로 재시도, 총 2초 타임아웃 내에서 실행, 모든 재시도 실패 시 Direct path로 폴백 (FR-132)
+- Q: 여러 사용자가 동시에 Unified Orchestrator를 호출할 때 전체 시스템 동시 실행 제한은 얼마인가요? → A: 사용자당 1개 요청 + 전체 동시 실행 제한 50 - 사용자가 이미 처리 중인 요청이 있으면 429 응답, 전체 50개 초과 시에도 429 응답, 대기열(queue) 없음 (FR-135)
+
+### Session 2025-11-08
+
+- Q: 관리자 권한 검증을 위한 단일 진실 공급원(Single Source of Truth)으로 어떤 방법을 사용해야 하나요? → A: Admin 테이블 존재 확인 (Option B) - 정규화된 구조로 권한 관리를 분리하고 감사 추적을 강화. FR-033의 "별도 테이블" 의도와 일치하며 향후 관리자 역할 확장 시 설계 유연성 제공. get_current_admin()는 Admin 테이블 레코드 존재 여부로 검증, User.is_admin 플래그는 마이그레이션 스크립트로 동기화 후 참조용으로만 유지 (FR-118, FR-033)
+- Q: Reasoning 경로가 의도를 명확히 하기 위해 컨텍스트를 수집하는 도구를 호출할 수 있나요(예: "어떤 문서?" 질문 전 사용 가능한 문서 확인), 아니면 엄격하게 프롬프트 기반 분석만 사용하나요? → A: 엄격한 프롬프트 기반 (Option A) - Reasoning 경로는 도구 호출 없이 사용자 쿼리에 대한 LLM 분석만 수행. Reasoning과 Specialized 경로 간 명확한 분리 유지로 아키텍처 단순화, 응답 속도 향상 (1-3초 목표). 컨텍스트 수집이 필요한 경우 Specialized 경로로 라우팅. Constitution Principle IV (단순성 우선) 준수 (FR-132)
+- Q: 전체 50개 동시 실행 제한이 모든 경로 유형을 동등하게 처리해야 하나요, 아니면 리소스 소비에 따라 가중치를 부여해야 하나요(예: Specialized 경로는 2배 리소스 단위로 계산, Direct는 1배)? → A: 동등한 카운팅 (Option A) - 모든 경로(Direct/Reasoning/Specialized)가 복잡도와 관계없이 50개 제한에 대해 1로 계산. 구현 단순화 및 예측 가능한 동작 보장. 사용자당 1개 활성 요청 제한(FR-135)으로 개별 남용 방지 이미 확보. 경로별 성능 차이는 응답 시간 목표로 관리. Constitution Principle IV (단순성 우선) 준수 (FR-135)
+- Q: LoRA 활성화 결정을 위한 "Response Quality" (응답 품질)를 어떻게 측정해야 하나요? (FR-068 Phase 14: 복합 점수 = 응답 품질 50% + 응답 시간 30% + 작업별 정확도 20%, LoRA는 복합 개선 ≥10% AND 품질 개선 ≥5%일 때만 계속 사용) → A: 자동화 메트릭 (Option B) - 참조 답변 대비 BLEU/ROUGE 점수 사용. 각 Agent별 테스트 세트(50-100 쿼리)에 참조 답변 준비, BLEU-4 및 ROUGE-L 점수 평균으로 품질 측정. 재현 가능하고 일관된 측정, 인간 개입 없이 자동 평가 가능. Constitution Principle IV (단순성 우선) 준수 (FR-068, FR-071)
+- Q: 메트릭 수집이 단일 트랜잭션(모두 성공 또는 모두 실패)을 사용해야 하나요, 아니면 메트릭별 개별 트랜잭션(부분 성공 허용)을 사용해야 하나요? → A: 단일 트랜잭션, 모두-아니면-아무것도 (Option A) - 모든 6개 메트릭을 단일 트랜잭션 내에서 수집하여 동일한 collected_at 타임스탬프 보장. 개별 메트릭 계산 실패 시 전체 트랜잭션 롤백하고 metric_collection_failures 테이블에 실패 기록, 다음 수집 주기에서 전체 재시도. 데이터 일관성 우선 - 부분적 스냅샷보다 완전한 스냅샷의 무결성이 더 중요. 타임스탬프 동기화로 정확한 시계열 분석 보장 (FR-113)
+
+### Session 2025-11-10
+
+- Q: UnifiedAgentState 생명주기 관리 - 상태 객체가 LangGraph 실행 중에 생성되고 노드 간 전달되는데, 실행 완료 후 메모리 해제는 언제/어떻게 수행되어야 하나요? → A: After finalize node completion (explicit cleanup in _finalize_node) - finalize 노드 완료 후 명시적으로 정리. _finalize_node()에서 state 딕셔너리의 대용량 필드(retrieved_documents, tool_results, intermediate_steps 등)를 del로 명시적 삭제, state 자체는 LangGraph가 invoke() 반환 후 Python GC가 자동 해제, 메모리 누수 방지 및 명시적 리소스 관리 (FR-129, FR-135)
+- Q: Reasoning 경로 후속 라우팅 - Reasoning 경로에서 의도를 명확화한 후 direct/specialized 재라우팅이 자동으로 이루어지나요, 아니면 사용자 확인이 필요한가요? → A: 자동 재라우팅 (추론 기반, Option A) - Reasoning 노드가 의도 분석 결과를 기반으로 direct/specialized 중 하나를 자동 선택하여 즉시 실행. 한 번의 쿼리 → 한 번의 응답 (1회 왕복)으로 FR-132의 1-3초 응답 시간 목표 충족. 의도 오해석 시 Direct path 폴백 + 명시적 메시지로 대응. Constitution Principle IV (단순성 우선) 준수 (FR-132)
+- Q: Database Connection Pool 크기 설정 - Gunicorn 멀티프로세스 환경(4 workers)에서 PostgreSQL 연결 풀 크기를 어떻게 설정해야 하나요? → A: Worker당 5개 연결 (균형적, Option B) - SQLAlchemy pool_size=5, max_overflow=10 (worker당), 4 workers × (5+10) = 60개 최대 연결, PostgreSQL max_connections=80 (시스템 연결 +20 여유). FR-135의 50개 동시 실행 제한과 조화 (50÷4=12.5 < 15), 메모리 효율적 (~600MB 연결 오버헤드), Constitution Principle IV (단순성 우선) 준수 (FR-123, FR-126, FR-135)
+- Q: 저장 공간 정리 부분 실패 처리 - 자동 정리 중 일부 단계가 실패하면 (예: PostgreSQL 삭제 성공 → Qdrant 벡터 삭제 실패) 어떻게 처리해야 하나요? → A: 최선 노력 (Best Effort) + 재시도 (Option B) - PostgreSQL 대화 삭제 먼저 커밋, Qdrant 벡터 삭제 시도 (최대 3회 재시도), 실패 시 cleanup_failures 테이블에 기록하여 다음 정리 주기에서 재시도. 부분 성공 허용으로 외부 서비스 장애가 전체 정리 차단하지 않음, 점진적 정합성(eventual consistency)으로 고아 벡터는 다음 주기에서 정리. PostgreSQL 삭제만으로도 사용자 저장 공간 계산에서 제외. Constitution Principle IV (단순성 우선) 준수 (FR-019, FR-020)
+- Q: Production 배포 모니터링 기준 - 2주일 production 모니터링 기간 동안 어떤 메트릭을 추적하고, 배포 성공/실패를 어떻게 판단해야 하나요? → A: 복합 메트릭 (Balanced, Option B) - 4가지 메트릭 일별 추적: (1) Classification 정확도 (≥85%), (2) 응답 시간 P95 (경로별 목표: direct <1.5s, reasoning <3s, specialized <15s), (3) 에러율 (500/429 응답 <1%), (4) 경로별 분포 안정성 (일별 변동 <20%). 합격 기준: 모든 메트릭이 14일 중 12일 이상 목표 달성 + 단일 날짜에 2개 이상 메트릭 목표 미달 발생하지 않음. 기존 metric_snapshots 테이블 확장하여 orchestrator 메트릭 추가. 종합적 품질 보증 + 조기 문제 감지 + Constitution Principle IV 준수 (FR-135)
+- Q: Redis 장애 시 Rate Limiting 동작 - Redis 장애로 Rate Limit 카운터를 확인할 수 없을 때, 요청을 허용해야 하나요(fail-open) 차단해야 하나요(fail-closed)? → A: Fail-Open (요청 허용, 가용성 우선, Option A) - Redis 장애 시 Rate Limiting 검사 건너뛰고 요청 처리, 로그 경고 메시지 기록. FR-001 폐쇄망 환경에서 외부 공격자 접근 불가, 신뢰된 사용자(지자체 공무원)만 사용으로 DDoS 위협 낮음. FR-125 Graceful Degradation 철학과 일치하여 가용성 우선. Redis 장애 로그로 관리자 빠른 복구 가능. Constitution Principle IV (단순성 우선) 준수 (FR-124, FR-125)
+- Q: Redis 연결 풀 크기 설정 - Gunicorn 멀티프로세스 환경(4 workers)에서 Redis 연결 풀 크기를 어떻게 설정해야 하나요? → A: Worker당 5개 연결 (경량 작업 고려, Option B) - redis-py ConnectionPool max_connections=5 (worker당), 4 workers × 5 = 20개 최대 연결. Redis 작업이 PostgreSQL보다 100배 빠름 (GET/SET/INCR: 0.1ms vs SELECT: 10ms)으로 높은 연결 재사용률. 메모리 효율적 (~20MB), 충분한 처리량 (5개 연결/worker × 10,000 ops/s/connection = 50,000 ops/s/worker). Constitution Principle IV (단순성 우선) 준수 (FR-126)
+- Q: Redis Memory Eviction 우선순위 - Redis 메모리가 512MB 한도에 도달했을 때, Rate Limit 카운터와 LLM Cache 중 어떤 데이터를 우선 보호해야 하나요? → A: 동등한 LRU (현재 설정 유지, Option B) - 모든 데이터 단일 Redis DB 0, maxmemory-policy=allkeys-lru 유지. Rate Limit 카운터는 1분 TTL로 자동 만료되어 장기 누적 없음 (~300KB), LLM Cache가 메모리 대부분 차지 (~500MB). Rate Limit 카운터 삭제되어도 fail-open으로 요청 허용 (이전 명확화). 폐쇄망 환경에서 외부 공격 위협 낮아 Rate Limit 절대 보호 불필요. Constitution Principle IV (단순성 우선) 준수 (FR-126)
+- Q: LLM Cache 무효화 전략 - LLM 모델이 업데이트되거나 프롬프트가 변경될 때, 기존 LLM Cache를 어떻게 처리해야 하나요? → A: TTL 자동 만료 (Lazy, Option C) - 모델 업데이트 시 명시적 무효화 하지 않음, 1시간 TTL로 자연스럽게 만료 대기. LLM 모델 업데이트는 월 1회 미만으로 낮은 빈도, 1시간 이내 점진적 캐시 갱신은 실사용에 큰 영향 없음. 프롬프트 변경도 Phase 10 이후 최소화. 폐쇄망 환경에서 긴급 배포 압박 낮아 점진적 업데이트 허용 가능. 중요한 업데이트 시 관리자가 선택적으로 수동 무효화 가능 (Redis CLI: DEL 명령 또는 FLUSHDB). Constitution Principle IV (단순성 우선) 준수 (FR-127)
+
 ## User Scenarios & Testing *(mandatory)*
 
 **Testing Approach**: Manual acceptance testing per user story acceptance scenarios is MANDATORY per constitution. Automated unit/integration tests are NOT required for MVP but may be added later for regression testing.
@@ -316,7 +344,7 @@ Government employees need the AI system to intelligently route queries to specia
 - FR-059: *Reserved for future safety features*
 - FR-060~FR-065: Shared Tool Library requirements
 - FR-066~FR-075: Orchestrator and Agent System requirements
-- FR-076~FR-080: *Reserved for future agent features*
+- FR-076~FR-080: Advanced Agent System requirements (parallel execution, workflow limits)
 - FR-081~FR-088: Common Air-Gapped requirements
 - FR-089~FR-109: Admin Metrics History (Feature 002)
 - FR-110~FR-114: Security Hardening (Feature 002 Patch)
@@ -521,7 +549,8 @@ Government employees need the AI system to intelligently route queries to specia
   - Collect training data: 500-1000 samples per agent (total 3000-6000 samples) from government employees or public datasets, estimated 4-6 weeks effort
   - Fine-tune LoRA adapters for each agent using collected data
   - Replace identity LoRA with trained adapters
-  - **Improvement Measurement**: Compare LoRA-adapted vs. prompt-only on 50 test queries per agent using 3-person blind evaluation
+  - **Improvement Measurement**: Compare LoRA-adapted vs. prompt-only on 50-100 test queries per agent with reference answers
+  - **Response Quality Measurement (Session 2025-11-08 clarification)**: Automated metrics using BLEU-4 and ROUGE-L scores against reference answers. Score = average(BLEU-4, ROUGE-L) normalized to 0-100 scale. Enables reproducible, consistent measurement without human evaluation overhead.
   - **Composite Score** = weighted average (Response Quality 50%, Response Time 30%, Task-Specific Accuracy 20%)
   - **Activation Threshold**: Continue using LoRA only if composite improvement ≥10% AND quality improvement ≥5%
 
@@ -563,6 +592,27 @@ Government employees need the AI system to intelligently route queries to specia
   - **LoRA Adapters**: Stored in `/models/lora_adapters/{agent_name}/` directories (e.g., `/models/lora_adapters/rag_agent/adapter_model.bin`, `/models/lora_adapters/citizen_support/adapter_config.json`)
   - **Routing Configuration**: Orchestrator few-shot examples and keyword patterns stored in database `agent_routing_config` table or `/config/agent_routing.json` file
   - **No External Dependencies**: All agent functionality works without internet connectivity
+
+#### Advanced Agent System Requirements (FR-076 series)
+
+*Note: These requirements address advanced multi-agent orchestration patterns (Phase 11+, not MVP)*
+
+- **FR-076**: *Reserved for future agent features*
+- **FR-077**: *Reserved for future agent features*
+- **FR-078**: System SHOULD support parallel agent execution for independent sub-tasks (Phase 11+, not MVP):
+  - **Parallel Execution**: Orchestrator detects independent sub-tasks that can be executed simultaneously (e.g., "Search regulations AND analyze budget data")
+  - **Concurrency Limit**: Maximum 3 agents running in parallel per user query to prevent resource exhaustion
+  - **Task Independence Detection**: Use dependency analysis to determine which agents can run concurrently without data dependencies
+  - **Result Aggregation**: Combine parallel agent outputs into coherent final response
+  - **Error Handling**: If one parallel agent fails, continue with successful agent results and indicate partial completion
+  - **Performance Target**: Parallel execution should complete in time of slowest agent + aggregation overhead (<30 seconds total)
+- **FR-079**: System MUST implement workflow complexity limits to prevent resource exhaustion:
+  - **Agent Chain Limit**: Maximum 5 agents in a single workflow sequence (prevents infinite loops)
+  - **Parallel Agent Limit**: Maximum 3 agents executing simultaneously per FR-078 (if parallel execution enabled)
+  - **Total Workflow Timeout**: 5 minutes maximum per workflow (includes all sequential and parallel steps)
+  - **Timeout Enforcement**: Use asyncio.wait_for() or equivalent mechanism to enforce timeout, return partial results with error message if exceeded
+  - **Admin Configuration**: Administrators can adjust limits via admin panel (with reasonable bounds: 3-10 agents, 2-10 parallel, 3-10 minute timeout)
+- **FR-080**: *Reserved for future agent features*
 
 #### Common Air-Gapped Requirements (FR-081 series)
 
@@ -620,7 +670,7 @@ Government employees need the AI system to intelligently route queries to specia
 
 - **FR-112**: System MUST enhance session token security by: using secure=True for session cookies in production environment (HTTPS-only transmission), using samesite="strict" in production and samesite="lax" in development, adding max_age=1800 (30 minutes) to session cookies, implementing sensitive data filter for all logging that masks session tokens (pattern: `session_token["\']?\s*[:=]\s*["\']?([a-zA-Z0-9_-]+)` → `session_token=***REDACTED***`), Bearer tokens (pattern: `Bearer\s+([A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+)` → `Bearer ***REDACTED***`), and passwords (pattern: `password["\']?\s*[:=]\s*["\']?([^"\']+)` → `password=***REDACTED***`), with environment variable ENVIRONMENT={development|production} controlling security settings
 
-- **FR-113**: System MUST ensure metric collection consistency by: collecting all 6 metrics (active_users, storage_bytes, active_sessions, conversation_count, document_count, tag_count) within a single database transaction to guarantee identical collected_at timestamp for all metrics in same collection cycle, setting database isolation level to READ COMMITTED explicitly in connection configuration, logging transaction start/end timestamps for debugging, handling individual metric failures without rolling back entire transaction (record failures in metric_collection_failures table while committing successful metrics)
+- **FR-113**: System MUST ensure metric collection consistency by: collecting all 6 metrics (active_users, storage_bytes, active_sessions, conversation_count, document_count, tag_count) within a single database transaction to guarantee identical collected_at timestamp for all metrics in same collection cycle, setting database isolation level to READ COMMITTED explicitly in connection configuration, logging transaction start/end timestamps for debugging, **using atomic all-or-nothing approach (Session 2025-11-08 clarification)** - if any individual metric calculation fails, rollback entire transaction and record complete failure details in metric_collection_failures table, retry full collection in next scheduled cycle. This prioritizes data consistency (identical timestamps for complete snapshots) over partial success, ensuring accurate time-series analysis.
 
 - **FR-114**: System MUST provide cross-platform encoding compatibility for CSV exports by: detecting client operating system from User-Agent header, using UTF-8 with BOM (Byte Order Mark) encoding for Windows clients (User-Agent contains "Windows"), using UTF-8 without BOM for Linux/Mac clients, implementing client-side BOM injection as fallback in frontend JavaScript for browsers that don't correctly report OS, validating exported CSV files open correctly in Windows Excel (no encoding dialog), LibreOffice on Linux (correct Korean display), and Python pandas.read_csv() (no BOM artifacts in column names)
 
@@ -634,7 +684,7 @@ Government employees need the AI system to intelligently route queries to specia
 
 - **FR-117** *(HIGH)*: System MUST capture database query performance metrics for async SQLAlchemy operations by: binding event listeners to both sync_engine (for migrations) and async_engine.sync_engine (for application queries), tracking query execution time for SELECT/INSERT/UPDATE/DELETE separately, updating Prometheus db_query_duration and db_queries_total metrics for async queries, monitoring connection pool metrics from async_engine.sync_engine.pool instead of sync_engine.pool only, validating that /metrics endpoint shows non-zero query counts during normal application operation
 
-- **FR-118** *(HIGH)*: System MUST maintain consistent administrator privilege model by: choosing single source of truth (Option A: User.is_admin flag OR Option B: separate Admin table existence check), if using separate Admin table approach then updating get_current_admin() in backend/app/api/deps.py to verify Admin table record exists for user, implementing migration script to sync existing User.is_admin flags with Admin table records, documenting administrator management procedure in docs/admin/user-management.md, ensuring all admin-only endpoints use consistent privilege check method
+- **FR-118** *(HIGH)*: System MUST maintain consistent administrator privilege model by: using Admin table existence check as single source of truth (Session 2025-11-08 clarification: Option B selected for better separation of concerns and audit trail), updating get_current_admin() in backend/app/api/deps.py to verify Admin table record exists for user (primary check), implementing migration script to sync existing User.is_admin flags with Admin table records, maintaining User.is_admin flag as denormalized reference only (synchronized via trigger or application logic), documenting administrator management procedure in docs/admin/user-management.md, ensuring all admin-only endpoints use consistent Admin table privilege check method
 
 - **FR-119** *(MEDIUM)*: System MUST optimize CSRF token lifecycle management by: generating CSRF token only on successful login (not every GET request), storing CSRF token in session with 30-minute expiration matching session timeout, validating CSRF token exists before regenerating on GET requests (if missing or expired, then regenerate), returning same token value for multiple GET requests within session lifetime to prevent token rotation confusion, logging CSRF token generation events (not values) for debugging token mismatch issues
 
@@ -659,6 +709,335 @@ Government employees need the AI system to intelligently route queries to specia
 - **FR-127** *(MEDIUM)*: System MUST provide observability for multiprocess deployment by: exposing per-worker metrics via /metrics endpoint with worker_id label, aggregating metrics across workers in Prometheus (sum by endpoint for request counts, avg for latencies), logging worker PID and ID in all application logs for debugging, implementing health check endpoint /health/worker that returns worker-specific status, monitoring worker CPU/memory usage via cgroup metrics, alerting on worker restart frequency (>3 restarts/hour indicates issue), documenting troubleshooting guide for common multiprocess issues (worker timeout, memory leak, uneven load distribution)
 
 - **FR-128** *(LOW)*: System SHOULD implement session affinity (sticky sessions) for WebSocket connections if real-time features are added in future by: configuring Nginx upstream with ip_hash directive for consistent routing, storing active WebSocket connections in Redis set with key pattern `websocket:{worker_id}`, implementing graceful worker shutdown that notifies clients to reconnect, documenting session affinity configuration in deployment guide
+
+#### Unified Orchestrator Requirements (FR-129 series)
+
+*Note: These requirements unify the existing separate ReAct Agent and Multi-Agent systems into a single intelligent routing architecture with automatic path selection (2025-11-07)*
+
+- **FR-129** *(HIGH)*: System MUST implement Unified Orchestrator with 3-way intelligent routing architecture that automatically selects optimal execution path based on query intent clarity:
+
+  **Routing Paths**:
+  1. **Direct Path** (Route 1): Base LLM responds directly to clear and simple queries
+     - Use case: Clear intent, simple conversation, straightforward questions
+     - Examples: "안녕하세요", "감사합니다", "LLM이란 무엇인가요?", "오늘 날짜 알려줘" (with current date context)
+     - Performance: 0.5-1 second (fastest path, minimal overhead)
+     - Processing: No intermediate steps, direct LLM generation
+
+  2. **Reasoning Path** (Route 2): Intent clarification for ambiguous queries
+     - Use case: Ambiguous intent, missing context, unclear requirements
+     - Examples: "분석해줘" (what data?), "검색해줘" (search what?), "도와줘" (help with what?)
+     - Performance: 1-3 seconds (LLM clarification overhead)
+     - Processing: LLM analyzes intent → Reclassifies to Direct OR Specialized
+     - **Note**: This path does NOT use tools or agents directly, only clarifies intent
+     - Output: Refined query + route decision (direct or specialized with specific agent type)
+
+  3. **Specialized Path** (Route 3): Domain expert agents with optional tool usage
+     - Use case: Complex tasks requiring domain expertise, document generation, data analysis, legal research
+     - Examples: "2023년 매출 데이터 분석 보고서 작성", "민원처리법 제19조 검색 후 쉬운 말로 설명", "회의록 작성"
+     - Performance: 5-15 seconds (agent execution + optional tool usage)
+     - Agents available: RAG, Citizen Support, Document Writing, Legal Research, Data Analysis, Review
+     - **Tool Usage**: Each agent uses ReAct pattern to invoke tools as needed from shared library (calculator, date_schedule, document_search, data_analysis, document_template, legal_reference)
+
+  **Architecture Benefits**:
+  - Intent-driven routing: Ambiguity resolved before expensive agent execution
+  - Cost reduction: Clarification step prevents unnecessary agent invocations
+  - Latency minimization: Clear queries skip clarification overhead
+  - Flexibility: Agents autonomously decide tool usage based on task requirements
+
+- **FR-130** *(HIGH)*: System MUST implement two-stage classification strategy for routing decision based on intent clarity:
+
+  **Stage 1 - Fast Keyword Classification** (No LLM call, <10ms):
+  - Maintain keyword dictionaries for each route based on intent clarity:
+    - **Clear & Simple** (Direct): ["안녕", "감사", "고마워", "이란", "무엇", "설명", "정의", "의미"]
+    - **Ambiguous Intent** (Reasoning): ["해줘", "좀", "부탁", "도와", "확인", "알아봐", "처리"] (without specific object)
+    - **Clearly Complex** (Specialized): ["작성", "보고서", "공문", "법령", "조례", "검토", "분석+데이터", "민원+처리"]
+  - Scoring algorithm: Evaluate intent clarity, not task complexity
+  - High-confidence routing rules:
+    - Query length <10 chars + greeting → Direct (confidence 0.95)
+    - Vague action verbs without object → Reasoning (confidence 0.85)
+    - 2+ specialized task keywords → Specialized (confidence 0.85)
+    - Complete sentence with clear intent → Direct or Specialized based on complexity
+  - If confidence <0.7 OR ambiguous → Proceed to Stage 2
+
+  **Stage 2 - LLM Classification** (Fallback for borderline cases):
+  - Invoke lightweight classification prompt (≤150 tokens)
+  - Prompt focus: "Is the user's intent clear? If ambiguous, classify as REASONING for clarification."
+  - Expected response: Single word "DIRECT", "REASONING", or "SPECIALIZED"
+  - Temperature: 0.1 (consistent classification)
+  - Timeout: 2 seconds
+  - If Stage 2 fails → Default to Reasoning path (safe fallback to clarify intent)
+
+  **Classification Metadata**:
+  - Log classification method used (keyword/llm)
+  - Store confidence score (0.0-1.0)
+  - Track classification accuracy for continuous improvement
+  - Record whether Reasoning path resulted in reroute to Direct or Specialized
+
+- **FR-131** *(HIGH)*: System MUST implement Direct Path execution with minimal overhead:
+
+  **Execution Flow**:
+  1. Receive classified query with route="direct"
+  2. Build simple prompt with conversation history (last 5 messages)
+  3. Call base LLM with standard parameters (max_tokens=1000, temperature=0.7)
+  4. Stream response directly to client via SSE
+  5. Log execution time and update metrics
+
+  **Optimizations**:
+  - Skip orchestrator overhead (no agent routing)
+  - Skip tool initialization
+  - Skip specialized prompt loading
+  - Use connection pooling for LLM service
+  - Cache common responses (optional, FR-126)
+
+  **Performance Target**: 95th percentile response time <1.5 seconds for queries <100 characters
+
+- **FR-132** *(HIGH)*: System MUST implement Reasoning Path as intent clarification and rerouting mechanism:
+
+  **Clarification Process**:
+  ```
+  START → analyze_intent_node → reclassify_node → [route to Direct or Specialized]
+  ```
+
+  **Principle (Session 2025-11-08 clarification)**: Reasoning Path is **strictly prompt-based** with NO tool invocation. It only analyzes user query via LLM to clarify intent, then reroutes to Direct (for simple queries) or Specialized (for tool-requiring complex tasks). This maintains clear architectural separation: Direct = base LLM response, Reasoning = intent analysis, Specialized = tool execution. If context gathering (e.g., document list, tag list) is needed for clarification, that query belongs in Specialized path instead.
+
+  **Node Responsibilities**:
+  - **analyze_intent_node**: LLM analyzes ambiguous query to extract true intent
+    - Input: Ambiguous query (e.g., "분석해줘", "검색해줘")
+    - Prompt: "What does the user want? What information is missing? What is the actual task?"
+    - Output: Clarified intent, identified missing context, recommended action
+  - **reclassify_node**: Determine final route based on clarified intent
+    - If simple question with missing context → Direct (with clarified query)
+    - If complex task requiring expertise → Specialized (with identified agent type + clarified requirements)
+
+  **Clarification Prompt Template**:
+  ```
+  User query: "{original_query}"
+  Context: {conversation_history}
+
+  Analyze:
+  1. What is the user's actual intent?
+  2. What information/context is missing?
+  3. Is this a simple question or complex task?
+  4. If complex, which domain expert is needed?
+
+  Output JSON:
+  {
+    "clarified_intent": "...",
+    "missing_context": [...],
+    "complexity": "simple" | "complex",
+    "recommended_route": "direct" | "specialized",
+    "agent_type": null | "rag" | "data_analysis" | "document_writing" | ...,
+    "refined_query": "..."
+  }
+  ```
+
+  **State Management**:
+  - Reasoning state: {original_query, clarified_intent, complexity, recommended_route, agent_type, refined_query}
+  - Parent state receives: route (updated), query (refined), agent_type (if specialized)
+
+  **Rerouting Logic**:
+  - Simple + missing context → Direct with clarification response (e.g., "어떤 데이터를 분석할까요?")
+  - Complex + clear requirements → Specialized with specific agent
+  - Still ambiguous after clarification → Direct with request for more information
+
+  **Retry Policy**:
+  - LLM service call failure → Retry up to 3 times with exponential backoff (100ms → 200ms → 400ms)
+  - **Per-attempt timeout**: 2 seconds per LLM call attempt (each of the 3 retries has 2s timeout)
+  - **Total operation timeout**: Maximum 3 attempts with backoff = ~6.7 seconds worst case (2s×3 + 0.7s backoff)
+  - Retry on: Connection errors, timeout errors, 5xx server errors
+  - No retry on: 4xx client errors, JSON structure issues
+  - Note: In practice, first success usually completes in <2s; retries only for transient failures
+
+  **Failure Handling**:
+  - All retries exhausted / per-attempt timeout exceeded → Fallback to Direct path with message: "요청을 명확히 파악하지 못했습니다. 구체적으로 알려주세요: [무엇을/어떤/언제]?"
+  - JSON parsing error → Fallback to Direct path with same guidance message
+  - Unable to clarify intent → Fallback to Direct path, ask user for more specific details
+  - **Principle**: Maintain conversation flow, never block user with hard errors
+  - Log all failures for classification accuracy monitoring
+
+  **Performance Target**: Intent clarification typically completes in <2 seconds (first attempt success). With retries for transient failures, worst case <7 seconds before fallback.
+
+- **FR-133** *(HIGH)*: System MUST implement Specialized Path where domain expert agents autonomously use tools via ReAct pattern:
+
+  **Agent Execution Structure**:
+  ```
+  START → select_agent → execute_agent_with_tools → [workflow_type?]
+                                                      ├─> single → END
+                                                      ├─> sequential → next_agent → ...
+                                                      └─> parallel → concurrent_agents → merge → END
+  ```
+
+  **Agent Tool Usage (ReAct Pattern)**:
+  Each specialized agent internally executes ReAct loop when needed:
+  ```
+  Agent receives task → [ReAct Loop]
+    1. Think: Analyze task, decide if tools needed
+    2. Act: Select tool + parameters OR generate direct response
+    3. Observe: Tool result OR skip if no tool used
+    4. Repeat: Continue until task complete (max 5 iterations)
+  ```
+
+  **Example: Data Analysis Agent**:
+  ```
+  User: "2023년 매출 분석해줘"
+  Agent think: "Need to load data file and calculate statistics"
+  Agent act: data_analysis_tool(file_path="2023_sales.csv", operation="statistics")
+  Agent observe: {"mean": 1000000, "max": 5000000, "trend": "increasing"}
+  Agent think: "Now format with Korean locale and provide insights"
+  Agent act: Generate response with formatted numbers and analysis
+  Final output: "2023년 매출 분석 결과
+    - 평균 매출: 1,000,000원
+    - 최고 매출: 5,000,000원 (4분기)
+    - 트렌드: 연중 상승세..."
+  ```
+
+  **Workflow Types**:
+  - **Single**: One agent handles entire task (e.g., "보고서 작성" → DocumentWritingAgent uses document_template tool)
+  - **Sequential**: Chain agents with context sharing (e.g., "법령 검색 후 공문 작성" → LegalResearch uses legal_reference tool → DocumentWriting uses result + document_template tool)
+  - **Parallel**: Execute independent agents concurrently (max 3, each may use different tools simultaneously)
+
+  **Shared Tool Library Access**:
+  All agents have access to 6 tools, used autonomously based on task:
+  - calculator, date_schedule, document_search, data_analysis, document_template, legal_reference
+  - Tool safety: 30s timeout, sandboxed execution, audit logging per FR-061
+
+  **State Management**:
+  - Agent state: {task, react_steps: [{thought, action, observation}], tools_used: [], final_output}
+  - Workflow state: {agent_sequence, agent_outputs: {}, workflow_type, total_tools_used: [], execution_log[]}
+  - Parent state receives: agent_outputs, workflow_type, total_tools_used, execution_log, processing_time_ms
+
+  **Agent Selection Failure Handling**:
+  - Invalid agent_type (null, unknown name) → Fallback to Direct path
+  - Notify user: "일반 모드로 처리합니다"
+  - Log failure: {timestamp, query, attempted_agent_type, fallback_route: "direct"}
+  - Use failure logs to improve classification accuracy over time
+  - **Principle**: Never leave user without response, transparent degradation
+
+  **Performance**:
+  - Single agent: 5-15 seconds (depends on tool usage)
+  - Sequential: 10-30 seconds (agent count × average agent time)
+  - Parallel: 5-15 seconds (slowest agent time)
+
+- **FR-134** *(HIGH)*: System MUST implement LangGraph state management for unified orchestrator:
+
+  **UnifiedAgentState Schema**:
+  ```python
+  {
+    # Input
+    "query": str,                              # Original user query
+    "user_id": UUID,
+    "conversation_id": UUID,
+    "conversation_history": List[Dict],
+
+    # Routing
+    "route": Literal["direct", "reasoning", "specialized"],
+    "complexity": Literal["simple", "ambiguous", "complex"],
+    "classification_confidence": float,         # 0.0-1.0
+    "classification_method": Literal["keyword", "llm"],
+
+    # Processing
+    "messages": List[Dict],                     # LangGraph message history
+    "intermediate_results": Dict[str, Any],
+
+    # Reasoning specific (intent clarification path)
+    "clarified_intent": Optional[str],          # Clarified user intent
+    "missing_context": Optional[List[str]],     # Identified missing information
+    "refined_query": Optional[str],             # Refined query after clarification
+    "rerouted_to": Optional[Literal["direct", "specialized"]],  # Final route after reasoning
+
+    # Specialized specific (agent execution path)
+    "agent_type": Optional[str],                # Selected agent (rag, data_analysis, etc.)
+    "agent_sequence": List[str],                # For sequential/parallel workflows
+    "agent_outputs": Dict[str, str],            # {agent_name: output}
+    "workflow_type": Optional[str],             # single, sequential, parallel
+    "tools_used": List[str],                    # Tools used by agents (aggregated)
+
+    # Output
+    "final_response": str,
+    "processing_time_ms": int,
+    "error": Optional[str],
+
+    # Metadata
+    "execution_log": List[Dict]                 # Trace of all nodes executed
+  }
+  ```
+
+  **State Transitions**:
+  - **classify_node** updates: route, complexity, classification_confidence, classification_method
+  - **direct_node** updates: final_response, processing_time_ms
+  - **reasoning_node** updates: clarified_intent, missing_context, refined_query, rerouted_to, route (updated), query (updated)
+    - Then routes to direct_node OR specialized_node based on rerouted_to
+  - **specialized_node** updates: agent_type, agent_outputs, workflow_type, tools_used, final_response
+  - **finalize_node** updates: execution_log (complete trace)
+
+  **State Persistence**:
+  - State NOT persisted to database (in-memory only during execution)
+  - execution_log stored in AuditLog table for administrator review
+  - Route and performance metrics stored for analytics
+  - Reasoning path rerouting tracked for classification accuracy improvement
+
+- **FR-135** *(HIGH)*: System MUST optimize performance with fast-path execution and caching:
+
+  **Fast-Path Optimizations**:
+  - Keyword classification bypasses LLM (saves ~200ms)
+  - Direct path skips agent initialization (saves ~500ms)
+  - Connection pooling for LLM service (reuse connections)
+  - Lazy loading: Only load agent resources when needed
+
+  **Concurrency Limits**:
+  - Per-user limit: 1 active orchestrator request at a time
+  - Global limit: 50 concurrent orchestrator executions (all routes combined)
+  - **Counting method (Session 2025-11-08 clarification)**: Equal counting - all routes (Direct/Reasoning/Specialized) count as 1 toward the 50 limit regardless of complexity. No weighted counting or separate pools. Simplifies implementation and provides predictable behavior.
+  - Enforcement: Return HTTP 429 (Too Many Requests) when limits exceeded
+  - No queueing: Reject immediately rather than queuing requests
+  - Rationale: 8-core CPU can handle ~50 concurrent requests (6-7 per core) without degradation. Per-user limit prevents individual abuse. Route-specific performance managed via response time targets.
+  - User experience: Duplicate requests prevented, system overload avoided
+
+  **Response Caching** (Optional, requires FR-126 Redis):
+  - Cache Direct path responses for common queries
+  - Cache key: SHA256(normalized_query) where normalized = lowercase + whitespace trimmed
+  - Cache TTL: 1 hour for FAQ-type queries
+  - Cache bypass: User can force fresh response with ?nocache=1
+  - Cache invalidation: On admin request or system update
+
+  **Performance Targets by Route**:
+  - Direct path: P95 <1.5s (0.5s typical)
+  - Reasoning path: P95 <3s (1-2s typical, intent clarification overhead)
+  - Specialized path: P95 <15s (5-10s typical, depends on agent execution and tool usage)
+
+  **Monitoring**:
+  - Track route distribution: % of queries per route (expect 60% direct, 25% reasoning, 15% specialized)
+  - Track classification accuracy: Monitor misrouted queries via user feedback
+  - Track latency per route: Identify performance regressions
+
+  **Production Deployment Criteria**:
+  - Classification accuracy ≥85% on labeled test set (100 queries)
+  - 2-week monitoring period with no accuracy regression
+  - Route distribution within ±10% of expected values (60%/25%/15%)
+  - P95 latency targets met for all routes
+  - Failure fallback mechanisms verified (reasoning/agent selection failures)
+
+- **FR-136** *(MEDIUM)*: System MUST provide backward compatibility with legacy routing flags:
+
+  **Legacy API Support**:
+  - Accept `use_react_agent: true` → Force Reasoning path (intent clarification, bypass classification)
+  - Accept `use_multi_agent: true` → Force Specialized path (agent execution with tools, bypass classification)
+  - Accept `use_unified_routing: true` (default) → Use 3-way intelligent routing
+  - If multiple flags set → Priority order: unified > multi_agent > react_agent
+  - **Note**: Legacy `use_react_agent` flag name is historical; it now triggers intent clarification path, not tool-based ReAct execution
+
+  **Migration Path**:
+  - Phase 1 (Current): Both systems coexist, unified_routing=false by default
+  - Phase 2 (2 weeks): unified_routing=true by default, legacy flags still work
+  - Phase 3 (1 month): Deprecation warning when legacy flags used
+  - Phase 4 (3 months): Remove legacy flags, unified_routing only
+
+  **Response Metadata**:
+  - Always include `route_type` in response: "direct" | "reasoning" | "specialized" | "legacy_react" | "legacy_multi"
+  - Include `classification_confidence` for unified routing
+  - Include `agents_used` list for specialized path
+  - Include `tools_used` list for specialized path (tools invoked by agents)
+  - Include `clarified_intent` for reasoning path (intent clarification result)
 
 ### Key Entities
 
@@ -893,6 +1272,40 @@ This specification is based on the following assumptions:
   - Chart.js + react-chartjs-2 for frontend time-series visualization
   - PostgreSQL with sufficient storage for metric history (estimated ~100KB per day, ~3.65MB per year for 6 metrics)
   - LTTB (Largest Triangle Three Buckets) algorithm implementation for data downsampling
+
+## Hardware Requirements
+
+### Minimum Configuration (Baseline)
+- **CPU**: 8-core (Intel Xeon or AMD EPYC recommended)
+  - Rationale: Supports 50 concurrent orchestrator executions (~6-7 requests per core) without degradation (FR-135)
+  - Architecture: x86_64 (Intel/AMD)
+- **RAM**: 16GB
+  - Base LLM model: ~2.5GB (Qwen3-4B-Instruct Q4_K_M)
+  - LoRA adapters cache: ~1.5GB (2-3 adapters in memory)
+  - Application processes (FastAPI, Next.js, Redis, PostgreSQL): ~2GB
+  - Vector database (Qdrant): ~100-200MB + document data
+  - OS + buffers: ~10GB
+- **Storage**: 100GB SSD
+  - LLM models + dependencies: ~20GB
+  - Vector database: ~10GB (scales with document count)
+  - Logs + backups: ~30GB
+  - User data (10GB × 5 users): ~50GB
+  - OS + system files: ~20GB
+- **Network**: Gigabit Ethernet (폐쇄망 내부 통신용)
+
+### Recommended Configuration (Production)
+- **CPU**: 16-core (better concurrent request handling)
+- **RAM**: 32GB (supports more concurrent sessions and larger LoRA cache)
+- **Storage**: 500GB SSD (longer retention, more users, extended backup history)
+- **GPU (Optional)**: NVIDIA RTX 3090 or A100 for 3-5x inference acceleration
+
+### Scalability Notes
+- **Horizontal scaling**: Not supported in MVP (monolithic deployment per Constitution IV - Simplicity Over Optimization)
+- **Vertical scaling**: Add CPU cores for higher concurrency, add RAM for more LoRA adapter cache
+- **Concurrency limit calibration**: 50 concurrent executions (FR-135) calibrated for 8-core baseline
+  - Adjust proportionally for different core counts: 16-core → ~100 concurrent, 4-core → ~25 concurrent
+- **User capacity**: Baseline supports 50-100 active users (peak concurrent usage ~10-20%)
+  - Add 16GB RAM for each additional 100 users if higher concurrency expected
 
 ## Out of Scope
 

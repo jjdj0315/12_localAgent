@@ -784,6 +784,14 @@ AI:"""
             "success": success,
         })
 
+        # Session 2025-11-10 clarification: Explicit memory cleanup (FR-129, FR-135)
+        # 대용량 필드 명시적 삭제로 메모리 누수 방지
+        # state 자체는 LangGraph가 invoke() 반환 후 Python GC가 자동 해제
+        large_fields = ["retrieved_documents", "tool_results", "intermediate_steps", "conversation_history"]
+        for field in large_fields:
+            if field in state:
+                del state[field]
+
         return state
 
     # ============================================================
