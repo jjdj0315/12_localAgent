@@ -137,7 +137,8 @@
       "Bash(git update-ref:*)",
       "Bash(git show-ref:*)",
       "Bash(sudo hwclock:*)",
-      "Bash(timedatectl:*)"
+      "Bash(timedatectl:*)",
+      "Bash(.github_refresh)"
     ],
     "deny": [],
     "ask": []
