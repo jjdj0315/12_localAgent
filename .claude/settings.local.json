@@ -131,7 +131,8 @@
       "Bash(sed:*)",
       "Bash(then bash .specify/scripts/bash/check-prerequisites.sh --json)",
       "Bash(else PowerShell.exe -NoProfile -ExecutionPolicy Bypass -File .specify/scripts/powershell/check-prerequisites.ps1 -Json)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)"
     ],
     "deny": [],
     "ask": []
