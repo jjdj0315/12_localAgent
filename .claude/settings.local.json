@@ -132,7 +132,12 @@
       "Bash(then bash .specify/scripts/bash/check-prerequisites.sh --json)",
       "Bash(else PowerShell.exe -NoProfile -ExecutionPolicy Bypass -File .specify/scripts/powershell/check-prerequisites.ps1 -Json)",
       "Bash(git merge:*)",
-      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)"
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)",
+      "Bash(git for-each-ref:*)",
+      "Bash(git update-ref:*)",
+      "Bash(git show-ref:*)",
+      "Bash(sudo hwclock:*)",
+      "Bash(timedatectl:*)"
     ],
     "deny": [],
     "ask": []
