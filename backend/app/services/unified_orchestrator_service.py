@@ -12,9 +12,10 @@ Requirements: FR-129 to FR-136
 Success Criteria: SC-046 to SC-051
 """
 
+import asyncio
 import time
 from enum import Enum
-from typing import TypedDict, Dict, List, Optional, Tuple, Any
+from typing import TypedDict, Dict, List, Optional, Tuple, Any, Callable
 from pathlib import Path
 
 try:
@@ -91,13 +92,22 @@ class UnifiedOrchestrator:
     - Keyword classification < 10ms
     """
 
-    def __init__(self):
-        """Initialize unified orchestrator with keyword dictionaries and LangGraph workflow"""
+    def __init__(self, progress_callback: Optional[Any] = None):
+        """
+        Initialize unified orchestrator with keyword dictionaries and LangGraph workflow
+
+        Args:
+            progress_callback: Optional async callback for progress updates.
+                               Will be called with dict: {"node": str, "status": str, "details": dict}
+        """
         # LLM service for base generation and classification
         self.llm: BaseLLMService = get_llm_service()
 
         # Multi-agent orchestrator for specialized path (lazy init)
         self._multi_agent: Optional[MultiAgentOrchestrator] = None
+
+        # Progress callback for real-time updates
+        self.progress_callback = progress_callback
 
         # Keyword dictionaries for fast classification (FR-130)
         self.route_keywords = {
@@ -133,6 +143,32 @@ class UnifiedOrchestrator:
         if self._multi_agent is None:
             self._multi_agent = MultiAgentOrchestrator()
         return self._multi_agent
+
+    async def _emit_progress(self, node: str, status: str, details: Optional[Dict] = None):
+        """
+        Emit progress update to callback if available
+
+        Args:
+            node: Node name (e.g., "classify", "direct", "reasoning", "specialized", "finalize")
+            status: Status (e.g., "started", "completed", "error")
+            details: Optional additional details
+        """
+        if self.progress_callback:
+            try:
+                progress_data = {
+                    "node": node,
+                    "status": status,
+                    "details": details or {},
+                    "timestamp": time.time()
+                }
+                # Check if callback is async
+                if asyncio.iscoroutinefunction(self.progress_callback):
+                    await self.progress_callback(progress_data)
+                else:
+                    self.progress_callback(progress_data)
+            except Exception as e:
+                # Don't let progress callback errors break execution
+                print(f"[WARNING] Progress callback error: {e}")
 
     def _build_main_graph(self) -> Any:
         """
@@ -311,6 +347,9 @@ class UnifiedOrchestrator:
         start_time = time.time()
         query = state["query"]
 
+        # Emit progress: classification started
+        await self._emit_progress("classify", "started", {"query": query[:100]})
+
         # Use Semantic Router for classification (keyword + embedding)
         route = semantic_router.classify(query)
 
@@ -344,6 +383,13 @@ class UnifiedOrchestrator:
             "time_ms": classification_time_ms,
         })
 
+        # Emit progress: classification completed
+        await self._emit_progress("classify", "completed", {
+            "route": route,
+            "confidence": confidence,
+            "method": classification_method
+        })
+
         return state
 
     def _route_decision(self, state: UnifiedAgentState) -> str:
@@ -365,6 +411,9 @@ class UnifiedOrchestrator:
         Performance target: P95 < 1.5s (SC-047)
         """
         start_time = time.time()
+
+        # Emit progress: direct path started
+        await self._emit_progress("direct", "started", {})
 
         try:
             query = state["query"]
@@ -407,6 +456,9 @@ AI:"""
                 "time_ms": execution_time_ms,
             })
 
+            # Emit progress: direct path completed
+            await self._emit_progress("direct", "completed", {"time_ms": execution_time_ms})
+
         except Exception as e:
             error_msg = f"Direct path execution failed: {str(e)}"
             print(f"[ERROR] {error_msg}")
@@ -421,6 +473,9 @@ AI:"""
                 "error": error_msg,
                 "time_ms": execution_time_ms,
             })
+
+            # Emit progress: direct path error
+            await self._emit_progress("direct", "error", {"error": error_msg})
 
         return state
 
@@ -537,6 +592,9 @@ JSON 형식으로만 답변하세요:
         """
         start_time = time.time()
 
+        # Emit progress: reasoning path started
+        await self._emit_progress("reasoning", "started", {})
+
         try:
             query = state["query"]
             history = state.get("conversation_history", [])
@@ -628,6 +686,12 @@ AI:"""
                 "time_ms": reasoning_time_ms,
             })
 
+            # Emit progress: reasoning path completed
+            await self._emit_progress("reasoning", "completed", {
+                "rerouted_to": state["rerouted_to"],
+                "time_ms": reasoning_time_ms
+            })
+
         except Exception as e:
             error_msg = f"Reasoning path execution failed: {str(e)}"
             print(f"[ERROR] {error_msg}")
@@ -644,6 +708,9 @@ AI:"""
                 "time_ms": reasoning_time_ms,
             })
 
+            # Emit progress: reasoning path error
+            await self._emit_progress("reasoning", "error", {"error": error_msg})
+
         return state
 
     async def _specialized_node(self, state: UnifiedAgentState) -> UnifiedAgentState:
@@ -654,6 +721,9 @@ AI:"""
         Agents autonomously use tools via internal ReAct pattern.
         """
         start_time = time.time()
+
+        # Emit progress: specialized path started
+        await self._emit_progress("specialized", "started", {})
 
         try:
             query = state["query"]
@@ -693,6 +763,12 @@ AI:"""
                 "agents": state["agent_sequence"],
                 "tools": state["tools_used"],
                 "time_ms": specialized_time_ms,
+            })
+
+            # Emit progress: specialized path completed
+            await self._emit_progress("specialized", "completed", {
+                "agents": state["agent_sequence"],
+                "time_ms": specialized_time_ms
             })
 
         except Exception as e:
@@ -741,6 +817,9 @@ AI:"""
                 "time_ms": specialized_time_ms,
             })
 
+            # Emit progress: specialized path error
+            await self._emit_progress("specialized", "error", {"error": error_msg})
+
         return state
 
     async def _finalize_node(self, state: UnifiedAgentState) -> UnifiedAgentState:
@@ -749,6 +828,9 @@ AI:"""
 
         Aggregates response, calculates metrics, logs execution.
         """
+        # Emit progress: finalize started
+        await self._emit_progress("finalize", "started", {})
+
         # Validate final response exists
         if not state.get("final_response"):
             print("[WARNING] No final_response in state, setting fallback message")
@@ -791,6 +873,13 @@ AI:"""
         for field in large_fields:
             if field in state:
                 del state[field]
+
+        # Emit progress: finalize completed
+        await self._emit_progress("finalize", "completed", {
+            "total_time_ms": total_time_ms,
+            "route": state.get("route"),
+            "success": success
+        })
 
         return state
 

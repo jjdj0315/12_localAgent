@@ -1039,6 +1039,51 @@ Government employees need the AI system to intelligently route queries to specia
   - Include `tools_used` list for specialized path (tools invoked by agents)
   - Include `clarified_intent` for reasoning path (intent clarification result)
 
+- **FR-137** *(LOW)*: System SHOULD provide real-time visualization of Unified Orchestrator execution process:
+
+  **Progress Callback Mechanism**:
+  - UnifiedOrchestrator accepts optional `progress_callback` parameter in `__init__`
+  - Callback invoked at each node execution stage with progress data:
+    ```python
+    {
+      "node": "classify" | "direct" | "reasoning" | "specialized" | "finalize",
+      "status": "started" | "completed" | "error",
+      "details": {...},  # Node-specific details (route, time_ms, agents, etc.)
+      "timestamp": float
+    }
+    ```
+  - Callback is async-safe and error-isolated (callback failures do not break execution)
+
+  **SSE Streaming Endpoint**:
+  - `POST /api/v1/chat/send-with-progress` endpoint streams progress via Server-Sent Events (SSE)
+  - SSE event types:
+    - `progress`: Real-time node execution updates
+    - `message`: Final LLM response text
+    - `done`: Completion signal with metadata
+    - `error`: Error occurred during processing
+  - Progress events sent as JSON-encoded data
+
+  **Frontend Visualization**:
+  - OrchestratorProgressPanel component displays execution flow
+  - Visual elements:
+    - Node flow diagram: classify → (direct|reasoning|specialized) → finalize
+    - Node-specific emojis and Korean labels (🔍 경로 분류, ⚡ 직접 응답, 🤔 의도 명확화, 👥 전문 에이전트, ✅ 최종 처리)
+    - Status-based coloring: Blue (in-progress + pulse animation), Green (completed), Red (error), Gray (pending)
+    - Scrollable event log showing recent progress updates
+  - Toggle button in chat header: "🔍 과정 보기/숨기기"
+  - Panel appears only during active LLM processing (`isLoading=true`)
+
+  **Use Cases**:
+  - User debugging: Understand why query was routed to specific path
+  - Developer monitoring: Track performance bottlenecks in specific nodes
+  - Transparency: Show users what system is doing during long-running queries
+
+  **Implementation Notes**:
+  - Default behavior: Progress panel hidden (`showProgressPanel=false`)
+  - Users must explicitly enable visualization via toggle button
+  - Progress events stored in component state, cleared on new message submission
+  - Standard `/send` endpoint remains unchanged (no progress callbacks)
+
 ### Key Entities
 
 - **User**: Government employee who uses the system; has unique credentials, can create conversations, upload documents

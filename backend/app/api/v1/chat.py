@@ -1,6 +1,7 @@
 """Chat endpoints for LLM interaction"""
 
 import asyncio
+import json
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -20,6 +21,7 @@ from app.services.document_service import document_service
 from app.services.safety_filter_service import SafetyFilterService
 from app.services.react_agent_service import ReActAgentService
 from app.services.orchestrator_service import MultiAgentOrchestrator
+from app.services.unified_orchestrator_service import UnifiedOrchestrator
 from app.services.llm_cache_service import llm_cache_service
 
 router = APIRouter()
@@ -31,6 +33,10 @@ try:
 except Exception as e:
     print(f"[Chat API] Failed to initialize Multi-Agent Orchestrator: {e}")
     orchestrator = None
+
+# Initialize Unified Orchestrator (singleton) - will be initialized per request with progress callback
+# Note: UnifiedOrchestrator is instantiated per request to attach SSE callback
+unified_orchestrator_class = UnifiedOrchestrator
 
 
 def run_safety_filter_sync(content: str, user_id: UUID, conversation_id: Optional[UUID], phase: str, bypass_rule_based: bool = False):
@@ -537,5 +543,162 @@ async def stream_chat_message(
             # Send error event
             data = json.dumps({"error": str(e)})
             yield f"event: error\ndata: {data}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/send-with-progress")
+async def send_chat_message_with_progress(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Send chat message with real-time progress updates via SSE.
+
+    Uses UnifiedOrchestrator with progress callback to stream execution state.
+
+    SSE Events:
+    - progress: Node execution updates (classify, direct, reasoning, specialized, finalize)
+    - message: Final response text
+    - done: Completion signal
+    - error: Error occurred
+    """
+
+    async def generate():
+        try:
+            # Create or get conversation
+            conversation_id = request.conversation_id
+            if not conversation_id:
+                conversation = Conversation(
+                    user_id=current_user.id,
+                    title=request.content[:50]
+                )
+                db.add(conversation)
+                await db.commit()
+                await db.refresh(conversation)
+                conversation_id = conversation.id
+            else:
+                # Get existing conversation history
+                result = await db.execute(
+                    select(Message)
+                    .where(Message.conversation_id == conversation_id)
+                    .order_by(Message.created_at)
+                )
+                messages = result.scalars().all()
+                history = [{"role": msg.role.value, "content": msg.content} for msg in messages]
+
+            # Safety filter on user input
+            loop = asyncio.get_event_loop()
+            filter_result = await loop.run_in_executor(
+                None,
+                run_safety_filter_sync,
+                request.content,
+                current_user.id,
+                conversation_id,
+                "input",
+                getattr(request, 'bypass_filter', False)
+            )
+
+            if not filter_result.is_safe:
+                error_data = {
+                    "error": "content_filtered",
+                    "message": filter_result.safe_message,
+                    "categories": filter_result.categories
+                }
+                yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
+                return
+
+            filtered_input = filter_result.filtered_content
+
+            # Save user message
+            user_message = Message(
+                conversation_id=conversation_id,
+                role=MessageRole.USER,
+                content=filtered_input,
+                char_count=len(filtered_input),
+            )
+            db.add(user_message)
+            await db.commit()
+
+            # Progress callback for SSE streaming
+            async def progress_callback(progress_data):
+                """Send progress updates via SSE"""
+                event_data = json.dumps(progress_data)
+                yield f"event: progress\ndata: {event_data}\n\n"
+
+            # Create UnifiedOrchestrator with progress callback
+            # Note: We need to collect progress events in a queue for streaming
+            progress_queue = asyncio.Queue()
+
+            async def queue_progress(progress_data):
+                await progress_queue.put(progress_data)
+
+            unified_orch = unified_orchestrator_class(progress_callback=queue_progress)
+
+            # Start orchestrator execution in background task
+            async def run_orchestrator():
+                result = await unified_orch.route_and_execute(
+                    query=filtered_input,
+                    conversation_history=history if conversation_id else [],
+                    user_id=str(current_user.id)
+                )
+                await progress_queue.put({"_done": True, "result": result})
+
+            orchestrator_task = asyncio.create_task(run_orchestrator())
+
+            # Stream progress events
+            while True:
+                try:
+                    progress_data = await asyncio.wait_for(progress_queue.get(), timeout=0.1)
+
+                    if progress_data.get("_done"):
+                        # Orchestrator finished
+                        result = progress_data["result"]
+                        response_text = result.get("response", "")
+
+                        # Save assistant message
+                        assistant_message = Message(
+                            conversation_id=conversation_id,
+                            role=MessageRole.ASSISTANT,
+                            content=response_text,
+                            char_count=len(response_text),
+                        )
+                        db.add(assistant_message)
+                        await db.commit()
+
+                        # Send final message
+                        message_data = {
+                            "content": response_text,
+                            "route": result.get("route_taken"),
+                            "processing_time_ms": result.get("processing_time_ms")
+                        }
+                        yield f"event: message\ndata: {json.dumps(message_data)}\n\n"
+
+                        # Send done event
+                        done_data = {
+                            "conversation_id": str(conversation_id),
+                            "route": result.get("route_taken"),
+                            "processing_time_ms": result.get("processing_time_ms")
+                        }
+                        yield f"event: done\ndata: {json.dumps(done_data)}\n\n"
+                        break
+                    else:
+                        # Progress update
+                        yield f"event: progress\ndata: {json.dumps(progress_data)}\n\n"
+
+                except asyncio.TimeoutError:
+                    # No progress yet, continue waiting
+                    if orchestrator_task.done():
+                        # Task finished but no _done signal (error case)
+                        break
+                    continue
+
+            # Ensure task is complete
+            await orchestrator_task
+
+        except Exception as e:
+            error_data = {"error": str(e)}
+            yield f"event: error\ndata: {json.dumps(error_data)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")

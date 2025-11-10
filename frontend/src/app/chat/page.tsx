@@ -10,6 +10,7 @@ import FilterWarningModal from '@/components/safety/FilterWarningModal'
 import PIIMaskingNotice from '@/components/safety/PIIMaskingNotice'
 import ReActDisplay from '@/components/react/ReActDisplay'
 import MultiAgentDisplay from '@/components/agents/MultiAgentDisplay'
+import OrchestratorProgressPanel from '@/components/agents/OrchestratorProgressPanel'
 import type { Message as APIMessage } from '@/types/conversation'
 
 interface ReActStep {
@@ -70,17 +71,23 @@ export default function ChatPage() {
   const [piiMasked, setPiiMasked] = useState(false)
   const [bypassFilter, setBypassFilter] = useState(false)
 
-  // ReAct Agent state
-  const [useReActAgent, setUseReActAgent] = useState(false)
+  // Orchestrator Progress states
+  const [showProgressPanel, setShowProgressPanel] = useState(false)
+  const [progressEvents, setProgressEvents] = useState<any[]>([])
 
-  // Multi-Agent state
-  const [useMultiAgent, setUseMultiAgent] = useState(false)
+  // Unified Orchestrator is always enabled (FR-129~136)
+  // No need for separate toggle states - backend automatically routes queries
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login')
     }
   }, [user, authLoading, router])
+
+  // Clear document selection when user changes (login/logout)
+  useEffect(() => {
+    setSelectedDocuments([])
+  }, [user?.id])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -101,6 +108,9 @@ export default function ChatPage() {
         timestamp: new Date(msg.created_at),
       }))
       setMessages(uiMessages)
+
+      // Clear document selection when switching conversations
+      setSelectedDocuments([])
     } catch (error) {
       console.error('Failed to load conversation:', error)
       alert('대화를 불러오는데 실패했습니다.')
@@ -113,6 +123,8 @@ export default function ChatPage() {
     setConversationTitle('새 대화')
     setMessages([])
     setInput('')
+    // Clear document selection when starting new conversation
+    setSelectedDocuments([])
   }
 
   const handleSend = async () => {
@@ -152,191 +164,56 @@ export default function ChatPage() {
     console.log('Creating assistant message placeholder:', assistantMessageId)
     setMessages((prev) => [...prev, assistantMessage])
 
-    // Use non-streaming API when ReAct or Multi-Agent is enabled
-    if (useReActAgent || useMultiAgent) {
-      try {
-        const response = await chatAPI.sendMessage({
-          content: currentInput,
-          conversation_id: selectedConversationId,
-          document_ids: selectedDocuments.length > 0 ? selectedDocuments : undefined,
-          bypass_filter: currentBypassFlag,
-          use_react_agent: useReActAgent,
-          use_multi_agent: useMultiAgent,
-        })
+    // Use non-streaming API with Unified Orchestrator (FR-129~136)
+    // Backend automatically routes to direct/reasoning/specialized paths
+    try {
+      const response = await chatAPI.sendMessage({
+        content: currentInput,
+        conversation_id: selectedConversationId,
+        document_ids: selectedDocuments.length > 0 ? selectedDocuments : undefined,
+        bypass_filter: currentBypassFlag,
+      })
 
-        // Update assistant message with response
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId
-              ? {
-                  ...msg,
-                  content: response.message.content,
-                  react_steps: response.react_steps,
-                  tools_used: response.tools_used,
-                  multi_agent_info: response.multi_agent_info,
-                }
-              : msg
-          )
+      // Update assistant message with response
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? {
+                ...msg,
+                content: response.message.content,
+                react_steps: response.react_steps,
+                tools_used: response.tools_used,
+                multi_agent_info: response.multi_agent_info,
+              }
+            : msg
         )
-
-        setIsLoading(false)
-
-        // Update conversation ID if this was a new conversation
-        if (response.conversation_id && !selectedConversationId) {
-          setSelectedConversationId(response.conversation_id)
-          conversationsAPI.get(response.conversation_id).then((conv) => {
-            setConversationTitle(conv.title)
-          })
-        }
-
-        // Refresh conversation list
-        conversationListRef.current?.refresh()
-      } catch (error: any) {
-        console.error('ReAct error:', error)
-
-        // Check if this is a content filter error
-        if (error.error === 'content_filtered' || error.details?.error === 'content_filtered') {
-          // Remove the placeholder assistant message
-          setMessages((prev) => prev.filter((msg) => msg.id !== assistantMessageId))
-
-          // Show filter warning modal
-          setFilterWarning({
-            message: error.message || error.details?.message || '콘텐츠가 필터링되었습니다.',
-            categories: error.details?.categories || [],
-            canRetry: error.details?.can_retry || false
-          })
-          setShowFilterModal(true)
-          setInput(currentInput) // Restore input for retry
-        } else {
-          // Regular error
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? {
-                    ...msg,
-                    content: '죄송합니다. 오류가 발생했습니다: ' + (error.message || '알 수 없는 오류'),
-                  }
-                : msg
-            )
-          )
-        }
-        setIsLoading(false)
-      }
-    } else {
-      // Use streaming API for standard mode
-      try {
-        // Token batching for smoother visual streaming
-        let tokenBuffer = ''
-        let lastUpdateTime = Date.now()
-        const UPDATE_INTERVAL_MS = 150 // Update every 150ms for visible typing effect (slower = more visible)
-
-        await chatAPI.streamMessage(
-          {
-            content: currentInput,
-            conversation_id: selectedConversationId,
-            document_ids: selectedDocuments.length > 0 ? selectedDocuments : undefined,
-            bypass_filter: currentBypassFlag,
-            use_react_agent: false,
-          },
-        // onToken: append to assistant message with batching
-        (token: string) => {
-          tokenBuffer += token
-          const now = Date.now()
-
-          // Update UI every UPDATE_INTERVAL_MS or when buffer gets large
-          if (now - lastUpdateTime >= UPDATE_INTERVAL_MS || tokenBuffer.length >= 20) {
-            const bufferedTokens = tokenBuffer
-            tokenBuffer = ''
-            lastUpdateTime = now
-
-            setMessages((prev) =>
-              prev.map((msg) => {
-                if (msg.id === assistantMessageId) {
-                  return { ...msg, content: msg.content + bufferedTokens }
-                }
-                return msg
-              })
-            )
-          }
-        },
-        // onDone: update conversation info
-        (messageData: any) => {
-          console.log('Stream completed, message data:', messageData)
-
-          // Flush any remaining tokens in buffer
-          if (tokenBuffer.length > 0) {
-            const remainingTokens = tokenBuffer
-            tokenBuffer = ''
-            setMessages((prev) =>
-              prev.map((msg) => {
-                if (msg.id === assistantMessageId) {
-                  return { ...msg, content: msg.content + remainingTokens }
-                }
-                return msg
-              })
-            )
-          }
-
-          setIsLoading(false)
-
-          // Update conversation ID if this was a new conversation
-          if (messageData.conversation_id && !selectedConversationId) {
-            setSelectedConversationId(messageData.conversation_id)
-            // Load the conversation to get the auto-generated title
-            conversationsAPI.get(messageData.conversation_id).then((conv) => {
-              setConversationTitle(conv.title)
-            })
-          }
-
-          // Always refresh conversation list to update timestamps and message counts
-          conversationListRef.current?.refresh()
-        },
-        // onError: show error message or filter warning
-        (error: any) => {
-          console.error('Chat error:', error)
-
-          // Check if this is a content filter error
-          if (error.error === 'content_filtered') {
-            // Remove the placeholder assistant message
-            setMessages((prev) => prev.filter((msg) => msg.id !== assistantMessageId))
-
-            // Show filter warning modal
-            setFilterWarning({
-              message: error.message || '콘텐츠가 필터링되었습니다.',
-              categories: error.categories || [],
-              canRetry: error.can_retry || false
-            })
-            setShowFilterModal(true)
-            setInput(currentInput) // Restore input for retry
-          } else {
-            // Regular error
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === assistantMessageId
-                  ? {
-                      ...msg,
-                      content: '죄송합니다. 오류가 발생했습니다: ' + error.message,
-                    }
-                  : msg
-              )
-            )
-          }
-          setIsLoading(false)
-        }
       )
-      } catch (error: any) {
-        console.error('Chat error:', error)
+
+      setIsLoading(false)
+
+      // Update conversation ID if this was a new conversation
+      if (response.conversation_id && !selectedConversationId) {
+        setSelectedConversationId(response.conversation_id)
+        conversationsAPI.get(response.conversation_id).then((conv) => {
+          setConversationTitle(conv.title)
+        })
+      }
+
+      // Refresh conversation list
+      conversationListRef.current?.refresh()
+    } catch (error: any) {
+      console.error('Unified orchestrator error:', error)
 
       // Check if this is a content filter error
-      if (error.error === 'content_filtered') {
+      if (error.error === 'content_filtered' || error.details?.error === 'content_filtered') {
         // Remove the placeholder assistant message
         setMessages((prev) => prev.filter((msg) => msg.id !== assistantMessageId))
 
         // Show filter warning modal
         setFilterWarning({
-          message: error.message || '콘텐츠가 필터링되었습니다.',
-          categories: error.categories || [],
-          canRetry: error.can_retry || false
+          message: error.message || error.details?.message || '콘텐츠가 필터링되었습니다.',
+          categories: error.details?.categories || [],
+          canRetry: error.details?.can_retry || false
         })
         setShowFilterModal(true)
         setInput(currentInput) // Restore input for retry
@@ -347,16 +224,16 @@ export default function ChatPage() {
             msg.id === assistantMessageId
               ? {
                   ...msg,
-                  content: '죄송합니다. 오류가 발생했습니다: ' + error.message,
+                  content: '죄송합니다. 오류가 발생했습니다: ' + (error.message || '알 수 없는 오류'),
                 }
               : msg
           )
         )
       }
       setIsLoading(false)
-      }
     }
   }
+
 
   // Handle retry with filter bypass
   const handleRetryWithBypass = () => {
@@ -434,6 +311,18 @@ export default function ChatPage() {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              {/* Progress Panel Toggle */}
+              <button
+                onClick={() => setShowProgressPanel(!showProgressPanel)}
+                className={`rounded-md px-3 py-2 text-sm transition-colors ${
+                  showProgressPanel
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+                title="실행 과정 표시"
+              >
+                🔍 {showProgressPanel ? '과정 숨기기' : '과정 보기'}
+              </button>
               <span className="text-sm text-gray-600">{user.username}</span>
               <button
                 onClick={logout}
@@ -498,6 +387,14 @@ export default function ChatPage() {
               </div>
             ))}
 
+            {/* Orchestrator Progress Panel */}
+            {isLoading && progressEvents.length > 0 && (
+              <OrchestratorProgressPanel
+                progressEvents={progressEvents}
+                isOpen={showProgressPanel}
+              />
+            )}
+
             {isLoading && (
               <div className="flex justify-start">
                 <div className="rounded-lg bg-white px-4 py-3 shadow-sm">
@@ -534,66 +431,7 @@ export default function ChatPage() {
               onSelectionChange={setSelectedDocuments}
             />
 
-            {/* Agent Mode Toggles */}
-            <div className="space-y-2">
-              {/* ReAct Agent Toggle */}
-              <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg px-4 py-3">
-                <div className="flex items-center">
-                  <span className="text-lg mr-2">🔧</span>
-                  <div>
-                    <div className="text-sm font-medium text-purple-900">ReAct 에이전트 모드</div>
-                    <div className="text-xs text-purple-600">
-                      AI가 도구를 사용하여 단계별로 문제를 해결합니다
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setUseReActAgent(!useReActAgent);
-                    if (!useReActAgent) setUseMultiAgent(false); // Multi-Agent 비활성화
-                  }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    useReActAgent ? 'bg-purple-600' : 'bg-gray-300'
-                  }`}
-                  aria-label="ReAct 에이전트 모드 전환"
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      useReActAgent ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Multi-Agent Toggle */}
-              <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3">
-                <div className="flex items-center">
-                  <span className="text-lg mr-2">🤖</span>
-                  <div>
-                    <div className="text-sm font-medium text-indigo-900">Multi-Agent 모드</div>
-                    <div className="text-xs text-indigo-600">
-                      여러 전문 에이전트가 협력하여 복잡한 작업을 처리합니다
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setUseMultiAgent(!useMultiAgent);
-                    if (!useMultiAgent) setUseReActAgent(false); // ReAct 비활성화
-                  }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    useMultiAgent ? 'bg-indigo-600' : 'bg-gray-300'
-                  }`}
-                  aria-label="Multi-Agent 모드 전환"
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      useMultiAgent ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
+            {/* Unified Orchestrator automatically handles routing - no manual toggle needed */}
 
             <div className="flex gap-2">
               <textarea
