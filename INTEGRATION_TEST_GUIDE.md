@@ -143,19 +143,37 @@ curl http://localhost:8000/api/assistants/unified-agent | python3 -m json.tool
 
 ## 최신 업데이트
 
-### 2025-11-10: CSRF 보호 예외 추가
-- **문제**: agent-chat-ui가 POST 요청 시 403 CSRF 오류 발생
-- **원인**: LangGraph Server API 엔드포인트(`/api/threads`, `/api/assistants` 등)가 CSRF 토큰 없이 Bearer 토큰 인증만 사용
-- **해결**: CSRF 미들웨어에 LangGraph API 경로 예외 추가
-  ```python
-  CSRF_EXEMPT_PREFIXES = [
-      "/api/info",       # LangGraph Server API: server info
-      "/api/assistants/",  # LangGraph Server API: assistant endpoints
-      "/api/threads",    # LangGraph Server API: thread (conversation) endpoints
-  ]
+### 2025-11-10 (2차): LangGraph SDK 표준 경로 적용 및 CORS 해결
+- **문제**:
+  - CORS 오류로 프론트엔드에서 백엔드 API 호출 차단
+  - 404 오류: SDK가 `/api/v1/*` 호출하지만 엔드포인트는 `/api/*`
+  - 500 오류: `/assistants/search` 엔드포인트 누락
+- **원인**: LangGraph SDK(`@langchain/langgraph-sdk`)가 자동으로 `/v1/` prefix 추가
+- **해결**:
+  1. 라우터 prefix 변경: `/api` → `/api/v1`
+  2. `/assistants/search` 엔드포인트 추가 (POST)
+  3. CSRF 예외 경로를 `/api/v1/*`로 업데이트
+- **최종 엔드포인트**:
   ```
+  GET  /api/v1/info                             (서버 정보)
+  POST /api/v1/assistants/search                (어시스턴트 검색)
+  GET  /api/v1/assistants/{assistant_id}        (어시스턴트 조회)
+  POST /api/v1/threads                          (대화 생성)
+  GET  /api/v1/threads/{thread_id}              (대화 조회)
+  POST /api/v1/threads/{thread_id}/runs/stream  (스트리밍 실행)
+  ```
+- **환경 변수** (`frontend/.env.local`):
+  ```bash
+  # SDK가 자동으로 /v1을 추가하므로 /api만 지정
+  NEXT_PUBLIC_API_URL=http://localhost:8000/api
+  NEXT_PUBLIC_ASSISTANT_ID=unified-agent
+  ```
+
+### 2025-11-10 (1차): CSRF 보호 예외 추가
+- **문제**: agent-chat-ui가 POST 요청 시 403 CSRF 오류 발생
+- **원인**: LangGraph Server API 엔드포인트가 CSRF 토큰 없이 Bearer 토큰 인증만 사용
+- **해결**: CSRF 미들웨어에 LangGraph API 경로 예외 추가
 - **파일**: `backend/app/middleware/csrf_middleware.py:45-47`
-- **결과**: agent-chat-ui가 정상적으로 대화 생성 및 스트리밍 가능
 
 ## 문제 해결
 

@@ -28,7 +28,7 @@ from app.models.message import Message
 from app.api.deps import get_current_user_optional
 from app.services.unified_orchestrator_service import UnifiedOrchestrator
 
-router = APIRouter(prefix="/api", tags=["langgraph-adapter"])
+router = APIRouter(prefix="/api/v1", tags=["langgraph-adapter"])
 
 
 # ============================================================
@@ -52,6 +52,43 @@ async def get_server_info():
 # ============================================================
 # Assistants
 # ============================================================
+
+@router.post("/assistants/search")
+async def search_assistants(request: Request):
+    """
+    POST /api/v1/assistants/search
+
+    Search for assistants (LangGraph Server API compatible)
+
+    For our use case, we return our fixed "unified-agent"
+    """
+    try:
+        body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    except:
+        body = {}
+
+    # Return our unified agent as the only available assistant
+    return [
+        {
+            "assistant_id": "unified-agent",
+            "graph_id": "unified_orchestrator",
+            "name": "Unified Agent",
+            "description": "3-way intelligent routing agent (Direct/Reasoning/Specialized)",
+            "config": {
+                "configurable": {
+                    "routes": ["direct", "reasoning", "specialized"],
+                    "streaming": True
+                }
+            },
+            "metadata": {
+                "version": "1.0.0",
+                "langgraph_integration": True
+            },
+            "created_at": "2025-11-10T00:00:00Z",
+            "updated_at": "2025-11-10T00:00:00Z"
+        }
+    ]
+
 
 @router.get("/assistants/{assistant_id}")
 async def get_assistant(assistant_id: str):
