@@ -108,6 +108,50 @@ async def get_current_user(
     return user
 
 
+async def get_current_user_optional(
+    session_token: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[User]:
+    """
+    Get current authenticated user if available, otherwise return None.
+
+    This is the optional version of get_current_user that doesn't raise
+    HTTPException when authentication fails. Useful for endpoints that
+    work both with and without authentication.
+
+    Args:
+        session_token: Session token from cookie
+        authorization: Authorization header (Bearer token)
+        db: Database session
+
+    Returns:
+        Current user if authenticated, None otherwise
+    """
+    # Try to get token from Authorization header first
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.replace("Bearer ", "")
+    elif session_token:
+        token = session_token
+
+    if not token:
+        return None
+
+    # Try to get session
+    try:
+        session = await auth_service.get_session_by_token(db, token)
+        if not session:
+            return None
+
+        # Get user
+        user = await auth_service.get_user_by_id(db, session.user_id)
+        return user
+    except Exception:
+        # Silently fail and return None
+        return None
+
+
 async def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
     """
     Get current user and verify admin privileges (FR-118).

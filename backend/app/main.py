@@ -144,7 +144,7 @@ async def root():
 
 
 # Import API routers
-from app.api.v1 import admin, auth, chat, conversations, documents, health, setup, metrics, monitoring
+from app.api.v1 import admin, auth, chat, conversations, documents, health, setup, metrics, monitoring, langgraph_adapter
 
 # Register routers
 app.include_router(setup.router, prefix="/api/v1", tags=["Setup"])  # No auth required for setup
@@ -156,3 +156,4 @@ app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["Metrics"])
 app.include_router(monitoring.router, tags=["Monitoring"])  # Prometheus metrics (no auth, no prefix)
 app.include_router(health.router, prefix="/api/v1", tags=["Health"])
+app.include_router(langgraph_adapter.router, tags=["LangGraph"])  # LangGraph Server API compatibility (no prefix, already has /api)

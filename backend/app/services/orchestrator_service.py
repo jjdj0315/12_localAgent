@@ -364,14 +364,34 @@ Available Agents:
 
         start_time = time.time()
 
-        # Execute workflow
+        # Execute workflow with streaming (Phase 1.1: ainvoke → astream)
         if self.workflow:
-            # LangGraph workflow
+            # LangGraph workflow with streaming
             try:
-                final_state = await asyncio.wait_for(
-                    self.workflow.ainvoke(initial_state),
-                    timeout=300  # 5 minutes (FR-079)
-                )
+                final_state = None
+
+                # Stream with timeout
+                async def stream_with_timeout():
+                    nonlocal final_state
+                    # Phase 1.2: Add "messages" for LLM token streaming
+                    async for chunk in self.workflow.astream(initial_state, stream_mode=["updates", "messages"]):
+                        # chunk is a tuple: (node_name, state_updates)
+                        if isinstance(chunk, tuple) and len(chunk) == 2:
+                            node_name, state_updates = chunk
+
+                            # Initialize final_state on first chunk
+                            if final_state is None:
+                                final_state = initial_state.copy()
+
+                            # Update state with new data
+                            final_state.update(state_updates)
+
+                await asyncio.wait_for(stream_with_timeout(), timeout=300)
+
+                # Ensure we have a final state
+                if final_state is None:
+                    raise RuntimeError("Graph execution completed without producing any state")
+
             except asyncio.TimeoutError:
                 return {
                     "status": "timeout",

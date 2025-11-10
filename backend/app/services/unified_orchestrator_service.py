@@ -20,9 +20,11 @@ from pathlib import Path
 
 try:
     from langgraph.graph import StateGraph, END
+    from langgraph.pregel import get_stream_writer
     LANGGRAPH_AVAILABLE = True
 except ImportError:
     LANGGRAPH_AVAILABLE = False
+    get_stream_writer = None
     print("[WARNING] LangGraph not installed. Install with: pip install langgraph langchain-core")
 
 from .llm_service_factory import get_llm_service
@@ -344,11 +346,15 @@ class UnifiedOrchestrator:
 
         Replaces slow LLM classification (0.5s) with deterministic routing (0.002s avg).
         """
+        # Phase 2.1: Use get_stream_writer() for detailed progress
+        writer = get_stream_writer() if get_stream_writer else None
+
         start_time = time.time()
         query = state["query"]
 
-        # Emit progress: classification started
-        await self._emit_progress("classify", "started", {"query": query[:100]})
+        # Emit: classification started
+        if writer:
+            writer(("custom", {"type": "progress", "node": "classify", "stage": "started", "details": {"query_length": len(query)}}))
 
         # Use Semantic Router for classification (keyword + embedding)
         route = semantic_router.classify(query)
@@ -357,6 +363,10 @@ class UnifiedOrchestrator:
         # We can infer the method from timing (keyword is <1ms, embedding is ~10ms)
         classification_time_ms = int((time.time() - start_time) * 1000)
         classification_method = "keyword" if classification_time_ms < 5 else "embedding"
+
+        # Emit: classification method determined
+        if writer:
+            writer(("custom", {"type": "progress", "node": "classify", "stage": "method_determined", "details": {"method": classification_method, "time_ms": classification_time_ms}}))
 
         # Confidence is high for deterministic routing (no LLM uncertainty)
         confidence = 0.95
@@ -383,12 +393,9 @@ class UnifiedOrchestrator:
             "time_ms": classification_time_ms,
         })
 
-        # Emit progress: classification completed
-        await self._emit_progress("classify", "completed", {
-            "route": route,
-            "confidence": confidence,
-            "method": classification_method
-        })
+        # Emit: classification completed
+        if writer:
+            writer(("custom", {"type": "progress", "node": "classify", "stage": "completed", "details": {"route": route, "confidence": confidence, "time_ms": classification_time_ms}}))
 
         return state
 
@@ -410,14 +417,22 @@ class UnifiedOrchestrator:
 
         Performance target: P95 < 1.5s (SC-047)
         """
+        # Phase 2.1: Use get_stream_writer() for detailed progress
+        writer = get_stream_writer() if get_stream_writer else None
+
         start_time = time.time()
 
-        # Emit progress: direct path started
-        await self._emit_progress("direct", "started", {})
+        # Emit: direct path started
+        if writer:
+            writer(("custom", {"type": "progress", "node": "direct", "stage": "started", "details": {}}))
 
         try:
             query = state["query"]
             history = state.get("conversation_history", [])
+
+            # Emit: building prompt
+            if writer:
+                writer(("custom", {"type": "progress", "node": "direct", "stage": "building_prompt", "details": {"history_length": len(history)}}))
 
             # Build simple prompt with conversation history (last 5 messages)
             recent_history = history[-5:] if len(history) > 5 else history
@@ -439,6 +454,10 @@ class UnifiedOrchestrator:
 
 AI:"""
 
+            # Emit: calling LLM
+            if writer:
+                writer(("custom", {"type": "progress", "node": "direct", "stage": "llm_generation", "details": {"prompt_length": len(prompt)}}))
+
             # Call base LLM with standard parameters
             response = await self.llm.generate(
                 prompt=prompt,
@@ -456,8 +475,9 @@ AI:"""
                 "time_ms": execution_time_ms,
             })
 
-            # Emit progress: direct path completed
-            await self._emit_progress("direct", "completed", {"time_ms": execution_time_ms})
+            # Emit: direct path completed
+            if writer:
+                writer(("custom", {"type": "progress", "node": "direct", "stage": "completed", "details": {"time_ms": execution_time_ms, "response_length": len(state["final_response"])}}))
 
         except Exception as e:
             error_msg = f"Direct path execution failed: {str(e)}"
@@ -474,8 +494,7 @@ AI:"""
                 "time_ms": execution_time_ms,
             })
 
-            # Emit progress: direct path error
-            await self._emit_progress("direct", "error", {"error": error_msg})
+            # Error state automatically emitted by astream (Phase 1.1)
 
         return state
 
@@ -592,8 +611,7 @@ JSON 형식으로만 답변하세요:
         """
         start_time = time.time()
 
-        # Emit progress: reasoning path started
-        await self._emit_progress("reasoning", "started", {})
+        # Note: Progress automatically emitted by astream (Phase 1.1)
 
         try:
             query = state["query"]
@@ -686,11 +704,7 @@ AI:"""
                 "time_ms": reasoning_time_ms,
             })
 
-            # Emit progress: reasoning path completed
-            await self._emit_progress("reasoning", "completed", {
-                "rerouted_to": state["rerouted_to"],
-                "time_ms": reasoning_time_ms
-            })
+            # Progress automatically emitted by astream (Phase 1.1)
 
         except Exception as e:
             error_msg = f"Reasoning path execution failed: {str(e)}"
@@ -708,8 +722,7 @@ AI:"""
                 "time_ms": reasoning_time_ms,
             })
 
-            # Emit progress: reasoning path error
-            await self._emit_progress("reasoning", "error", {"error": error_msg})
+            # Error state automatically emitted by astream (Phase 1.1)
 
         return state
 
@@ -722,8 +735,7 @@ AI:"""
         """
         start_time = time.time()
 
-        # Emit progress: specialized path started
-        await self._emit_progress("specialized", "started", {})
+        # Note: Progress automatically emitted by astream (Phase 1.1)
 
         try:
             query = state["query"]
@@ -765,11 +777,7 @@ AI:"""
                 "time_ms": specialized_time_ms,
             })
 
-            # Emit progress: specialized path completed
-            await self._emit_progress("specialized", "completed", {
-                "agents": state["agent_sequence"],
-                "time_ms": specialized_time_ms
-            })
+            # Progress automatically emitted by astream (Phase 1.1)
 
         except Exception as e:
             error_msg = f"Specialized path execution failed: {str(e)}"
@@ -817,8 +825,7 @@ AI:"""
                 "time_ms": specialized_time_ms,
             })
 
-            # Emit progress: specialized path error
-            await self._emit_progress("specialized", "error", {"error": error_msg})
+            # Error state automatically emitted by astream (Phase 1.1)
 
         return state
 
@@ -828,8 +835,7 @@ AI:"""
 
         Aggregates response, calculates metrics, logs execution.
         """
-        # Emit progress: finalize started
-        await self._emit_progress("finalize", "started", {})
+        # Note: Progress automatically emitted by astream (Phase 1.1)
 
         # Validate final response exists
         if not state.get("final_response"):
@@ -874,12 +880,7 @@ AI:"""
             if field in state:
                 del state[field]
 
-        # Emit progress: finalize completed
-        await self._emit_progress("finalize", "completed", {
-            "total_time_ms": total_time_ms,
-            "route": state.get("route"),
-            "success": success
-        })
+        # Progress automatically emitted by astream (Phase 1.1)
 
         return state
 
@@ -935,10 +936,36 @@ AI:"""
             "error": None,
         }
 
-        # Execute LangGraph workflow
+        # Execute LangGraph workflow with streaming (Phase 1.1: ainvoke → astream)
         start_time = time.time()
         try:
-            final_state = await self.graph.ainvoke(initial_state)
+            final_state = None
+            # Phase 1.2: Add "messages" for LLM token streaming
+            # Phase 2.1: Add "custom" for get_stream_writer()
+            async for chunk in self.graph.astream(initial_state, stream_mode=["updates", "messages", "custom"]):
+                # chunk is a tuple: (node_name, state_updates)
+                if isinstance(chunk, tuple) and len(chunk) == 2:
+                    node_name, state_updates = chunk
+
+                    # Initialize final_state on first chunk
+                    if final_state is None:
+                        final_state = initial_state.copy()
+
+                    # Update state with new data
+                    final_state.update(state_updates)
+
+                    # Emit progress via callback (automatic progress tracking)
+                    if self.progress_callback:
+                        await self._emit_progress(
+                            node=node_name,
+                            status="completed",
+                            details=state_updates
+                        )
+
+            # Ensure we have a final state
+            if final_state is None:
+                raise RuntimeError("Graph execution completed without producing any state")
+
             final_state["processing_time_ms"] = int((time.time() - start_time) * 1000)
 
             return {

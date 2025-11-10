@@ -190,9 +190,26 @@ class ReActAgentService:
             "current_observation": ""
         }
 
-        # Execute graph
+        # Execute graph with streaming (Phase 1.1: invoke → stream)
         try:
-            final_state = self.graph.invoke(initial_state)
+            final_state = None
+
+            # Stream graph execution (Phase 1.2: Add "messages" for LLM token streaming)
+            for chunk in self.graph.stream(initial_state, stream_mode=["updates", "messages"]):
+                # chunk is a tuple: (node_name, state_updates)
+                if isinstance(chunk, tuple) and len(chunk) == 2:
+                    node_name, state_updates = chunk
+
+                    # Initialize final_state on first chunk
+                    if final_state is None:
+                        final_state = initial_state.copy()
+
+                    # Update state with new data
+                    final_state.update(state_updates)
+
+            # Ensure we have a final state
+            if final_state is None:
+                raise RuntimeError("Graph execution completed without producing any state")
 
             # Extract final answer
             final_answer = final_state.get("final_answer") or self._extract_final_answer(final_state)

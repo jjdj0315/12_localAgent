@@ -1,26 +1,26 @@
-'use client'
+"use client";
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/lib/auth'
+import { Thread } from "@/components/thread";
+import { StreamProvider } from "@/providers/Stream";
+import { ThreadProvider } from "@/providers/Thread";
+import { ArtifactProvider } from "@/components/thread/artifact";
+import { SettingsProvider } from "@/providers/Settings";
+import { Toaster } from "@/components/ui/sonner";
+import React from "react";
 
-export default function Home() {
-  const router = useRouter()
-  const { user, loading } = useAuth()
-
-  useEffect(() => {
-    if (!loading) {
-      if (user) {
-        router.push('/chat')
-      } else {
-        router.push('/login')
-      }
-    }
-  }, [user, loading, router])
-
+export default function DemoPage(): React.ReactNode {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
-      <div className="text-lg">로딩 중...</div>
-    </main>
-  )
+    <React.Suspense fallback={<div>Loading (layout)...</div>}>
+      <Toaster />
+      <SettingsProvider>
+        <ThreadProvider>
+          <StreamProvider>
+            <ArtifactProvider>
+              <Thread />
+            </ArtifactProvider>
+          </StreamProvider>
+        </ThreadProvider>
+      </SettingsProvider>
+    </React.Suspense>
+  );
 }

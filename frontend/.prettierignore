@@ -1,12 +1,6 @@
-.next
-node_modules
-out
-dist
+# Ignore artifacts:
 build
-.cache
-public
-*.min.js
-*.min.css
-package-lock.json
-yarn.lock
+coverage
+
+#
 pnpm-lock.yaml
